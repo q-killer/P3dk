@@ -1,0 +1,1 @@
+const quantizeGeo=(g,p)=>{let a=g.attributes.position.array;for(let i=0;i<a.length;i++)a[i]=Math.round(a[i]*p)/p;g.attributes.position.needsUpdate=!0};

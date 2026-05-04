@@ -1,0 +1,21 @@
+/p3dk-project
+│── dev.html                (Main UI, Canvas, and Module HUD)
+│── styles.css              (Minimalist CSS, Day/Night themes)
+│
+├── /src                    (The Base Engine - Loads Instantly)
+│   ├── core.js             (Three.js, Raycaster, Glass Minimap)
+│   ├── ui-manager.js       (DOM events, file input, theme toggles)
+│   ├── plugin-manager.js   (Dynamic importer for modules)
+│   ├── loader.js           (3MF/STL/OBJ/GLB universal ingestion)
+│   └── exporter.js         (Smart single-part/assembly exporter)
+│
+└── /src/modules            (The Plugins - Loaded on Demand)
+    ├── wave-generator.js   (✅ Written)
+    ├── photo-forge.js      (✅ Written)
+    ├── xr-scanner.js       (⏳ Delegated to AI)
+    ├── art-supports.js     (⏳ Delegated to AI)
+    ├── csg-engine.js       (⏳ Delegated to AI)
+    ├── math-brush.js       (⏳ Delegated to AI)
+    ├── calibration-gen.js  (⏳ Delegated to AI)
+    ├── classical-trim.js   (⏳ Delegated to AI)
+    └── scan-healer.js      (⏳ Delegated to AI)

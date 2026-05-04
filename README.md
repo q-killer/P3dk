@@ -14,27 +14,54 @@ To maintain our demoscene-level file size while keeping the codebase highly read
 ## 📂 Modular File Structure
 The monolithic core has been decoupled. **DO NOT** write code in the global `window.*` scope. 
 
-\`\`\`text
-P3dK/
-├── dev.html                  # Zero-compile dev shell (Loads CDNs + core.js)
-├── README.md                 # Software Spec (You are here)
-├── CONTRIBUTING.md           # Developer & AI rules of engagement
-└── src/
-    ├── core.js               # ES Module bootstrapper
-    ├── ui-manager.js         # DOM bindings and Event listener glue
-    ├── scene.js              # Three.js WebGL initialization
-    ├── manifold.js           # manifold-3d WASM kernel wrapper
-    ├── loader.js             # STL/PLY/OBJ loading and parsing
-    ├── tools-kinetic.js      # Raycasting state machine (Holes, Bosses, Heals)
-    ├── tools-sculpt.js       # Mesh deformation (Twist, Slice, Hollow, Smooth)
-    ├── pattern-foundry.js    # Procedural 2D/3D math (Voronoi, Hyperbolic, etc.)
-    ├── flow-simulator.js     # Eulerian Fluid Dynamics (WebGL Data3DTexture)
-    ├── flight-demo.js        # Kepler orbits, physics, and gameplay
-    ├── viewcube.js           # Dynamic canvas 3D orientation HUD
-    └── audio.js              # Web Audio API synthesizers and Chiptune radio
+/p3dk-project
+│── dev.html                (Main UI, Canvas, and Module HUD)
+│── styles.css              (Minimalist CSS, Day/Night themes)
+│
+├── /src                    (The Base Engine - Loads Instantly)
+│   ├── core.js             (Three.js, Raycaster, Glass Minimap)
+│   ├── ui-manager.js       (DOM events, file input, theme toggles)
+│   ├── plugin-manager.js   (Dynamic importer for modules)
+│   ├── loader.js           (3MF/STL/OBJ/GLB universal ingestion)
+│   └── exporter.js         (Smart single-part/assembly exporter)
+│
+└── /src/modules            (The Plugins - Loaded on Demand)
+    ├── wave-generator.js   (✅ Written)
+    ├── photo-forge.js      (✅ Written)
+    ├── xr-scanner.js       (⏳ Delegated to AI)
+    ├── art-supports.js     (⏳ Delegated to AI)
+    ├── csg-engine.js       (⏳ Delegated to AI)
+    ├── math-brush.js       (⏳ Delegated to AI)
+    ├── calibration-gen.js  (⏳ Delegated to AI)
+    ├── classical-trim.js   (⏳ Delegated to AI)
+    └── scan-healer.js      (⏳ Delegated to AI)
 \`\`\`
 
 ## ⚙️ Core Dependencies (CDN)
 To protect our payload size, heavy lifting is strictly delegated to CDNs:
 * **Three.js (r160):** WebGL rendering.
 * **Manifold3D (v2.5.1):** WASM C++ geometry kernel. The Blender "Exact" boolean equivalent. Guaranteed manifold output by mathematical proof.
+
+# P3dK: Universal Web-CAD & Reality Capture Engine
+**Architecture Specification v1.2**
+
+## PHASE 1: Core Layout Engine (Stable)
+* **Universal Loader:** 3MF/STL/OBJ ingestion with multi-part grid auto-packing.
+* **Cinematic HUD:** WebGL raycaster, part isolation, and orthographic glass minimap.
+* **Plugin Manager:** Dynamic CDN module loader to maintain a zero-install, lightweight core.
+
+## PHASE 2: Reality Capture & Auto-Healing
+* **WebXR Scanner:** Hardware-level depth map extraction via mobile ARCore/LiDAR.
+* **Scan Healer:** WASM-powered Marching Cubes (Splat-to-Mesh), Taubin Volume-Preserving Smoothing, and Planar Decimation (snapping lumpy scans into flat CAD surfaces).
+
+## PHASE 3: CSG Pre-Processor & Modder
+* **WASM Booleans:** Instant planar bottom-cuts and hollowing/drainage hole punching.
+* **Wave Overhangs:** Mathematical Z-axis rippling to bypass proprietary slicer supports.
+
+## PHASE 4: Sculptural Support Foundry
+* **Classical Architecture Generator:** Parametric Roman columns (CSG) acting as primary support structures.
+* **Grapevine Algorithms:** L-System mathematical vines that wrap the columns and use microscopic, scar-free breakaway interface pins to support the target mesh.
+
+## PHASE 5: The Tactile Workbench
+* **Skeuomorphic Toolset:** Raycast-driven 3D cursors locked to mesh surface normals.
+* **Tools:** Butter Knife (WASM Trenching/Scraping), Rasp (Erosion/Sanding), Masking Tape (Vertex Weight Exclusion Zones), 3D Pen (Path-to-Tube Extrusion).

@@ -1,25 +1,455 @@
 <!DOCTYPE html>
-<html lang="en">
+<html style="margin:0;overflow:hidden;background:var(--bg-main);transition:background .5s;color:var(--text-main);font-family:'Courier New',Courier,monospace">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P3dK V39 - Dev Environment</title>
-    <!-- CSS will be injected here by the linker later -->
-    <style>body { margin: 0; overflow: hidden; background: #020008; }</style>
-    
-    <!-- CDN Dependencies: Let the browser cache handle the heavy lifting -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- OrbitControls for dev -->
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    
-    <!-- Note: Manifold3D will be loaded asynchronously in manifold.js -->
+<meta charset="UTF-8">
+<title>P3dK // V39 SOLAR</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHJlY3Qgd2lkdGg9IjQ0IiBoZWlnaHQ9IjQ0IiBmaWxsPSIjMDEwMDEwIiByeD0iNiIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMjIiIHI9IjE4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmMGYiIHN0cm9rZS13aWR0aD0iMS40IiBzdHJva2UtZGFzaGFycmF5PSI3IDMiLz48ZWxsaXBzZSBjeD0iMjIiIGN5PSIyMiIgcng9IjExIiByeT0iMTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzBmZiIgc3Ryb2tlLXdpZHRoPSIxLjEiLz48ZWxsaXBzZSBjeD0iMjIiIGN5PSIyMiIgcng9IjE4IiByeT0iNyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMGZmIiBzdHJva2Utd2lkdGg9IjEiIG9wYWNpdHk9Ii43Ii8+PGNpcmNsZSBjeD0iMjIiIGN5PSIyMiIgcj0iMyIgZmlsbD0iI2YwZiIgb3BhY2l0eT0iLjgiLz48dGV4dCB4PSIyMiIgeT0iMjciIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZpbGw9IiNmZmYiIGZvbnQtZmFtaWx5PSJtb25vc3BhY2UiIGZvbnQtc2l6ZT0iOSIgZm9udC13ZWlnaHQ9ImJvbGQiPlAzZEs8L3RleHQ+PC9zdmc+">
+
+<style>
+:root{--radius:8px;--bg-main:#020008;--bg-panel:rgba(2,4,20,.85);--text-main:#0ff;--text-dim:#c8e0ff;--accent:#00ffcc;--border-light:rgba(0,255,255,.15);--border-heavy:rgba(0,255,255,.4);--btn-bg:rgba(20,30,50,.6);--grid-grad:linear-gradient(90deg,rgba(255,0,0,.02),rgba(0,255,0,.01),rgba(0,0,255,.02));--void-grad:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.78)100%);--warn:#ffa040;}
+.light-mode{--bg-main:#ddeeff;--bg-panel:rgba(240,245,255,.85);--text-main:#0a0a1a;--text-dim:#1a1a3a;--accent:#9900cc;--border-light:rgba(100,0,180,.15);--border-heavy:rgba(100,0,180,.4);--btn-bg:rgba(200,210,230,.6);--grid-grad:linear-gradient(90deg,rgba(0,0,200,.02),rgba(0,0,200,.02),rgba(0,0,200,.02));--void-grad:radial-gradient(ellipse at center,transparent 80%,rgba(0,0,0,.04)100%);--warn:#cc2200;}
+.light-mode .pnl-hdr,.light-mode .lbl,.light-mode .note,.light-mode .val,.light-mode .btn,.light-mode .sub,.light-mode select,.light-mode input[type=number],.light-mode #sts,.light-mode .arr{color:var(--text-main);}
+.light-mode .btn{background:var(--btn-bg);border-color:var(--border-heavy);}
+.light-mode .btn:hover{background:var(--border-heavy);color:#fff;}
+.light-mode select,.light-mode input[type=number]{background:var(--btn-bg);color:var(--text-main);border-color:var(--border-heavy);}
+.light-mode input[type=range]{accent-color:var(--accent);}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:500;background:linear-gradient(rgba(18,16,16,0) 50%,var(--border-light) 50%),var(--grid-grad);background-size:100% 4px,5px 100%;opacity:.25;}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:499;background:var(--void-grad);}
+.glitch{animation:logogl 4s infinite;}
+@keyframes logogl{0%,93%,100%{text-shadow:2px 0 #f0f,-2px 0 var(--text-main);transform:none}94%{text-shadow:-4px 0 #f0f,4px 0 var(--text-main);transform:translate(2px,-1px)}96%{text-shadow:-2px 0 #f0f,2px 0 var(--text-main);transform:none}}
+*{box-sizing:border-box;user-select:none;}
+
+/* 1. Crisp Glassmorphism */
+#ui{position:fixed;top:0;left:0;width:322px;height:100vh;background:var(--bg-panel);border-right:1px solid var(--border-light);z-index:10;display:flex;flex-direction:column;backdrop-filter:blur(24px) saturate(120%);box-shadow:4px 0 24px rgba(0,0,0,.4);overflow-y:auto;overflow-x:hidden;transition:transform .3s cubic-bezier(0.2,0.8,0.2,1);scrollbar-width:thin;scrollbar-color:var(--border-heavy) transparent;}
+#ui.collapsed{transform:translateX(-100%);}
+
+/* 3. Ultra-slim Cyberpunk Scrollbars */
+#ui::-webkit-scrollbar{width:3px;}
+#ui::-webkit-scrollbar-track{background:transparent;}
+#ui::-webkit-scrollbar-thumb{background:var(--border-heavy);border-radius:2px;}
+#ui::-webkit-scrollbar-thumb:hover{background:var(--accent);box-shadow:0 0 10px var(--accent);}
+
+#uiToggle{position:fixed;top:14px;left:330px;z-index:11;background:var(--bg-panel);backdrop-filter:blur(10px);border:1px solid var(--border-heavy);color:var(--text-main);padding:8px;cursor:pointer;font-weight:bold;transition:all .3s cubic-bezier(0.2,0.8,0.2,1);border-radius:0 4px 4px 0;}
+#uiToggle.collapsed{left:0;background:var(--bg-panel);border-left:none;border-radius:0 4px 4px 0;}
+
+#hdr{padding:12px 16px;flex-shrink:0;border-bottom:1px solid var(--border-light);background:linear-gradient(180deg,rgba(255,255,255,.03) 0%,transparent 100%);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;transition:background .2s;}
+#hdr:hover{background:var(--border-light);}
+#hdrText h1{margin:0;font-size:15px;letter-spacing:3px;font-style:italic;color:var(--text-main);}
+.sub{font-size:9px;color:var(--text-dim);letter-spacing:3px;margin-top:2px;font-weight:bold;}
+
+.pnl{border-bottom:1px solid var(--border-light);transition:box-shadow .4s;}
+.pnl.flash{animation:pfl .9s ease-out;}
+@keyframes pfl{0%{box-shadow:inset 0 0 30px rgba(0,255,255,.35),0 0 20px var(--border-heavy)}100%{box-shadow:none}}
+
+/* 2. Micro-interactions: Panels */
+.pnl-hdr{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;cursor:pointer;font-size:11px;font-weight:900;letter-spacing:2.5px;color:#e8f4ff;transition:all .2s ease-out;position:relative;}
+.pnl-hdr:hover{color:var(--text-main);background:linear-gradient(90deg,var(--border-light) 0%,transparent 100%);padding-left:20px;}
+.pnl-hdr:hover::before{content:"";position:absolute;left:0;top:0;bottom:0;width:2px;background:var(--accent);box-shadow:0 0 8px var(--accent);}
+.arr{display:inline-block;transition:transform .25s cubic-bezier(0.2,0.8,0.2,1);transform:rotate(90deg);}
+.closed .arr{transform:rotate(0deg);}
+
+/* 4. Layout Cleanup: Vertical Rhythm */
+.pnl-body{padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+.hidden{display:none!important;}
+.r{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:2px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.g3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.cbrow{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--text-dim);letter-spacing:1px;cursor:pointer;padding:4px 0;transition:color .2s;}
+.cbrow:hover{color:var(--text-main);}
+
+.lbl{font-size:10px;color:var(--text-dim);letter-spacing:1.5px;flex-shrink:0;font-weight:bold;}
+.val{font-size:11px;color:var(--accent);font-weight:bold;min-width:36px;text-align:right;}
+.note{font-size:9px;color:rgba(100,200,255,.8);padding:6px 10px;border:1px dashed var(--border-heavy);background:rgba(0,100,255,.05);line-height:1.6;border-radius:2px;}
+.divider{border:none;border-top:1px dashed var(--border-heavy);margin:6px 0;opacity:.5;}
+
+/* 2. Micro-interactions: Inputs */
+input[type=number],input[type=text],select{width:100%;background:rgba(0,0,0,.4);color:var(--accent);border:1px solid var(--border-heavy);padding:6px;font-family:inherit;font-size:10px;font-weight:bold;outline:none;text-align:center;transition:all .2s ease-out;border-radius:2px;}
+input[type=number]{width:54px;}
+input[type=number]:focus,input[type=text]:focus,select:focus{border-color:var(--accent);box-shadow:0 0 10px rgba(0,255,255,.2);background:rgba(0,20,40,.6);}
+input[type=range]{width:100%;cursor:pointer;accent-color:#f0f;transition:filter .2s;}
+input[type=range]:hover{filter:brightness(1.3) drop-shadow(0 0 2px rgba(255,0,255,.5));}
+input[type=checkbox]{accent-color:var(--accent);cursor:pointer;width:14px;height:14px;transition:transform .2s,filter .2s;}
+input[type=checkbox]:hover{transform:scale(1.15);filter:drop-shadow(0 0 4px var(--accent));}
+input[type=color]{width:44px;height:24px;padding:0;background:var(--bg-main);border:1px solid var(--border-heavy);cursor:pointer;transition:border-color .2s;}
+input[type=color]:hover{border-color:var(--accent);}
+
+.btn{background:var(--btn-bg);color:var(--accent);border:1px solid var(--border-heavy);padding:10px;width:100%;cursor:pointer;font-family:inherit;font-size:10px;font-weight:bold;letter-spacing:1.5px;transition:all .15s ease-out;text-shadow:0 0 6px rgba(0,255,255,.3);border-radius:2px;}
+.btn:hover:not(:disabled){background:var(--border-light);border-color:var(--accent);box-shadow:0 0 16px rgba(0,255,255,.3);color:#fff;text-shadow:0 0 8px #fff;}
+.btn:active:not(:disabled){transform:translateY(1px);box-shadow:0 0 8px rgba(0,255,255,.2);}
+.btn:disabled{border-color:rgba(100,100,100,.3);color:rgba(100,100,100,.5);cursor:not-allowed;text-shadow:none;background:transparent;}
+
+.m{color:#f0f;border-color:rgba(255,0,255,.5);text-shadow:0 0 6px rgba(255,0,255,.4);}.m:hover:not(:disabled){background:rgba(255,0,255,.1);border-color:#f0f;box-shadow:0 0 16px rgba(255,0,255,.3);}
+.g{color:#0f9;border-color:rgba(0,255,153,.5);text-shadow:0 0 6px rgba(0,255,153,.4);}.g:hover:not(:disabled){background:rgba(0,255,153,.1);border-color:#0f9;box-shadow:0 0 16px rgba(0,255,153,.3);}
+.r2{color:#f55;border-color:rgba(255,80,80,.5);}.r2:hover:not(:disabled){background:rgba(255,80,80,.1);border-color:#f55;box-shadow:0 0 16px rgba(255,80,80,.3);color:#fff;}
+.y{color:#fc0;border-color:rgba(255,200,0,.5);text-shadow:0 0 6px rgba(255,200,0,.4);}.y:hover:not(:disabled){background:rgba(255,200,0,.1);border-color:#fc0;box-shadow:0 0 16px rgba(255,200,0,.3);}
+.on{background:var(--border-light)!important;border-color:var(--text-main)!important;color:#fff!important;box-shadow:0 0 18px rgba(0,255,255,.4)!important;}
+
+.fi-wrap{position:relative;overflow:hidden;}
+.fi-wrap input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+
+#sts{font-size:10px;color:#0f9;text-align:center;padding:10px;font-weight:bold;letter-spacing:1.5px;border:1px solid rgba(0,255,153,.3);background:rgba(0,255,153,.05);border-radius:2px;animation:blk 2.5s infinite;}
+@keyframes blk{0%,100%{opacity:1;box-shadow:0 0 8px rgba(0,255,153,.2);}50%{opacity:.6;box-shadow:none;}}
+
+#hudContainer{position:fixed;top:16px;right:16px;z-index:200;pointer-events:none;}
+#viewCube{position:relative;width:180px;height:180px;pointer-events:auto;}
+#vcCanvasWrap{position:absolute;inset:0;z-index:1;}
+#vcCanvasWrap canvas{cursor:grab;outline:none;border-radius:6px;display:block;}
+#btnRotatePart{pointer-events:auto;position:absolute;bottom:8px;right:8px;z-index:5;font-size:20px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:var(--bg-panel);backdrop-filter:blur(10px);border:1px solid var(--border-heavy);border-radius:50%;cursor:pointer;color:var(--text-dim);transition:all .2s cubic-bezier(0.2,0.8,0.2,1);}
+#btnRotatePart:hover{transform:scale(1.15) rotate(15deg);border-color:var(--accent);color:var(--accent);}
+#btnRotatePart.on{color:#f0f;border-color:#f0f;box-shadow:0 0 15px rgba(255,0,255,.4);}
+
+#hud{position:fixed;top:16px;right:210px;z-index:10;background:var(--bg-panel);backdrop-filter:blur(16px);border:1px solid var(--border-light);padding:12px 16px;font-size:10px;font-weight:bold;color:var(--text-dim);letter-spacing:1.5px;line-height:2;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.3);}
+#hud span{color:var(--accent);}
+#hnt{position:fixed;bottom:16px;right:16px;z-index:10;background:var(--bg-panel);backdrop-filter:blur(16px);border:1px solid var(--border-light);padding:10px 14px;font-size:10px;color:var(--accent);font-weight:bold;letter-spacing:1.5px;line-height:1.8;text-align:right;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,.3);}
+#meas{position:fixed;pointer-events:none;color:#0f9;font-size:10px;font-weight:bold;text-shadow:1px 1px 0 #000;z-index:100;padding:6px 10px;background:var(--bg-panel);border:1px solid #0f9;border-radius:4px;line-height:1.7;white-space:nowrap;backdrop-filter:blur(8px);box-shadow:0 4px 15px rgba(0,255,153,.2);}
+
+canvas{cursor:crosshair;}
+.drag-btn{padding:10px 4px;border:1px solid;font-size:10px;font-weight:bold;text-align:center;cursor:grab;background:rgba(0,0,0,.5);border-radius:2px;transition:all .2s ease-out;}
+.drag-btn:hover{background:rgba(255,255,255,.05);transform:translateY(-1px);}
+.drag-btn:active{cursor:grabbing;transform:scale(0.96);}
+#dragHole{border-color:#f0f;color:#f0f;box-shadow:inset 0 0 10px rgba(255,0,255,.1);}
+#dragBoss{border-color:#0f9;color:#0f9;box-shadow:inset 0 0 10px rgba(0,255,153,.1);}
+
+#ctxMenu{position:fixed;background:var(--bg-panel);backdrop-filter:blur(16px);border:1px solid var(--border-heavy);border-radius:4px;padding:6px;display:none;z-index:2000;box-shadow:0 10px 40px rgba(0,0,0,.6);flex-direction:column;gap:4px;}
+.ctx-btn{background:transparent;border:1px solid transparent;color:var(--text-dim);font-family:inherit;font-size:11px;font-weight:bold;text-align:left;padding:8px 14px;cursor:pointer;border-radius:2px;letter-spacing:1px;transition:all .2s ease-out;}
+.ctx-btn:hover{background:rgba(255,255,255,.05);border-color:var(--border-light);padding-left:18px;}
+
+/* Flight HUD */
+#fhud{position:fixed;inset:0;z-index:50;pointer-events:none;}
+#fhud.active{pointer-events:auto;}
+#fScore-box{position:absolute;top:20px;right:20px;font-size:12px;font-weight:bold;color:var(--text-main);letter-spacing:2px;line-height:2;text-align:right;text-shadow:0 0 10px #0ff;}
+#fScore-box span{color:var(--accent);}
+#fCross{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:24px;height:24px;border:1.5px solid var(--border-heavy);border-radius:50%;box-shadow:0 0 10px rgba(0,255,255,.2),inset 0 0 10px rgba(0,255,255,.2);}
+#fCross::before,#fCross::after{content:"";position:absolute;background:var(--border-heavy);box-shadow:0 0 5px var(--accent);}
+#fCross::before{width:2px;height:10px;top:-12px;left:9.5px;}
+#fCross::after{width:10px;height:2px;left:-12px;top:9.5px;}
+#fKeys{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);font-size:10px;color:rgba(255,100,255,.8);letter-spacing:2px;text-align:center;font-weight:bold;text-shadow:0 0 8px #f0f;}
+#fWarn{position:absolute;top:50%;left:50%;transform:translate(-50%,-200%);font-size:32px;font-weight:900;color:#f00;letter-spacing:6px;text-shadow:0 0 20px #f00,0 0 40px #f00;display:none;}
+#fWarn.active{display:block;animation:fwblk 0.25s infinite;}
+@keyframes fwblk{0%{opacity:1;transform:translate(-50%,-200%) scale(1);}50%{opacity:.3;transform:translate(-50%,-200%) scale(1.05);}100%{opacity:1;transform:translate(-50%,-200%) scale(1);}}
+
+/* About Modal */
+#aboutModal{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+#aboutCanvas{position:absolute;inset:0;z-index:0;}
+.about-box{position:relative;z-index:2;width:520px;max-height:80vh;overflow-y:auto;background:var(--bg-panel);border:1px solid var(--border-light);padding:32px;backdrop-filter:blur(24px) saturate(120%);box-shadow:0 20px 80px rgba(0,0,0,.8);border-radius:4px;}
+.about-box::-webkit-scrollbar{width:4px;}
+.about-box::-webkit-scrollbar-thumb{background:var(--border-heavy);border-radius:2px;}
+.about-box h1{color:#f0f;margin:0 0 8px;font-size:22px;letter-spacing:4px;text-shadow:0 0 16px rgba(255,0,255,.6);}
+.about-box h3{color:var(--text-main);margin:8px 0 12px;letter-spacing:2px;font-size:12px;}
+.about-box p,.about-box .fix{color:#cde;line-height:1.9;font-size:11px;margin:6px 0;}
+.about-box .fix{color:#0f9;font-size:11px;}
+.about-box .warn{color:#ffa040;font-size:11px;}
+
+@media (max-width: 768px) and (pointer: coarse) {
+  #ui { top: auto; bottom: 0; left: 0; width: 100%; height: auto; max-height: 50vh; border-right: none; border-top: 1px solid var(--border-light); border-radius: 16px 16px 0 0; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -10px 40px rgba(0,0,0,0.6); transform: translateY(0); }
+  #ui.collapsed { transform: translateY(100%); }
+  #uiToggle { top: auto; left: 14px; bottom: calc(50vh + 14px); border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,.5); border-left: 1px solid var(--border-heavy); }
+  #uiToggle.collapsed { left: 14px; bottom: max(14px, env(safe-area-inset-bottom)); border-radius: 50%; border-left: 1px solid var(--border-heavy); }
+}
+</style>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 </head>
-<body>
-    <div id="ui">
-        <!-- UI modules will be dynamically injected here -->
+<body style="margin:0;overflow:hidden;background:var(--bg-main);transition:background .5s">
+
+<div id="floatHistory" style="position:fixed;bottom:14px;left:14px;z-index:100;display:flex;gap:8px;">
+  <button style="background:var(--bg-panel);border:1px solid var(--border-heavy);color:var(--text-main);padding:8px 16px;cursor:pointer;border-radius:4px;font-size:14px;backdrop-filter:blur(5px)" id="bU" disabled title="Undo Ctrl+Z">&#8617;</button>
+  <button style="background:var(--bg-panel);border:1px solid var(--border-heavy);color:var(--text-main);padding:8px 16px;cursor:pointer;border-radius:4px;font-size:14px;backdrop-filter:blur(5px)" id="bRd" disabled title="Redo Ctrl+Y">&#8618;</button>
+</div>
+<div id="uiToggle" id="uiToggleBtn">◀</div>
+<div id="ui">
+  <div id="hdr">
+    <div id="hdrText" style="flex:1;cursor:pointer;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px">
+        <svg width="36" height="36" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <rect width="44" height="44" fill="#010010" rx="4"/>
+          <circle cx="22" cy="22" r="18" fill="none" stroke="#f0f" stroke-width="1.4" stroke-dasharray="7 3"><animateTransform attributeName="transform" type="rotate" from="0 22 22" to="360 22 22" dur="3s" repeatCount="indefinite"/></circle>
+          <ellipse cx="22" cy="22" rx="11" ry="18" fill="none" stroke="#0ff" stroke-width="1.1"><animateTransform attributeName="transform" type="rotate" from="0 22 22" to="-360 22 22" dur="5s" repeatCount="indefinite"/></ellipse>
+          <ellipse cx="22" cy="22" rx="18" ry="7" fill="none" stroke="#0ff" stroke-width="1" opacity=".7"><animateTransform attributeName="transform" type="rotate" from="90 22 22" to="450 22 22" dur="7s" repeatCount="indefinite"/></ellipse>
+          <circle cx="22" cy="22" r="3" fill="#f0f" opacity=".8"/>
+          <text x="22" y="27" text-anchor="middle" fill="#fff" font-family="monospace" font-size="9" font-weight="bold">P3dK</text>
+        </svg>
+        <div>
+          <h1 class="glitch">P3dK — FAB ENGINE</h1>
+          <div class="sub">V39 · MANIFOLD · SOLAR</div>
+        </div>
+      </div>
     </div>
-    
-    <!-- ES Module Entry Point -->
-    <script type="module" src="./src/core.js"></script>
+    <button class="icon-btn" id="themeToggle" title="🌓 Toggle Theme" style="flex-shrink:0;font-size:18px;padding:6px 8px">🌓</button>
+  </div>
+
+  <div class="pnl" id="pSys">
+    <div class="pnl-hdr closed"><span>📂 I/O</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="fi-wrap"><button class="btn m" id="btnLoadMesh">[ 📂 LOAD MESH ]</button><input type="file" id="F" accept=".stl,.obj,.ply,.3mf"></div>
+      <button class="btn" id="bRst" disabled>[ ↩️ RESTORE ]</button>
+      <button class="btn r2" id="bHealMesh" disabled>[ 🩹 AUTO-HEAL ]</button>
+      <div id="meshWarn" class="note hidden" style="color:var(--warn);border-color:rgba(255,160,0,.4)">⚠ LARGE MESH — decimated for CSG stability.</div>
+      <hr class="divider">
+      <div class="r">
+        <span class="lbl">📏 X</span><input type="number" id="X" value="100">
+        <span class="lbl">Y</span><input type="number" id="Y" value="100">
+        <span class="lbl">Z</span><input type="number" id="Z" value="100">
+        <button class="icon-btn" id="bLock" style="padding:4px;font-size:14px;border:none" title="Link Scales">🔒</button>
+      </div>
+      <hr class="divider">
+      <div class="g2">
+        <button class="btn m" id="XPT" disabled>[ 💾 .STL ]</button>
+        <button class="btn y" id="XPL" disabled>[ 📦 .PLY ]</button>
+      </div>
+      <div class="g2">
+        <button class="btn g" id="X3M" disabled>[ 🔧 .3MF ]</button>
+        <button class="btn" id="XOBJ" disabled style="background:var(--border-light);border-color:var(--border-heavy);color:var(--accent)">[ 🌐 .OBJ ]</button>
+      </div>
+      <button class="btn" id="XGLB" disabled style="background:rgba(100,180,255,.1);border-color:rgba(100,180,255,.4);color:#8cf">[ 🌐 .GLB ]</button>
+    </div>
+  </div>
+
+  <div class="pnl" id="pVis">
+    <div class="pnl-hdr closed"><span>👁️ VISUALS</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="r"><span class="lbl">🎨 COLOR</span><input type="color" id="MC" value="#00e5ff"></div>
+      <div class="r"><span class="lbl">🌟 METALNESS</span><span class="val" id="mnv">0.6</span></div><input type="range" id="MN" min="0" max="1" step="0.05" value="0.6">
+      <div class="r"><span class="lbl">🌫️ MATTE/GLOSS</span><span class="val" id="rgv">0.4</span></div><input type="range" id="RG" min="0" max="1" step="0.05" value="0.4">
+      <hr class="divider">
+      <div class="g2">
+        <button class="btn" id="bW">[ 🕸️ WIRE ]</button>
+        <button class="btn" id="bG">[ 👻 GHOST ]</button>
+      </div>
+      <div class="g2">
+        <button class="btn on" id="bGr">[ 🔲 GRID ]</button>
+        <button class="btn" id="bSt">[ ✨ STARS ]</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pPrint">
+    <div class="pnl-hdr closed"><span>&#128424;&#65039; PRINT PREP</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="note">Shell hollow via inward normal offset.</div>
+      <div class="r"><span class="lbl">WALL mm</span><span class="val" id="hlwtv">2.0</span></div>
+      <input type="range" id="HLW_T" min="0.5" max="10" step="0.5" value="2.0">
+      <button class="btn m" id="btnHollow">[ HOLLOW SHELL ]</button>
+      <hr class="divider">
+      <div class="r"><span class="lbl">SMOOTH PASSES</span><span class="val" id="rndv">0</span></div>
+      <input type="range" id="RND" min="0" max="10" step="1" value="0">
+      <button class="btn y" id="btnSmooth">[ APPLY SMOOTHING ]</button>
+    </div>
+  </div>
+
+  <div class="pnl" id="pAdv">
+    <div class="pnl-hdr closed"><span>✂️ SCULPT &amp; SLICE</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="r"><span class="lbl">TWIST °</span><span class="val" id="twtv">0</span></div>
+      <input type="range" id="TWT" min="-360" max="360" value="0">
+      <button class="btn m" id="btnTwist">[ 🌀 TWIST ]</button>
+      <hr class="divider">
+      <div class="r"><span class="lbl">✂️ X%</span><span class="val" id="slxv">100</span></div><input type="range" id="SLX" min="1" max="100" value="100">
+      <div class="r"><span class="lbl">✂️ Y%</span><span class="val" id="slyv">100</span></div><input type="range" id="SLY" min="1" max="100" value="100">
+      <div class="r"><span class="lbl">✂️ Z%</span><span class="val" id="slzv">100</span></div><input type="range" id="SLZ" min="1" max="100" value="100">
+      <button class="btn g" id="btnSlice">[ 🔪 SLICE ]</button>
+      
+      <hr class="divider">
+      <div class="note">VORONOI LATTICE</div>
+      <div class="r"><span class="lbl">CELL DENSITY</span><span class="val" id="vdenv">40</span></div>
+      <input type="range" id="vDen" min="10" max="100" value="40">
+      <div class="r"><span class="lbl">STRUT WIDTH mm</span><span class="val" id="vstrv">2</span></div>
+      <input type="range" id="vStr" min="1" max="10" value="2">
+      <button class="btn m" id="btnLattice">[ 🕸️ FORGE VORONOI LATTICE ]</button>
+    </div>
+  </div>
+
+  <div class="pnl" id="pMesh">
+    <div class="pnl-hdr closed"><span>🕸️ MESH</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="note">LMB=Face · Ctrl=Add · SPC=Cut<br><span style="color:#ff6600">🕳 Existing holes auto-excluded from pattern</span></div>
+      <div id="holeStatus" class="note hidden" style="color:#ff6600;border-color:rgba(255,100,0,.4)"></div>
+      <div class="g2" style="margin-bottom:6px"><label class="cbrow"><input type="checkbox" id="cbSkin"> 🎭 SKIN DEEP</label><label class="cbrow" style="color:#f0f"><input type="checkbox" id="cbCurv"> 🔮 CURVE WRAP</label></div>
+      <select id="PT">
+        <optgroup label="— PATTERNS —">
+          <option value="hex">HEXAGONAL MATRIX</option>
+          <option value="tri">TRIANGULAR LATTICE</option>
+          <option value="hypTri">HYPERBOLIC TRIANGLES</option>
+          <option value="sq">SQUARE GRID</option>
+          <option value="brick">SUBWAY BRICK</option>
+          <option value="diamond">DIAMOND ARGYLE</option>
+          <option value="moroccan">MOROCCAN OCTAGON</option>
+          <option value="herringbone">HERRINGBONE</option>
+          <option value="circuit">CIRCUIT TRACES</option>
+          <option value="islamic">ISLAMIC 8-STAR</option>
+          <option value="voronoi">VORONOI CELLULAR</option>
+          <option value="halftone">HALFTONE (Acoustic Matrix)</option>
+          <option value="knurl">KNURL (Diamond Grip)</option>
+          <option value="spiro">GUILLOCHÉ (Watchmaker Rosettes)</option>
+          <option value="svg">CUSTOM SVG PATH</option>
+          <option value="char">EMOJI / CHAR TILE / PLAQUE</option>
+        </optgroup>
+      </select>
+      <div id="charRow" class="hidden"><span class="lbl">TEXT / PLAQUE / SVG DATA</span><input type="text" id="EC" value="★" style="font-size:18px;padding:3px"></div>
+      <label class="cbrow"><input type="checkbox" id="TXON"> ⬚ SURFACE TEXTURE (0.5mm depth)</label>
+      <label class="cbrow"><input type="checkbox" id="EMBON"> ⬛ EMBOSS (+0.5mm raised)</label>
+      <hr class="divider">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">ROTATION °</span><span class="val" id="rvv">0</span></div><input type="range" id="RV" min="0" max="179" step="1" value="0">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">DENSITY ×</span><span class="val" id="dnv">1.0</span></div><input type="range" id="DN" min="0.25" max="8" step="0.25" value="1">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">CORNER RADIUS</span><span class="val" id="crv">0</span></div><input type="range" id="CR" min="0" max="100" step="1" value="0">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">STAGGER V</span><span class="val" id="stgv">0.0</span></div><input type="range" id="STG" min="0" max="1" step="0.05" value="0">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">STAGGER H</span><span class="val" id="stghv">0.0</span></div><input type="range" id="STGH" min="0" max="1" step="0.05" value="0">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">X OFFSET</span><span class="val" id="xpv">0</span></div><input type="range" id="OX" min="-50" max="50" step="0.5" value="0">
+      <div class="r"><span class="lbl" style="color:#f0a0ff">Y OFFSET</span><span class="val" id="ypv">0</span></div><input type="range" id="OY" min="-50" max="50" step="0.5" value="0">
+      <hr class="divider">
+      <div class="r"><span class="lbl">EDGE INSET mm</span><span class="val" id="ev">2.0</span></div><input type="range" id="E" min="0" max="20" step="0.5" value="2">
+      <div class="r"><span class="lbl">CELL SCALE</span><span class="val" id="cv">15</span></div><input type="range" id="C" min="1" max="80" step="0.5" value="15">
+      <div class="r"><span class="lbl">STRUT WIDTH</span><span class="val" id="wv">2.0</span></div><input type="range" id="W" min="0.1" max="50" step="0.1" value="2">
+      <div class="r"><span class="lbl">CUT DEPTH mm</span><span class="val" id="xv">5.0</span></div><input type="range" id="XV" min="-10" max="10" step="0.5" value="5">
+      <hr class="divider">
+      <button class="btn g" id="XCT" disabled style="font-size:12px;padding:11px">[ ⚡ CUT ]</button>
+      <hr class="divider">
+      <button class="btn" id="bExcl" disabled>[ ⊡ DRAW EXCLUSION ZONE ]</button>
+      <button class="btn r2" id="bClrExcl" style="display:none">[ ✕ CLEAR EXCLUSIONS ]</button>
+      <div class="g2"><button class="btn" id="bU2" disabled>↩ UNDO</button><button class="btn" id="bRd2" disabled>↪ REDO</button></div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pCyl">
+    <div class="pnl-hdr closed"><span>◈ KINETIC BUILDER</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="note">DRAG ONTO FACE → MOUSE X=OD → CLICK → MOUSE Y=DEPTH → CLICK<br>TYPE NUMBER+ENTER AT EACH STEP · ESC=CANCEL<br>HEAL: Drag → set W×H → Enter → fills face with thin plate</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px">
+        <div id="dragHole" class="drag-btn">🕳️ HOLE</div>
+        <div id="dragBoss" class="drag-btn">🟢 BOSS</div>
+        <div id="dragHeal" class="drag-btn" style="border-color:#0ff;color:#0ff;box-shadow:0 0 10px rgba(0,255,255,.3)">🩹 HEAL</div>
+      </div>
+      <hr class="divider">
+      <div class="r"><span class="lbl">Ø DIAMETER</span><span class="val" id="codv">6.0</span></div>
+      <div class="r"><span class="lbl">LENGTH / DEPTH</span><span class="val" id="clnv">10.0</span></div>
+    </div>
+  </div>
+
+  <div class="pnl" id="pCfd">
+    <div class="pnl-hdr closed"><span>◈ FLOW SIMULATOR</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <button class="btn m" id="AR">[ ▶ INIT FLUID ]</button>
+      <select id="SM">
+        <option value="aero">AIR (ρ=1.2 kg/m³)</option>
+        <option value="mars">MARS ATMO (ρ=0.02)</option>
+        <option value="water">WATER (ρ=1000)</option>
+        <option value="honey">HONEY (ρ=1400)</option>
+      </select>
+      <div class="r"><span class="lbl">PARTICLES</span><span class="val" id="pcv">4000</span></div><input type="range" id="PC" min="500" max="14000" step="500" value="4000">
+      <div class="r"><span class="lbl">FLUID DIR H°</span><span class="val" id="wav">0</span></div><input type="range" id="WA" min="0" max="360" step="5" value="0">
+      <div class="r"><span class="lbl">FLUID DIR V°</span><span class="val" id="wvv">0</span></div><input type="range" id="WV" min="-60" max="60" step="5" value="0">
+      <div class="r"><span class="lbl">VISCOSITY</span><span class="val" id="vcv">0.95</span></div><input type="range" id="VC" min="0.1" max="0.99" step="0.01" value="0.95">
+      <div class="r"><span class="lbl">SPEED (keys +/-)</span><span class="val" id="wsv">1.5</span></div><input type="range" id="WS" min="0.1" max="8" step="0.1" value="1.5">
+      <hr class="divider">
+      <div class="note" style="color:#a0d8ff">PHYSICS MODULES</div>
+      <label class="cbrow"><input type="checkbox" id="cbBL" checked> 🌊 BOUNDARY LAYER</label>
+      <label class="cbrow"><input type="checkbox" id="cbVS" checked> 〜 VORTEX SHEDDING</label>
+      <label class="cbrow"><input type="checkbox" id="cbTB"> 💨 TURBULENCE</label>
+      <label class="cbrow"><input type="checkbox" id="cbPC"> 🎨 PRESSURE COLOR</label>
+    </div>
+  </div>
+
+  <div class="pnl" id="pDemo" class="hidden">
+    <div class="pnl-hdr closed"><span>◈ DEMO SETTINGS</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="r"><span class="lbl">TERRAIN AMP</span><span class="val" id="tav">60</span></div><input type="range" id="TA" min="10" max="200" step="5" value="60">
+      <div class="r"><span class="lbl">ENEMY RATE</span><span class="val" id="erv">1.0</span></div><input type="range" id="ER" min="0.2" max="3" step="0.1" value="1">
+    </div>
+  </div>
+
+  <div class="pnl" id="pNum">
+    <div class="pnl-hdr closed"><span>🔢 CONSTRUCTOR</span><span class="arr">▶</span></div>
+    <div class="pnl-body hidden">
+      <div class="g3" style="margin-bottom:6px">
+        <button class="btn" id="btnSnapFront" style="color:#0f9">&#127909; FRNT</button>
+        <button class="btn" id="btnSnapTop" style="color:#0f9">&#127909; TOP</button>
+        <button class="btn" id="btnSnapIso" style="color:#0f9">&#127909; ISO</button>
+      </div>
+      <hr class="divider">
+      <div class="note">Parametric primitives — CSG-combine with mesh.</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+        <button class="btn" id="btnPrimBox">📦 BOX</button>
+        <button class="btn" id="btnPrimCyl">🔵 CYL</button>
+        <button class="btn" id="btnPrimSph">🔴 SPHERE</button>
+        <button class="btn" id="btnPrimCone">🔺 CONE</button>
+      </div>
+      <div class="r"><span class="lbl">W mm</span><span class="val" id="nbwv">20</span></div><input type="range" id="NBW" min="1" max="200" step="1" value="20">
+      <div class="r"><span class="lbl">H mm</span><span class="val" id="nbhv">20</span></div><input type="range" id="NBH" min="1" max="200" step="1" value="20">
+      <div class="r"><span class="lbl">D mm</span><span class="val" id="nbdv">20</span></div><input type="range" id="NBD" min="1" max="200" step="1" value="20">
+      <div class="g2" style="margin-top:4px">
+        <button class="btn g" id="btnOpAdd">[ ➕ ADD ]</button>
+        <button class="btn r2" id="btnOpSub">[ ➖ SUB ]</button>
+      </div>
+      <hr class="divider">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span class="lbl" style="margin:0">📋 OP HISTORY</span>
+        <div style="display:flex;gap:4px">
+          <button class="btn" id="btnExpJSON" style="padding:3px 7px;font-size:9px">JSON</button>
+          <button class="btn" id="btnExpCSV" style="padding:3px 7px;font-size:9px">CSV</button>
+          <button class="btn" id="btnImport" style="padding:3px 7px;font-size:9px">IMPORT</button>
+        </div>
+      </div>
+      <div id="nbLog" style="max-height:120px;overflow-y:auto;font-size:9px;line-height:1.7;color:var(--text-dim);border:1px solid var(--border-light);border-radius:4px;padding:6px;margin-bottom:4px;font-family:monospace">— no ops yet —</div>
+      <button class="btn r2" id="btnClearLog" style="padding:5px">[ ✕ CLEAR LOG ]</button>
+      <input type="file" id="nbImportFile" accept=".json,.csv" style="display:none">
+    </div>
+  </div>
+
+  <div id="sts">AWAITING I/O — LOAD A MESH TO BEGIN</div>
+</div>
+
+<div id="fhud" class="hidden">
+  <div id="fScore-box">SCORE: <span id="fSc">0</span><br>HULL: <span id="fHull">100</span>%<br>SHIELD: <span id="fShield">100</span>%<br>SPEED: <span id="fSpd">0.0</span><br>PLANET: <span id="fPlanetName">—</span></div>
+  <div id="fCross"></div>
+  <div id="fWarn">HULL CRITICAL</div>
+  <div id="fKeys">WASD THRUST · ↑↓←→ AIM · Q/E ROLL · F FIRE · ESC RETURN</div>
+</div>
+
+<div id="hudContainer">
+  <div id="viewCube">
+    <div id="vcCanvasWrap"></div>
+    <button id="btnRotatePart" title="⚓ Part Rotation">⚓</button>
+  </div>
+</div>
+<div id="hud" style="display:none"><span id="h0"></span><span id="h1"></span><span id="h2"></span><span id="h3"></span><span id="h5"></span></div>
+<div id="hnt">LMB SELECT · CTRL+SCROLL ZOOM<br>SCROLL=PATTERN · SPACE=CUT · ESC=CANCEL</div>
+<div id="meas" class="hidden"></div>
+
+<div id="ctxMenu">
+  <button class="ctx-btn" id="btnCtxAlign" style="color:#0ff;">🎯 Align View to Face</button>
+  <button class="ctx-btn" id="btnCtxHeal" style="color:#f0f;">🩹 Auto-Heal Flush</button>
+</div>
+<div id="aboutModal" class="hidden">
+  <canvas id="aboutCanvas"></canvas>
+  <div class="about-box">
+    <h1>P3dK</h1>
+    <h3>V39 — MODULAR FAB ENGINE</h3>
+    <p>Browser-native computational geometry engine.<br>Code is Poetry. Computation is Art. <span style="color:#f0f">PEAK IS PEAK.</span></p>
+    <br>
+    <p style="color:#0ff;font-size:10px;font-weight:bold">◈ ALPHA-V02 — ES MODULE ARCHITECTURE</p>
+    <div class="fix">
+      ✦ CSG ENGINE: manifold-3d WASM<br>
+      ✦ PATTERNS: Halftone, Knurl, Spiro, & custom SVG Parser<br>
+      ✦ SCULPT: Voronoi Lattice, Laplacian Smoothing, Hollow Shell<br>
+      ✦ PHYSICS: Eulerian Flow Simulator via GPU Data3DTextures<br>
+      ✦ FLIGHT: Immersive Solar System demo with synth audio<br>
+    </div>
+    <br>
+    <p style="font-size:9px;color:#777">Honors: Kepler (1609) · Navier-Stokes (1822) · Poincaré (1882) · Voronoi (1908) · Viznut/Bytebeat (2011)</p>
+    <p style="font-size:9px;color:#555">[ CLICK OUTSIDE TO RETURN ]</p>
+    <br>
+    <button id="btnLaunchDemo" style="width:100%;padding:12px;background:rgba(255,200,0,.15);border:2px solid #fc0;color:#fc0;font-family:inherit;font-size:13px;font-weight:bold;letter-spacing:3px;cursor:pointer;text-shadow:0 0 10px #fc0">🚀 LAUNCH SOLAR SYSTEM DEMO</button>
+  </div>
+</div>
+
+<script type="module" src="./src/core.js"></script>
+
 </body>
 </html>

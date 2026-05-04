@@ -1,0 +1,183 @@
+import * as THREE from 'three';
+// Assume a globally available or imported CSG wrapper powered by WASM
+// e.g., import { CSG } from 'three-csg-ts';
+const CSG = window.CSG; 
+
+// -----------------------------------------------------------------------------
+// UI Helper: Graceful Error Handling
+// -----------------------------------------------------------------------------
+function showUIError(message) {
+    const errPanel = document.createElement('div');
+    errPanel.innerText = `⚠️ ${message}`;
+    errPanel.style.cssText = `
+        position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+        background: rgba(255, 40, 40, 0.9); color: white; padding: 12px 24px;
+        font-family: monospace; font-size: 14px; font-weight: bold; border-radius: 4px;
+        z-index: 10000; box-shadow: 0 4px 15px rgba(255,0,0,0.5); pointer-events: none;
+        transition: opacity 0.5s ease-out;
+    `;
+    document.body.appendChild(errPanel);
+    setTimeout(() => {
+        errPanel.style.opacity = '0';
+        setTimeout(() => errPanel.remove(), 500);
+    }, 3000);
+}
+
+// -----------------------------------------------------------------------------
+// Core Utility: Mesh Updating & Memory Management
+// -----------------------------------------------------------------------------
+function updateEngineMesh(engineCore, newGeometry) {
+    const targetMesh = engineCore.selectedMesh;
+    
+    // Dispose old geometry to prevent WebGL memory leaks
+    if (targetMesh.geometry) {
+        targetMesh.geometry.dispose();
+    }
+
+    // Recompute normals and bounds for proper rendering and raycasting
+    newGeometry.computeVertexNormals();
+    newGeometry.computeBoundingBox();
+    newGeometry.computeBoundingSphere();
+
+    // Assign watertight boolean result
+    targetMesh.geometry = newGeometry;
+}
+
+// -----------------------------------------------------------------------------
+// CSG Operations
+// -----------------------------------------------------------------------------
+
+/**
+ * Calculates the lowest Y-point and boolean subtracts a massive box 
+ * to create a perfectly flat surface for the print bed.
+ */
+function sliceBottomFlat(engineCore) {
+    const mesh = engineCore.selectedMesh;
+    if (!mesh) return showUIError('NO MESH SELECTED FOR FLATTENING');
+
+    mesh.updateMatrixWorld();
+    mesh.geometry.computeBoundingBox();
+    
+    const bbox = mesh.geometry.boundingBox;
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    bbox.getSize(size);
+    bbox.getCenter(center);
+
+    // Create a cutter box much larger than the mesh
+    const sliceThickness = 1.0; // Cut 1mm off the absolute bottom to ensure it's fully flat
+    const cutterHeight = size.y; 
+    const cutterGeo = new THREE.BoxGeometry(size.x * 3, cutterHeight, size.z * 3);
+    const cutterMesh = new THREE.Mesh(cutterGeo);
+
+    // Position cutter so its top face is exactly at [min.y + sliceThickness]
+    cutterMesh.position.set(center.x, bbox.min.y - (cutterHeight / 2) + sliceThickness, center.z);
+    cutterMesh.updateMatrixWorld();
+
+    try {
+        const targetCSG = CSG.fromMesh(mesh);
+        const cutterCSG = CSG.fromMesh(cutterMesh);
+        
+        // WASM Boolean Subtract
+        const resultCSG = targetCSG.subtract(cutterCSG);
+        const resultMesh = CSG.toMesh(resultCSG, mesh.matrixWorld, mesh.material);
+
+        updateEngineMesh(engineCore, resultMesh.geometry);
+        cutterGeo.dispose();
+    } catch (e) {
+        showUIError('CSG FLATTEN FAILED: Non-manifold geometry?');
+        console.error(e);
+    }
+}
+
+/**
+ * Boolean subtracts a parametric cylinder to act as a resin/powder drainage hole.
+ */
+function addDrainageHole(engineCore, diameter = 5) {
+    const mesh = engineCore.selectedMesh;
+    if (!mesh) return showUIError('NO MESH SELECTED FOR DRAINAGE PUNCH');
+
+    mesh.updateMatrixWorld();
+    mesh.geometry.computeBoundingBox();
+    
+    const bbox = mesh.geometry.boundingBox;
+    const size = new THREE.Vector3();
+    const center = new THREE.Vector3();
+    bbox.getSize(size);
+    bbox.getCenter(center);
+
+    // Create punch cylinder (ensure it's tall enough to pierce the bottom shell)
+    const punchHeight = size.y * 0.5; // Punch halfway up the model
+    const punchGeo = new THREE.CylinderGeometry(diameter / 2, diameter / 2, punchHeight, 32);
+    const punchMesh = new THREE.Mesh(punchGeo);
+
+    // Position at X/Z center, penetrating upwards from the bottom
+    punchMesh.position.set(center.x, bbox.min.y + (punchHeight / 2) - 1.0, center.z);
+    punchMesh.updateMatrixWorld();
+
+    try {
+        const targetCSG = CSG.fromMesh(mesh);
+        const punchCSG = CSG.fromMesh(punchMesh);
+        
+        // WASM Boolean Subtract
+        const resultCSG = targetCSG.subtract(punchCSG);
+        const resultMesh = CSG.toMesh(resultCSG, mesh.matrixWorld, mesh.material);
+
+        updateEngineMesh(engineCore, resultMesh.geometry);
+        punchGeo.dispose();
+    } catch (e) {
+        showUIError('CSG PUNCH FAILED: Check topology.');
+        console.error(e);
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Module Export
+// -----------------------------------------------------------------------------
+
+/**
+ * Installs the CSG Boolean module into the host application.
+ * @param {Object} engineCore - The main engine instance containing `selectedMesh`
+ */
+export function install(engineCore) {
+    if (!CSG) {
+        console.error('CSG Engine Error: Global CSG library not found.');
+        return;
+    }
+
+    // Inject UI Panel
+    const csgPanel = document.createElement('div');
+    csgPanel.id = 'csg-tools-panel';
+    csgPanel.style.cssText = `
+        position: absolute; bottom: 20px; left: 20px;
+        background: rgba(10, 15, 30, 0.85); backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 255, 204, 0.3); border-radius: 8px;
+        padding: 15px; display: flex; flex-direction: column; gap: 10px;
+        z-index: 100; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    `;
+
+    const btnStyle = `
+        background: rgba(0, 255, 204, 0.1); color: #00ffcc;
+        border: 1px solid #00ffcc; padding: 10px 15px; border-radius: 4px;
+        font-family: monospace; font-size: 12px; font-weight: bold; cursor: pointer;
+        transition: all 0.2s ease; text-align: left;
+    `;
+
+    const btnFlatten = document.createElement('button');
+    btnFlatten.innerText = '🔪 SLICE BOTTOM FLAT';
+    btnFlatten.style.cssText = btnStyle;
+    btnFlatten.onmouseover = () => btnFlatten.style.background = 'rgba(0, 255, 204, 0.3)';
+    btnFlatten.onmouseout = () => btnFlatten.style.background = 'rgba(0, 255, 204, 0.1)';
+    btnFlatten.onclick = () => sliceBottomFlat(engineCore);
+
+    const btnDrain = document.createElement('button');
+    btnDrain.innerText = '🕳️ ADD DRAINAGE HOLE';
+    btnDrain.style.cssText = btnStyle;
+    btnDrain.onmouseover = () => btnDrain.style.background = 'rgba(0, 255, 204, 0.3)';
+    btnDrain.onmouseout = () => btnDrain.style.background = 'rgba(0, 255, 204, 0.1)';
+    btnDrain.onclick = () => addDrainageHole(engineCore, 5); // 5mm default
+
+    csgPanel.appendChild(btnFlatten);
+    csgPanel.appendChild(btnDrain);
+    document.body.appendChild(csgPanel);
+}
