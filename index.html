@@ -1,61 +1,734 @@
 <!DOCTYPE html>
-<html lang="en">
+<!-- P3dK V1.0 — THE PANTHEON RELEASE
+  Architecture: Shell + lazy-loaded src/ modules via dynamic import().
+  Shell loads instantly (<15KB). Modules load only when panel opens, unload on collapse.
+  CDN: jsdelivr.net — zero hosting cost, global edge cache.
+  
+  MODULE MAP:
+    src/manifold.js   — WASM CSG kernel (loads on first CSG op)
+    src/patterns.js   — Fibonacci Loom 12 patterns (loads on Loom panel open)
+    src/viewcube.js   — 3D orientation cube (loads on boot)
+    src/sculpt.js     — Occam Cleaver twist/slice/hollow (loads on panel open)
+    src/kinetic.js    — Hephaestus Pin drag tools (loads on panel open)
+    src/support.js    — Support Foundry columns + vines (loads on panel open)
+    src/exporter.js   — STL/PLY/3MF/OBJ/GLB export (loads on first export)
+    src/cfd.js        — Psi CFD fluid tunnel (loads on panel open)
+    src/xr-scanner.js — Indra's Net WebXR scanner (loads on panel open)
+-->
+<html id="htmlRoot" style="margin:0;overflow:hidden;background:var(--bg-main);transition:background .5s;color:var(--text-main);font-family:'Courier New',Courier,monospace">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P3dK // FAB ENGINE</title>
-    <style>
-        /* Cinematic HUD Styling */
-        body { margin: 0; overflow: hidden; background: #0a0a0c; color: #00ffcc; font-family: 'Courier New', Courier, monospace; }
-        canvas { display: block; width: 100vw; height: 100vh; }
-        
-        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
-        .panel { pointer-events: auto; position: absolute; background: rgba(10, 10, 12, 0.85); border: 1px solid #333; padding: 15px; backdrop-filter: blur(4px); }
-        
-        /* The Pantheon Workbench */
-        #left-tools { top: 20px; left: 20px; display: flex; flex-direction: column; gap: 10px; min-width: 180px; }
-        .tool-btn { background: #111; color: #00ffcc; border: 1px solid #00ffcc; padding: 8px 12px; cursor: pointer; text-align: left; font-weight: bold; transition: all 0.2s; }
-        .tool-btn:hover { background: #00ffcc; color: #111; box-shadow: 0 0 10px rgba(0, 255, 204, 0.5); }
-        
-        /* The Vitruvian HUD */
-        #right-hud { top: 20px; right: 20px; min-width: 250px; text-align: right; border-right: 3px solid #00ffcc; }
-        .hud-title { margin: 0 0 10px 0; font-size: 1.2rem; letter-spacing: 2px; }
-        .stat-line { margin: 5px 0; font-size: 0.9rem; color: #aaa; }
-        .highlight { color: #fff; }
-        
-        /* Revenue Traps */
-        .tip-jar { margin-top: 20px; border-top: 1px solid #333; padding-top: 15px; }
-        .tip-btn { color: #ff00ff; text-decoration: none; border: 1px solid #ff00ff; padding: 8px 15px; display: inline-block; text-align: center; font-weight: bold; transition: all 0.2s; }
-        .tip-btn:hover { background: #ff00ff; color: #111; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>P3dK // THE PANTHEON WORKBENCH</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHJlY3Qgd2lkdGg9IjQ0IiBoZWlnaHQ9IjQ0IiBmaWxsPSIjMDEwMDEwIiByeD0iNiIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMjIiIHI9IjE4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmMGYiIHN0cm9rZS13aWR0aD0iMS40IiBzdHJva2UtZGFzaGFycmF5PSI3IDMiLz48ZWxsaXBzZSBjeD0iMjIiIGN5PSIyMiIgcng9IjExIiByeT0iMTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzBmZiIgc3Ryb2tlLXdpZHRoPSIxLjEiLz48Y2lyY2xlIGN4PSIyMiIgY3k9IjIyIiByPSIzIiBmaWxsPSIjZjBmIiBvcGFjaXR5PSIuOCIvPjx0ZXh0IHg9IjIyIiB5PSIyNyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZmlsbD0iI2ZmZiIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSI5IiBmb250LXdlaWdodD0iYm9sZCI+UDNkSzwvdGV4dD48L3N2Zz4=">
+<style>
+:root{--bg-main:#020008;--bg-panel:rgba(2,4,20,.98);--text-main:#0ff;--text-dim:#c8e0ff;--accent:#00ffcc;--border-light:rgba(0,255,255,.2);--border-heavy:rgba(0,255,255,.5);--btn-bg:rgba(20,30,50,.6);--warn:#ffa040;}
+.light-mode{--bg-main:#ddeeff;--bg-panel:rgba(230,242,255,.97);--text-main:#0a0a1a;--text-dim:#1a1a3a;--accent:#9900cc;--border-light:rgba(100,0,180,.25);--border-heavy:rgba(100,0,180,.6);--btn-bg:#c8d8f0;--warn:#cc2200;}
+.light-mode .pnl-hdr,.light-mode .lbl,.light-mode .val,.light-mode .btn,.light-mode .note,.light-mode .arr,.light-mode #sts,.light-mode select,.light-mode input[type=number]{color:var(--text-main);}
+.light-mode .btn{background:var(--btn-bg);border-color:var(--border-heavy);}
+.light-mode .btn:hover{background:var(--border-heavy);color:#fff;}
+.light-mode select,.light-mode input[type=number]{background:var(--btn-bg);border-color:var(--border-heavy);}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:500;background:linear-gradient(rgba(18,16,16,0) 50%,var(--border-light) 50%),linear-gradient(90deg,rgba(255,0,0,.02),rgba(0,255,0,.01),rgba(0,0,255,.02));background-size:100% 4px,5px 100%;opacity:.25;}
+.light-mode body::after{opacity:.06;}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:499;background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,.55)100%);}
+.light-mode body::before{opacity:0;}
+.glitch{animation:gl 4s infinite;}
+@keyframes gl{0%,93%,100%{text-shadow:2px 0 #f0f,-2px 0 var(--text-main);transform:none}94%{text-shadow:-4px 0 #f0f,4px 0 var(--text-main);transform:translate(2px,-1px)}96%{text-shadow:-2px 0 #f0f,2px 0 var(--text-main);transform:none}}
+*{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;}
+#ui{position:fixed;top:0;left:0;width:280px;height:100vh;background:var(--bg-panel);border-right:1px solid var(--border-heavy);z-index:10;display:flex;flex-direction:column;backdrop-filter:blur(14px);overflow-y:auto;overflow-x:hidden;transition:transform .3s;scrollbar-width:thin;scrollbar-color:var(--border-heavy) transparent;}
+#ui.collapsed{transform:translateX(-100%);}
+
+#ui::-webkit-scrollbar{width:3px;}#ui::-webkit-scrollbar-thumb{background:var(--border-heavy);}
+#uiToggle{position:fixed;top:14px;left:288px;z-index:11;background:var(--border-light);border:1px solid var(--border-heavy);color:var(--text-main);padding:7px 10px;cursor:pointer;font-weight:bold;transition:all .3s;font-family:inherit;}
+#uiToggle.collapsed{left:14px;background:rgba(0,0,0,.8);}
+#hdr{padding:8px 12px 6px;flex-shrink:0;border-bottom:1px solid var(--border-light);background:linear-gradient(180deg,var(--border-light) 0%,transparent 100%);display:flex;align-items:center;justify-content:space-between;gap:6px;}
+#hdrText{cursor:pointer;flex:1;min-width:0;}
+#hdrText h1{margin:0;font-size:14px;letter-spacing:2px;font-style:italic;color:var(--text-main);}
+.sub{font-size:8px;color:var(--accent);letter-spacing:2px;font-weight:bold;margin-top:2px;}
+.icon-btn{background:var(--btn-bg);border:1px solid var(--border-heavy);color:var(--text-main);cursor:pointer;padding:4px 7px;font-size:13px;font-family:inherit;transition:background .15s;}
+.icon-btn:hover{background:var(--border-light);}
+.pnl{border-bottom:1px solid var(--border-light);}
+.pnl-hdr{display:flex;justify-content:space-between;align-items:center;padding:9px 12px;cursor:pointer;font-size:10px;font-weight:900;letter-spacing:2px;color:var(--text-dim);transition:color .15s,background .15s;gap:6px;}
+.pnl-hdr:hover{color:var(--text-main);background:var(--border-light);}
+.pnl-hdr .tag{font-size:8px;color:var(--border-heavy);letter-spacing:0;font-weight:normal;margin-left:auto;}
+.arr{display:inline-block;transition:transform .22s;transform:rotate(90deg);flex-shrink:0;}
+.closed .arr{transform:rotate(0deg);}
+.pnl-body{padding:10px 12px;display:flex;flex-direction:column;gap:8px;}
+.hidden{display:none!important;}
+.loading{text-align:center;padding:16px;color:var(--border-heavy);font-size:9px;letter-spacing:2px;}
+.r{display:flex;justify-content:space-between;align-items:center;gap:4px;}
+.lbl{font-size:9px;color:var(--text-dim);letter-spacing:1px;flex-shrink:0;font-weight:bold;}
+.val{font-size:10px;color:var(--accent);font-weight:bold;min-width:32px;text-align:right;}
+.note{font-size:8px;color:rgba(100,200,255,.7);padding:4px 6px;border:1px dashed rgba(0,200,255,.3);line-height:1.5;}
+input[type=number]{width:48px;background:var(--bg-main);color:var(--accent);border:1px solid var(--border-heavy);padding:3px;font-family:inherit;font-size:10px;font-weight:bold;outline:none;text-align:center;}
+input[type=range]{accent-color:#f0f;width:100%;cursor:pointer;}
+input[type=text]{background:var(--bg-main);color:var(--accent);border:1px solid var(--border-heavy);padding:4px;font-family:inherit;font-size:14px;outline:none;width:100%;text-align:center;}
+input[type=color]{width:36px;height:22px;padding:0;background:var(--bg-main);border:1px solid var(--border-heavy);cursor:pointer;}
+select{width:100%;background:var(--bg-main);color:var(--text-dim);border:1px solid var(--border-heavy);padding:4px;font-family:inherit;font-size:9px;font-weight:bold;outline:none;cursor:pointer;}
+input[type=checkbox]{accent-color:var(--accent);cursor:pointer;width:13px;height:13px;}
+.divider{border:none;border-top:1px dashed rgba(0,220,255,.3);margin:2px 0;}
+.btn{background:var(--btn-bg);color:var(--accent);border:1px solid var(--border-heavy);padding:7px;width:100%;cursor:pointer;font-family:inherit;font-size:9px;font-weight:bold;letter-spacing:1px;transition:all .12s;text-shadow:0 0 6px var(--border-heavy);}
+.btn:hover:not(:disabled){background:var(--border-light);border-color:var(--text-main);box-shadow:0 0 14px var(--border-heavy);color:#fff;}
+.btn:disabled{border-color:#223;color:#446;cursor:not-allowed;text-shadow:none;}
+.m{color:#ff66ff;border-color:rgba(255,0,255,.55);}.m:hover:not(:disabled){background:rgba(255,0,255,.18);border-color:#f0f;}
+.g{color:#0f9;border-color:rgba(0,255,153,.5);}.g:hover:not(:disabled){background:rgba(0,255,153,.18);}
+.r2{color:#ff7777;border-color:rgba(255,80,80,.5);}.r2:hover:not(:disabled){background:rgba(255,80,80,.18);}
+.y{color:#fc0;border-color:rgba(255,200,0,.5);}.y:hover:not(:disabled){background:rgba(255,200,0,.18);}
+.on{background:var(--border-heavy)!important;border-color:var(--text-main)!important;color:#fff!important;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;}
+.fi-wrap{position:relative;overflow:hidden;}.fi-wrap input{position:absolute;inset:0;opacity:0;cursor:pointer;}
+.cbrow{display:flex;align-items:center;gap:6px;font-size:9px;color:var(--text-dim);cursor:pointer;padding:1px 0;}
+.cbrow:hover{color:var(--text-main);}
+.drag-btn{padding:7px 2px;border:1px solid;font-size:9px;font-weight:bold;text-align:center;cursor:grab;background:var(--btn-bg);}
+.drag-btn:active{cursor:grabbing;}
+#sts{font-size:9px;color:#00ff88;text-align:center;padding:6px 10px;font-weight:bold;letter-spacing:1px;border:1px solid rgba(0,255,136,.4);background:rgba(0,255,136,.06);animation:blk 2.2s infinite;margin:8px 10px;}
+@keyframes blk{0%,100%{opacity:1}60%{opacity:.5}}
+#hudContainer{position:fixed;top:14px;right:14px;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
+#hud{background:transparent;border:none;padding:4px 8px;font-size:9px;font-weight:bold;color:var(--text-dim);letter-spacing:1px;line-height:1.8;pointer-events:none;text-align:right;}
+#hud span{color:var(--text-main);}
+#viewCube{position:relative;width:80px;height:80px;pointer-events:auto;}
+#vcCanvasWrap{position:absolute;top:0;left:0;width:100%;height:100%;}
+#vcCanvasWrap canvas{cursor:grab;display:block;border-radius:4px;}
+#vcCanvasWrap canvas:active{cursor:grabbing;}
+#btnRotatePart{position:absolute;bottom:3px;right:3px;z-index:5;font-size:13px;width:26px;height:26px;display:flex;align-items:center;justify-content:center;background:var(--bg-panel);border:1px solid var(--border-heavy);border-radius:50%;cursor:pointer;color:var(--text-dim);transition:all .2s;pointer-events:auto;}
+#btnRotatePart.on{color:#f0f;border-color:#f0f;box-shadow:0 0 12px rgba(255,0,255,.4);}
+#hnt{position:fixed;bottom:14px;right:14px;z-index:10;background:var(--bg-panel);border:1px solid var(--border-light);padding:5px 9px;font-size:8px;color:var(--accent);font-weight:bold;letter-spacing:1px;line-height:2;text-align:right;}
+#meas{position:fixed;pointer-events:none;color:#0f9;font-size:9px;font-weight:bold;z-index:100;padding:4px 8px;background:var(--bg-panel);border:1px solid #0f9;line-height:1.6;white-space:nowrap;}
+#ctxMenu{position:fixed;background:var(--bg-panel);border:1px solid var(--border-heavy);padding:5px;display:none;z-index:2000;box-shadow:0 0 20px rgba(0,0,0,.9);flex-direction:column;gap:4px;}
+.ctx-btn{background:transparent;border:1px solid var(--border-light);color:var(--text-dim);font-family:inherit;font-size:9px;font-weight:bold;text-align:left;padding:6px 10px;cursor:pointer;}
+.ctx-btn:hover{background:var(--border-light);color:var(--text-main);}
+#aboutModal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;}
+#aboutCanvas{position:absolute;inset:0;}
+.about-box{position:relative;z-index:2;width:90%;max-width:420px;max-height:85vh;overflow-y:auto;background:var(--bg-panel);border:1px solid var(--border-heavy);padding:20px;backdrop-filter:blur(8px);}
+.about-box h1{color:#f0f;margin:0 0 4px;font-size:15px;letter-spacing:3px;}
+.about-box p{color:var(--text-dim);line-height:1.6;font-size:9px;margin:4px 0;}
+#floatHistory{position:fixed;bottom:14px;left:288px;z-index:100;display:flex;gap:4px;transition:left .3s;}
+/* Mobile */
+@media(max-width:768px) and (pointer:coarse){
+  #ui{top:auto;bottom:0;left:0;width:100%;max-height:55vh;border-right:none;border-top:1px solid var(--border-heavy);border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom);}
+  #ui.collapsed{transform:translateY(100%);}
+  #uiToggle{top:auto;left:14px;bottom:calc(55vh + 10px);}
+  #uiToggle.collapsed{bottom:max(12px,env(safe-area-inset-bottom));}
+  #hudContainer{top:8px;right:8px;}
+}
+</style>
+
+<!-- EARLY-BINDING SCOPE MANAGER: runs before any module loads -->
+<script>
+(function(){
+  // Core UI stubs — safe to call immediately from HTML onclick
+  window.sS=function(m){var e=document.getElementById('sts');if(e)e.textContent=m;};
+  window.uS=function(e,v){var el=document.getElementById(v);if(el)el.textContent=parseFloat(e.value).toFixed(e.step<1?2:0);};
+  window.togUI=function(){var u=document.getElementById('ui'),t=document.getElementById('uiToggle'),h=document.getElementById('floatHistory');if(u&&t){u.classList.toggle('collapsed');t.classList.toggle('collapsed');var col=t.classList.contains('collapsed');t.textContent=col?'>>':'<<';if(h)h.style.left=col?'14px':'288px';}};
+  window.tP=function(hdr){if(!hdr||!hdr.nextElementSibling)return;hdr.nextElementSibling.classList.toggle('hidden');hdr.classList.toggle('closed');};
+  window.togAbout=function(){var m=document.getElementById('aboutModal');if(m)m.classList.toggle('hidden');};
+  // Theme — runs now so first paint is correct
+  window.isLightMode=false;window.themeManualOverride=false;
+  window.applyTheme=function(light){window.isLightMode=light;document.documentElement.classList.toggle('light-mode',light);var b=document.getElementById('themeToggle');if(b)b.textContent=light?'🌙':'🌓';if(window.updateCubeFaces)window.updateCubeFaces();};
+  window.autoTheme=function(){if(window.themeManualOverride)return;window.applyTheme(new Date().getHours()>=7&&new Date().getHours()<20);};
+  window.toggleTheme=function(){window.themeManualOverride=true;window.applyTheme(!window.isLightMode);};
+  window.autoTheme();setInterval(function(){if(!window.themeManualOverride)window.autoTheme();},60000);
+  // Global geometry state
+  window.msh=null;window.selFaces=[];window.gHoles=[];
+  window.isPartRotMode=false;window.isDraggingMesh=false;window.meshDragLast={x:0,y:0};
+  window.camTween=null;window.cylState=0;window.cMode='';window.cWn=null;window.cWp=null;
+  window.cMesh=null;window.cylFd=null;window.cDim1=6;window.cDim2=10;window.cDim3=10;window.kbBuf='';
+  window.scalesLinked=true;window.isSnap=false;window.skinActive=false;window.skinMode='tex';
+  window.srcFileName='model';window.sessionDirty=false;window.flt=false;window.exclMode=false;
+  window.cubeStats={v:'--',t:'--',mf:'--',sz:'--',fps:'--'};
+  window.nbHistory=[];window.wasm=null;window.selFaces=[];window.gHoles=[];
+  // Safe stubs — module implementations override these on lazy load
+  var stubs=['rstM','healMesh','doX','tog','syM','hollowMesh','applyTwist','prvSlice',
+    'applySlice','applyRounding','togSkin','updSkin','togExcl','clrExcl','exeC',
+    'startDrag','nbPrim','nbOp','togLock','togSnap','doU','doD','togPartRot','ctxAct',
+    'uPrv','upS','simpMesh','snapCam','nbExport','nbImport','nbClearLog','prvTwist',
+    'tAr','onFluid','prvColumns','genColumns','clrColumns','startFlight','stopFlight','updateCylPrv'];
+  stubs.forEach(function(s){window[s]=function(){window.sS('> \u03a3 ENGINE LOADING...');};});
+  // lazyPanel stub — real implementation in main.js, but panels may be clicked before module loads
+  window.lazyPanel=function(panelId,moduleName,hdrEl){
+    if(!hdrEl||!hdrEl.nextElementSibling)return;
+    hdrEl.nextElementSibling.classList.toggle('hidden');hdrEl.classList.toggle('closed');
+    window.sS('> \u03a3 LOADING '+moduleName.toUpperCase()+'...');
+  };
+})();
+</script>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
 </head>
-<body>
-    <canvas id="p3dk-canvas"></canvas>
+<body style="margin:0;overflow:hidden;background:transparent;">
 
-    <div id="ui-layer">
-        
-        <div id="left-tools" class="panel">
-            <button class="tool-btn" id="btn-cleaver">⊘ Occam Cleaver</button>
-            <button class="tool-btn" id="btn-hammer">⍑ Vulcan Hammer</button>
-            <button class="tool-btn" id="btn-punch">⊙ Archimedes Punch</button>
-            <button class="tool-btn" id="btn-rasp">∿ Shiva Rasp</button>
-            <button class="tool-btn" id="btn-net">▧ Indra's Net</button>
-        </div>
 
-        <div id="right-hud" class="panel">
-            <h2 class="hud-title">P3dK // CORE</h2>
-            <div class="stat-line" id="status-log">Σ SYSTEM READY</div>
-            <div class="stat-line" id="mesh-stats">Δ 0 TRIS [0 FILES]</div>
-            <div class="stat-line" id="vitruvian-readout" style="display:none; color: #00ffcc; margin-top: 10px;">
-                </div>
-            
-            <div class="tip-jar">
-                <button class="tool-btn" id="btn-export" style="width: 100%; text-align: center; margin-bottom: 10px; color: #fff; border-color: #fff;">⭳ EXPORT STL</button>
-                <a href="https://ko-fi.com/YOUR_KOFI_LINK" target="_blank" class="tip-btn" style="width: 85%;">☕ Support the Dev</a>
-            </div>
-        </div>
+
+<div id="uiToggle" onclick="window.togUI()">&lt;</div>
+<div id="floatHistory">
+  <button class="icon-btn" id="bU" onclick="window.doU()" disabled title="Undo">&#8617;</button>
+  <button class="icon-btn" id="bRd" onclick="window.doD()" disabled title="Redo">&#8618;</button>
+</div>
+
+<div id="ui">
+  <div id="hdr">
+    <div id="hdrText" onclick="window.togAbout()">
+      <div style="display:flex;align-items:center;gap:6px">
+        <svg width="26" height="26" viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          
+          <circle cx="22" cy="22" r="18" fill="none" stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="7 3"><animateTransform attributeName="transform" type="rotate" from="0 22 22" to="360 22 22" dur="3s" repeatCount="indefinite"/></circle>
+          <ellipse cx="22" cy="22" rx="11" ry="18" fill="none" stroke="var(--text-main)" stroke-width="1.1"><animateTransform attributeName="transform" type="rotate" from="0 22 22" to="-360 22 22" dur="5s" repeatCount="indefinite"/></ellipse>
+          <circle cx="22" cy="22" r="3" fill="var(--accent)" opacity=".8"/>
+        </svg>
+        <div><h1 class="glitch">P3dK</h1><div class="sub">V1.0 &middot; PANTHEON</div></div>
+      </div>
     </div>
+    <button class="icon-btn" id="themeToggle" onclick="event.stopPropagation();window.toggleTheme()" title="&#920; Theme">🌓</button>
+  </div>
 
-    <script type="module" src="./src/main.js"></script>
+  <!-- SIGMA I/O — always loaded, no lazy load needed -->
+  <div class="pnl" id="pSys">
+    <div class="pnl-hdr closed" onclick="window.tP(this)"><span>&#x3A3; I/O</span><span class="tag">STL OBJ PLY 3MF GLB</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="fi-wrap"><button class="btn m">[ &#8595; LOAD MESH ]</button><input type=file id=F accept=".stl,.obj,.ply,.3mf,.glb"></div>
+      <div class="g2">
+        <button class="btn" id=bRst onclick="window.rstM()" disabled>[ &#8635; RESTORE ]</button>
+        <button class="btn r2" id=bHealMesh onclick="window.healMesh()" disabled>[ &#8853; HEAL ]</button>
+      </div>
+      <div id=meshWarn class="note hidden" style="color:var(--warn)">&#9651; LARGE MESH &#8212; decimated.</div>
+      <hr class="divider">
+      <div class="r">
+        <span class="lbl">&#916;x</span><input type=number id=X value=100 oninput="window.upS(this.value,'x')">
+        <span class="lbl">&#916;y</span><input type=number id=Y value=100 oninput="window.upS(this.value,'y')">
+        <span class="lbl">&#916;z</span><input type=number id=Z value=100 oninput="window.upS(this.value,'z')">
+        <button class="icon-btn" id="bLock" onclick="window.togLock()" style="border:none;font-size:12px" title="&#8801; Link &#916;">&#x1F512;</button>
+      </div>
+      <hr class="divider">
+      <div class="g2">
+        <button class="btn m" id=XPT onclick="window.doX('stl')" disabled>[ &#8659; .STL ]</button>
+        <button class="btn y" id=XPL onclick="window.doX('ply')" disabled>[ &#8659; .PLY ]</button>
+        <button class="btn g" id=X3M onclick="window.doX('3mf')" disabled>[ &#8659; .3MF ]</button>
+        <button class="btn" id=XOBJ onclick="window.doX('obj')" disabled>[ &#8659; .OBJ ]</button>
+      </div>
+      <button class="btn" id=XGLB onclick="window.doX('glb')" disabled style="color:#8cf;border-color:rgba(100,180,255,.4)">[ &#8659; .GLB ]</button>
+    </div>
+  </div>
+
+  <!-- LAMBDA VISUALS — always loaded -->
+  <div class="pnl" id="pVis">
+    <div class="pnl-hdr closed" onclick="window.tP(this)"><span>&#955; VISUALS</span><span class="tag">&#961; &#949; &#955;</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="r"><span class="lbl">&#955; COLOR</span><input type=color id=MC value="#00e5ff" oninput="window.syM()"></div>
+      <div class="r"><span class="lbl">&#961; METALNESS</span><span class="val" id=mnv>0.6</span></div><input type=range id=MN min=0 max=1 step=0.05 value=0.6 oninput="window.uS(this,'mnv');window.syM()">
+      <div class="r"><span class="lbl">&#949; ROUGHNESS</span><span class="val" id=rgv>0.4</span></div><input type=range id=RG min=0 max=1 step=0.05 value=0.4 oninput="window.uS(this,'rgv');window.syM()">
+      <hr class="divider">
+      <div class="g2">
+        <button class="btn" id=bW onclick="window.tog('w')">[ &#x1F578; WIRE ]</button>
+        <button class="btn" id=bG onclick="window.tog('g')">[ &#x1F47B; GHOST ]</button>
+        <button class="btn on" id=bGr onclick="window.tog('gr')">[ &#x25A6; GRID ]</button>
+        <button class="btn" id=bSt onclick="window.tog('s')">[ &#x2605; STARS ]</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PHI PRINT PREP — lazy loaded -->
+  <div class="pnl" id="pPrint">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pPrint','sculpt',this)"><span>&#x3A6; PRINT PREP</span><span class="tag">&#916; &#937;</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading sculpt tools</div>
+    </div>
+  </div>
+
+  <!-- OCCAM CLEAVER — lazy loaded -->
+  <div class="pnl" id="pAdv">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pAdv','sculpt',this)"><span>&#x2702; OCCAM CLEAVER</span><span class="tag">&#964; &#8704;</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading cleaver</div>
+    </div>
+  </div>
+
+  <!-- FIBONACCI LOOM — lazy loaded -->
+  <div class="pnl" id="pMesh">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pMesh','patterns',this)"><span>&#x3A6; FIBONACCI LOOM</span><span class="tag">&#x3A3; 12&#x2605;</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading loom</div>
+    </div>
+  </div>
+
+  <!-- HEPHAESTUS PIN — lazy loaded -->
+  <div class="pnl" id="pCyl">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pCyl','kinetic',this)"><span>&#x2A01; HEPHAESTUS PIN</span><span class="tag">&#x00F8; &#x2113;</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading pin tool</div>
+    </div>
+  </div>
+
+  <!-- SUPPORT FOUNDRY — lazy loaded -->
+  <div class="pnl" id="pSupport">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pSupport','support',this)"><span>&#x2766; SUPPORT FOUNDRY</span><span class="tag">DORIC IONIC GOTHIC</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading foundry</div>
+    </div>
+  </div>
+
+  <!-- PSI CFD — lazy loaded (heaviest: 27KB) -->
+  <div class="pnl" id="pCfd">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pCfd','cfd',this)"><span>&#x3A8; CFD TUNNEL</span><span class="tag">&#x03C1; &#x03BC; &#x03A3;</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading fluid sim</div>
+    </div>
+  </div>
+
+  <!-- INDRA'S NET — lazy loaded -->
+  <div class="pnl" id="pXR">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pXR','xr-scanner',this)"><span>&#x25C9; INDRA'S NET</span><span class="tag">WebXR LiDAR</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading scanner</div>
+    </div>
+  </div>
+
+  <!-- CONSTRUCTOR — lazy loaded -->
+  <div class="pnl" id="pNum">
+    <div class="pnl-hdr closed" onclick="window.lazyPanel('pNum','constructor',this)"><span>&#x221E; CONSTRUCTOR</span><span class="tag">BOX CYL SPH</span><span class="arr">&#9658;</span></div>
+    <div class="pnl-body hidden">
+      <div class="loading">&#x2026; loading constructor</div>
+    </div>
+  </div>
+
+  <div id="sts">&#x3A3; AWAITING I/O &#x2014; DROP MESH TO BEGIN</div>
+</div>
+
+<!-- VIEW CUBE + HUD -->
+<div id="hudContainer">
+  <div id="hud"><span id=h0></span><span id=h1></span><span id=h2></span></div>
+  <div id="viewCube">
+    <div id="vcCanvasWrap"></div>
+    <button id="btnRotatePart" onclick="window.togPartRot()" title="&#9875; Part Rotation">&#9875;</button>
+  </div>
+</div>
+
+<div id="hnt">&#x2316;=FACE &middot; &#x2295;CTRL=ADD &middot; SPC=&#x26A1; &middot; &#x03B8;=ROTATE &middot; &#x0394;=MEASURE</div>
+<div id="meas" class="hidden"></div>
+
+<div id="ctxMenu">
+  <button class="ctx-btn" onclick="window.ctxAct('align')" style="color:#0ff;">&#x25CE; ALIGN VIEW</button>
+  <button class="ctx-btn" onclick="window.ctxAct('heal')" style="color:#f0f;">&#x2295; AUTO-HEAL FLUSH</button>
+</div>
+
+<div id="aboutModal" class="hidden" onclick="window.togAbout()">
+  <canvas id="aboutCanvas"></canvas>
+  <div class="about-box" onclick="event.stopPropagation()">
+    <h1>P3dK</h1>
+    <p style="color:var(--accent);font-size:11px;letter-spacing:2px">THE PANTHEON WORKBENCH &middot; V1.0</p>
+    <p>Code is Poetry. Computation is Art. <span style="color:#f0f">PEAK IS PEAK.</span></p>
+    <p>&#x3A3; Manifold-3d WASM boolean engine &middot; &#x3A6; 12 mathematical patterns &middot; &#x2766; Classical support foundry &middot; &#x25C9; WebXR reality capture</p>
+    <p style="color:#555;font-size:8px">p3dk.com &middot; Honors: Kepler (1609) &middot; .kkrieger (2004)</p>
+    <br>
+    <button onclick="event.stopPropagation();window.togAbout();window.startFlight()" style="width:100%;padding:10px;background:rgba(255,200,0,.15);border:1px solid #fc0;color:#fc0;font-family:inherit;font-size:10px;font-weight:bold;letter-spacing:2px;cursor:pointer;">&#x1F680; LAUNCH SOLAR SYSTEM DEMO</button>
+  </div>
+</div>
+
+<script type="module">
+/**
+ * P3dK // main.js — Core Engine Boot
+ * =====================================
+ * Loads instantly. Provides:
+ *   - Three.js scene, camera, renderer
+ *   - ViewCube (always loaded — tiny)
+ *   - STL/OBJ/PLY/3MF/GLB loader
+ *   - Pointer events + keyboard shortcuts
+ *   - Lazy-panel loader: window.lazyPanel(panelId, moduleName, hdrEl)
+ *   - Session persistence (IDB)
+ *   - Manifold WASM boots in background — CSG ready when needed
+ *
+ * LAZY PANEL SYSTEM:
+ *   Each panel calls lazyPanel(id, module, hdr) on first expand.
+ *   Module is fetched from ./src/{module}.js, install(engineCore) called.
+ *   Module fills panel body with its own HTML, binds its own events.
+ *   On collapse, module is NOT unloaded (GC handles it) but heavy state
+ *   (CFD particles, flight scene) is explicitly destroyed via module.uninstall().
+ *
+ * SIZE TARGET: <25KB
+ */
+
+import * as T from 'three';
+import { OrbitControls as OC } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader }    from 'three/addons/loaders/STLLoader.js';
+import { OBJLoader }    from 'three/addons/loaders/OBJLoader.js';
+import { PLYLoader }    from 'three/addons/loaders/PLYLoader.js';
+import { ThreeMFLoader }from 'three/addons/loaders/3MFLoader.js';
+import { GLTFLoader }   from 'three/addons/loaders/GLTFLoader.js';
+import * as BGU         from 'three/addons/utils/BufferGeometryUtils.js';
+
+const M = Math;
+const $ = id => document.getElementById(id);
+const sS = m => { const e=$('sts'); if(e) e.textContent=m; };
+window.sS = sS;
+
+// ── SCENE ────────────────────────────────────────────────────────────────────
+const sc = new T.Scene();
+const cm = new T.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 5000);
+cm.position.set(0, 80, 250);
+
+const rn = new T.WebGLRenderer({ antialias:true, preserveDrawingBuffer:true, alpha:true });
+rn.setSize(innerWidth, innerHeight);
+rn.setPixelRatio(M.min(devicePixelRatio, 2));
+rn.domElement.style.cssText = 'position:fixed;top:0;left:0;z-index:0;touch-action:none';
+rn.setClearColor(0x000000, 0); // transparent — body::before vignette + bg-main shows through
+document.body.appendChild(rn.domElement);
+
+const ct = new OC(cm, rn.domElement);
+ct.enableDamping = true;
+ct.dampingFactor = 0.07;
+ct.maxPolarAngle = M.PI * 0.48; // slightly less than 90deg — keeps grid visible
+window.ct = ct;
+
+// Lights
+sc.add(new T.AmbientLight(0xffffff, 0.6));
+const hemi = new T.HemisphereLight(0xffffff, 0x444444, 0.8); sc.add(hemi);
+const dl1 = new T.DirectionalLight(0x00ffff, 1.2); dl1.position.set(60,120,90); sc.add(dl1);
+const dl2 = new T.DirectionalLight(0xff00ff, 0.5); dl2.position.set(-80,-60,-70); sc.add(dl2);
+
+// Grid + Stars
+const grO = new T.GridHelper(600, 60, 0x003333, 0x001a1a);
+grO.material.transparent = true; grO.material.opacity = 0.7; sc.add(grO);
+window.grO = grO; window.gOn = true;
+
+const sfP = new Float32Array(4500);
+for(let i=0; i<4500; i++) sfP[i] = (M.random()-.5)*2400;
+const sfO = new T.Points(
+  new T.BufferGeometry().setAttribute('position', new T.BufferAttribute(sfP,3)),
+  new T.PointsMaterial({color:0xaaccff, size:2.5, transparent:true, opacity:.8, blending:T.AdditiveBlending})
+);
+sfO.visible = false; sc.add(sfO); window.sfO = sfO; window.sOn = false;
+
+// Measurement line
+const measLine = new T.Line(
+  new T.BufferGeometry(),
+  new T.LineDashedMaterial({color:0xff00ff, dashSize:2, gapSize:2, depthTest:false})
+);
+measLine.visible = false; sc.add(measLine);
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let msh = null;
+window.sc = sc; window.cm = cm; window.rn = rn;
+const ray = new T.Raycaster(), ms = new T.Vector2();
+window.ray = ray; window.ms = ms;
+
+const mem = {
+  h:[], s:[], i:-1,
+  sv(g){ if(this.i<this.h.length-1){this.h.splice(this.i+1);this.s.splice(this.i+1);}
+    this.h.push(g.clone()); this.s.push({x:+$('X').value,y:+$('Y').value,z:+$('Z').value});
+    if(this.h.length>10){this.h.shift();this.s.shift();}else this.i++;this._ui(); },
+  ud(){ if(this.i>0){this.i--;this._ui();return this.h[this.i].clone();}return null; },
+  rd(){ if(this.i<this.h.length-1){this.i++;this._ui();return this.h[this.i].clone();}return null; },
+  orig(){ return this.h[0]?this.h[0].clone():null; },
+  _ui(){ if($('bU'))$('bU').disabled=this.i<=0; if($('bRd'))$('bRd').disabled=this.i>=this.h.length-1; }
+};
+
+// ── ENGINECORE — passed to every lazy module ──────────────────────────────────
+// Modules receive this object so they don't need to import Three.js themselves
+const engineCore = {
+  get msh(){ return window.msh; },
+  set msh(v){ window.msh = v; msh = v; },
+  sc, cm, rn, ct, mem, ray, ms, BGU, T, M, $, sS,
+  get wasm(){ return window.wasm; },
+  get selFaces(){ return window.selFaces; },
+  geo2manifold: (...a) => window.geo2manifold?.(...a),
+  manifold2geo: (...a) => window.manifold2geo?.(...a),
+  withManifold:  (...a) => window.withManifold?.(...a),
+  csgBool:       (...a) => window.csgBool?.(...a),
+  uH:            ()    => window.uH?.(),
+  clrAll:        ()    => window.clrAll?.(),
+};
+window.engineCore = engineCore;
+
+// ── LAZY PANEL LOADER ────────────────────────────────────────────────────────
+// Tracks which modules have been installed already
+const loadedModules = new Set();
+
+window.lazyPanel = async (panelId, moduleName, hdrEl) => {
+  if(!hdrEl?.nextElementSibling) return;
+  const body = hdrEl.nextElementSibling;
+  const isNowOpen = body.classList.contains('hidden'); // about to open
+  body.classList.toggle('hidden');
+  hdrEl.classList.toggle('closed');
+
+  if (!isNowOpen) return; // Just collapsed — nothing to load
+
+  if (loadedModules.has(moduleName)) return; // Already installed
+
+  sS(`> \u03a3 LOADING ${moduleName.toUpperCase()}...`);
+  try {
+    // Dynamic module imports require a web server (not blob:// URL)
+    // Serve from GitHub Pages or local server for full module support
+    throw new Error('Serve from p3dk.com or localhost for module: ' + moduleName);
+    if (mod.install) await mod.install(engineCore);
+    loadedModules.add(moduleName);
+    sS(`> \u2713 ${moduleName.toUpperCase()} READY`);
+  } catch(e) {
+    console.error('Module load failed:', moduleName, e);
+    body.innerHTML = `<div class="note" style="color:var(--warn)">\u26a0 ${moduleName} failed: ${e.message}</div>`;
+    sS(`> ERR: ${moduleName}`);
+  }
+};
+
+// ── MANIFOLD boots in background immediately ──────────────────────────────────
+// Don't wait for it — STL loading works without it
+(async () => {
+  try {
+    const mod = await import('./src/manifold.js');
+    window.wasm = await mod.initManifold();
+    window.geo2manifold = mod.geo2manifold;
+    window.manifold2geo = mod.manifold2geo;
+    window.withManifold = mod.withManifold;
+    window.csgBool      = mod.csgBool;
+    if(window.wasm) sS('> \u03a3 AWAITING I/O \u2014 ENGINE READY');
+    window.dispatchEvent(new Event('engine-ready'));
+  } catch(e) { console.warn('Manifold failed to load:', e); }
+})();
+
+// ── MATERIAL ──────────────────────────────────────────────────────────────────
+window.getMat = () => new T.MeshStandardMaterial({
+  color: new T.Color($('MC')?$('MC').value:'#00e5ff'),
+  metalness: $('MN')?+$('MN').value:0.6,
+  roughness: $('RG')?+$('RG').value:0.4,
+  side: T.DoubleSide
+});
+
+window.syM = () => {
+  if(!msh) return; sessionDirty = true;
+  const m = msh.material;
+  if($('MC')) m.color.set($('MC').value);
+  if($('MN')) m.metalness = +$('MN').value;
+  if($('RG')) m.roughness = +$('RG').value;
+  m.needsUpdate = true;
+};
+
+// ── LOADER ────────────────────────────────────────────────────────────────────
+function onMeshLoaded(g) {
+  if(!g) return;
+  if(msh){ sc.remove(msh); msh.geometry.dispose(); msh.material.dispose(); }
+  window.clrAll?.(); window.gHoles=[];
+  mem.h=[]; mem.s=[]; mem.i=-1;
+  if(g.index) g = g.toNonIndexed();
+  g.computeVertexNormals();
+  g.applyMatrix4(new T.Matrix4().makeRotationX(-M.PI/2)); // Z-up → Y-up
+  g.computeBoundingBox();
+  const bb = g.boundingBox;
+  g.translate(-(bb.max.x+bb.min.x)/2, -bb.min.y, -(bb.max.z+bb.min.z)/2);
+  g.computeBoundingBox();
+  if(g.attributes.position.count > 500000){
+    g = BGU.mergeVertices(g, 0.0005);
+    if(g.index) g = g.toNonIndexed();
+    g.computeVertexNormals();
+    $('meshWarn')?.classList.remove('hidden');
+  } else {
+    $('meshWarn')?.classList.add('hidden');
+  }
+  g.computeBoundingBox();
+  msh = new T.Mesh(g, getMat());
+  window.msh = msh;
+  sc.add(msh); mem.sv(g);
+  const sy = g.boundingBox.max.y;
+  const md = M.max(g.boundingBox.max.x-g.boundingBox.min.x, sy, g.boundingBox.max.z-g.boundingBox.min.z);
+  cm.position.set(0, sy/2+md*0.4, md*1.8);
+  ct.target.set(0, sy/2, 0); ct.update();
+  ['XCT','bRst','XPT','XPL','X3M','XGLB','bHealMesh','XOBJ'].forEach(id=>{const b=$(id);if(b)b.disabled=0;});
+  sessionDirty = false;
+  window.uH?.();
+  sS('> \u03a3 LOADED: ' + (g.attributes.position.count/3|0).toLocaleString() + ' \u25b2 \u2014 ' + window.srcFileName);
+}
+
+if($('F')) $('F').onchange = e => {
+  const file = e.target.files[0]; if(!file) return;
+  window.srcFileName = file.name.replace(/\.[^.]+$/,'');
+  const ext = file.name.split('.').pop().toLowerCase();
+  const r = new FileReader();
+  sS('> \u03a3 LOADING ' + file.name + '...');
+  if(ext==='stl'){ r.onload=ev=>{try{onMeshLoaded(new STLLoader().parse(ev.target.result));}catch(err){sS('> ERR: '+err.message);}}; r.readAsArrayBuffer(file); }
+  else if(ext==='ply'){ r.onload=ev=>{try{onMeshLoaded(new PLYLoader().parse(ev.target.result));}catch(err){sS('> ERR: '+err.message);}}; r.readAsArrayBuffer(file); }
+  else if(ext==='obj'){ r.onload=ev=>{try{const res=new OBJLoader().parse(ev.target.result);let g=null;res.traverse(c=>{if(c.isMesh&&!g)g=c.geometry.clone();});if(!g)throw new Error('No mesh in OBJ');onMeshLoaded(g);}catch(err){sS('> ERR: '+err.message);}}; r.readAsText(file); }
+  else if(ext==='3mf'){ r.onload=ev=>{try{const res=new ThreeMFLoader().parse(ev.target.result);let g=null;res.traverse(c=>{if(c.isMesh&&!g)g=c.geometry.clone();});if(!g)throw new Error('No mesh in 3MF');onMeshLoaded(g);}catch(err){sS('> ERR: '+err.message);}}; r.readAsArrayBuffer(file); }
+  else if(ext==='glb'||ext==='gltf'){ r.onload=ev=>{try{new GLTFLoader().parse(ev.target.result,'',gltf=>{let g=null;gltf.scene.traverse(c=>{if(c.isMesh&&!g)g=c.geometry.clone();});if(!g)throw new Error('No mesh in GLB');onMeshLoaded(g);},err=>{sS('> ERR: '+err.message);});}catch(err){sS('> ERR: '+err.message);}}; r.readAsArrayBuffer(file); }
+  else { sS('> UNSUPPORTED FORMAT: .' + ext); }
+  e.target.value = '';
+};
+
+// ── SCALE ─────────────────────────────────────────────────────────────────────
+let sessionDirty = false;
+window.upS = (v, ax) => {
+  if(!msh) return; sessionDirty = true;
+  const n = parseFloat(v)/100;
+  if(window.scalesLinked){ msh.scale.set(n,n,n); if($('X'))$('X').value=v; if($('Y'))$('Y').value=v; if($('Z'))$('Z').value=v; }
+  else if(ax==='x') msh.scale.x=n;
+  else if(ax==='y') msh.scale.y=n;
+  else if(ax==='z') msh.scale.z=n;
+};
+window.togLock = () => { window.scalesLinked=!window.scalesLinked; $('bLock').textContent=window.scalesLinked?'\uD83D\uDD12':'\uD83D\uDD13'; };
+
+// ── UNDO/REDO ─────────────────────────────────────────────────────────────────
+window.doU = () => { const g=mem.ud(); if(g&&msh){window.clrAll?.();msh.geometry.dispose();msh.geometry=g;window.uH?.();sS('> \u21BA UNDO');} };
+window.doD = () => { const g=mem.rd(); if(g&&msh){window.clrAll?.();msh.geometry.dispose();msh.geometry=g;window.uH?.();sS('> \u21BB REDO');} };
+
+// ── EXPORT — lazy loads exporter module on first click ───────────────────────
+window.doX = async (fmt) => {
+  if (!window.msh) { sS('> Σ LOAD A MESH FIRST'); return; }
+  sS('> Σ LOADING EXPORTER...');
+  try {
+    const mod = await import('./src/exporter.js');
+    await mod.install(engineCore);
+    window.doX(fmt); // now the real doX is installed, call it
+  } catch(e) { sS('> ERR: EXPORTER FAILED ' + e.message); }
+};
+
+window.rstM= () => { const o=mem.orig(); if(!o||!msh)return; window.clrAll?.(); window.gHoles=[]; msh.geometry.dispose(); msh.geometry=o; msh.scale.set(1,1,1); msh.position.set(0,0,0); $('X')&&($('X').value=$('Y').value=$('Z').value=100); mem.h=[o.clone()]; mem.s=[{x:100,y:100,z:100}]; mem.i=0; mem._ui(); window.uH?.(); sS('> \u21BA RESTORED'); };
+
+// ── VISUALS TOGGLES ───────────────────────────────────────────────────────────
+window.tog = m => {
+  if(m==='w'&&msh){msh.material.wireframe=!msh.material.wireframe;$('bW').classList.toggle('on');}
+  if(m==='g'&&msh){msh.material.transparent=!msh.material.transparent;msh.material.opacity=msh.material.transparent?.3:1;$('bG').classList.toggle('on');}
+  if(m==='gr'){window.gOn=!window.gOn;grO.visible=window.gOn;$('bGr').classList.toggle('on');}
+  if(m==='s'){window.sOn=!window.sOn;sfO.visible=window.sOn;$('bSt').classList.toggle('on');}
+};
+
+// ── HUD ───────────────────────────────────────────────────────────────────────
+window.uH = () => {
+  if(!msh||!msh.geometry?.attributes?.position){
+    $('h0')&&($('h0').innerHTML=''); $('h1')&&($('h1').innerHTML=''); $('h2')&&($('h2').innerHTML='');
+    window.cubeStats={v:'--',t:'--',mf:'--',sz:'--',fps:window.cubeStats?.fps||'--'};
+    window.updateCubeFaces?.(); return;
+  }
+  msh.geometry.computeBoundingBox();
+  const s = msh.geometry.boundingBox.getSize(new T.Vector3());
+  const t = (msh.geometry.attributes.position.count/3|0);
+  $('h0')&&($('h0').innerHTML=`\u25b2 <span>${t.toLocaleString()}</span><br>`);
+  $('h1')&&($('h1').innerHTML=`\u03a3 <span>${s.x.toFixed(1)}\u00d7${s.y.toFixed(1)}\u00d7${s.z.toFixed(1)}mm</span><br>`);
+  window.cubeStats = { v:msh.geometry.attributes.position.count.toLocaleString(), t:t.toLocaleString(), sz:`${s.x.toFixed(0)}\u00d7${s.y.toFixed(0)}\u00d7${s.z.toFixed(0)}`, fps:window.cubeStats?.fps||'--', mf:'--' };
+  window.updateCubeFaces?.();
+};
+
+// ── VIEWCUBE boot (always loaded — tiny) ──────────────────────────────────────
+(async () => {
+  try {
+    const vc = await import('./src/viewcube.js');
+    vc.initViewCube(sc, cm, ct);
+  } catch(e) { console.warn('ViewCube failed:', e); }
+})();
+
+// ── POINTER EVENTS ────────────────────────────────────────────────────────────
+window.addEventListener('pointerdown', e => {
+  $('ctxMenu')&&($('ctxMenu').style.display='none');
+  if(e.target.closest('#ui')||e.target.closest('#hudContainer')||e.target.closest('#aboutModal')||e.target.closest('#floatHistory')||e.button!==0) return;
+  if(window.flt||!msh) return;
+  if(window.isPartRotMode){ window.isDraggingMesh=true; window.meshDragLast.x=e.clientX; window.meshDragLast.y=e.clientY; return; }
+  ms.x=(e.clientX/innerWidth)*2-1; ms.y=-(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(ms,cm);
+  // Delegate to face-select module if loaded
+  window._onPointerDown?.(e);
+});
+
+window.addEventListener('pointermove', e => {
+  if(window.isDraggingMesh&&msh){
+    const dx=e.clientX-window.meshDragLast.x, dy=e.clientY-window.meshDragLast.y;
+    msh.quaternion.premultiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),dx*.01));
+    msh.quaternion.premultiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0).applyQuaternion(cm.quaternion),dy*.01));
+    window.meshDragLast.x=e.clientX; window.meshDragLast.y=e.clientY; return;
+  }
+  window._onPointerMove?.(e);
+});
+
+window.addEventListener('pointerup', e => { window.isDraggingMesh=false; window._onPointerUp?.(e); });
+
+window.addEventListener('contextmenu', e => {
+  if(!msh||e.target.closest('#ui')) return; e.preventDefault();
+  const ctx=$('ctxMenu'); if(!ctx) return;
+  ctx.style.left=e.clientX+'px'; ctx.style.top=e.clientY+'px'; ctx.style.display='flex';
+});
+
+document.addEventListener('click', () => { $('ctxMenu')&&($('ctxMenu').style.display='none'); });
+
+// Keyboard
+window.fKeys = {};
+window.addEventListener('keydown', e => {
+  window.fKeys[e.key]=true;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  if((e.ctrlKey||e.metaKey)&&(e.key==='z'||e.key==='Z')){ e.preventDefault(); window.doU(); return; }
+  if((e.ctrlKey||e.metaKey)&&(e.key==='y'||e.key==='Y')){ e.preventDefault(); window.doD(); return; }
+  if(e.key===' '){ e.preventDefault(); window.exeC?.(); return; }
+  window._onKeyDown?.(e);
+});
+window.addEventListener('keyup', e => { window.fKeys[e.key]=false; });
+
+// Wheel: plain = scroll pattern, Ctrl = zoom
+rn.domElement.addEventListener('wheel', e => {
+  if(e.ctrlKey||e.metaKey){
+    e.preventDefault();
+    const fac=e.deltaY>0?1.1:0.91, dir=cm.position.clone().sub(ct.target), nl=dir.length()*fac;
+    if(nl>5&&nl<3000) cm.position.copy(ct.target).addScaledVector(dir.normalize(),nl); ct.update();
+  } else {
+    e.preventDefault();
+    const sel=$('PT'); if(!sel) return;
+    let idx=sel.selectedIndex+(e.deltaY>0?1:-1);
+    idx=M.max(0,M.min(sel.options.length-1,idx)); sel.selectedIndex=idx;
+    $('charRow')?.classList.toggle('hidden',sel.value!=='char');
+    window.uPrv?.();
+  }
+},{passive:false,capture:true});
+
+window.addEventListener('mouseup', e => { if(e.button===3)window.doU(); if(e.button===4)window.doD(); });
+window.onresize = () => { cm.aspect=innerWidth/innerHeight; cm.updateProjectionMatrix(); rn.setSize(innerWidth,innerHeight); };
+
+// ── SESSION PERSISTENCE ───────────────────────────────────────────────────────
+const idb=(mode,data)=>new Promise((res,rej)=>{
+  const q=indexedDB.open('P3dK_DB',1);
+  q.onupgradeneeded=()=>q.result.createObjectStore('workspace');
+  q.onsuccess=()=>{const s=q.result.transaction('workspace',mode).objectStore('workspace');const o=mode==='readwrite'?s.put(data,'P3dK_S'):s.get('P3dK_S');o.onsuccess=()=>res(o.result);o.onerror=()=>rej(o.error);};
+  q.onerror=()=>rej(q.error);
+});
+async function saveSession(){
+  try{if(!msh?.geometry?.attributes?.position)return;const g=msh.geometry,mat=msh.material,pos=g.attributes.position;
+  await idb('readwrite',{v:1,p:new Float32Array(pos.array),i:g.index?new Uint32Array(g.index.array):null,sx:+$('X').value,sy:+$('Y').value,sz:+$('Z').value,c:mat.color?.getHex()??0x00e5ff,mt:mat.metalness??0.6,ro:mat.roughness??0.4,h:JSON.stringify(window.nbHistory||[])});
+  sS('> \u2713 SESSION SAVED');}catch(e){console.warn('save:',e);}
+}
+async function restoreSession(){
+  try{const d=await idb('readonly');if(!d?.p||!msh)return;
+  const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(d.p,3));if(d.i)g.setIndex(new T.BufferAttribute(d.i,1));g.computeVertexNormals();g.computeBoundingBox();
+  if(msh.geometry)msh.geometry.dispose();msh.geometry=g;const mat=msh.material;
+  if(mat){if(d.c!==undefined)mat.color.setHex(d.c);if(d.mt!==undefined)mat.metalness=d.mt;if(d.ro!==undefined)mat.roughness=d.ro;mat.needsUpdate=true;}
+  if($('X'))$('X').value=d.sx??100;if($('Y'))$('Y').value=d.sy??100;if($('Z'))$('Z').value=d.sz??100;
+  if($('MC')&&d.c!==undefined)$('MC').value='#'+d.c.toString(16).padStart(6,'0');
+  if($('MN')&&d.mt!==undefined)$('MN').value=d.mt;if($('RG')&&d.ro!==undefined)$('RG').value=d.ro;
+  if(d.h){try{window.nbHistory=JSON.parse(d.h);}catch(e){}}
+  ['XCT','bRst','XPT','XPL','X3M','XGLB','bHealMesh','XOBJ'].forEach(id=>{const b=$(id);if(b)b.disabled=0;});
+  uH();sS('> \u2713 SESSION RESTORED');}catch(e){console.warn('restore:',e);}
+}
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&sessionDirty){saveSession();sessionDirty=false;}});
+setInterval(()=>{if(sessionDirty){saveSession();sessionDirty=false;}},10000);
+window.addEventListener('engine-ready',()=>restoreSession(),{once:true});
+
+// ── RENDER LOOP ───────────────────────────────────────────────────────────────
+let t0=performance.now(), fF=0;
+rn.setAnimationLoop(t => {
+  ct.update();
+  if(window.camTween){
+    window.camTween.prog=M.min(1,window.camTween.prog+0.016/(window.camTween.dur||0.4));
+    const ease=1-M.pow(1-window.camTween.prog,3);
+    cm.position.lerpVectors(window.camTween.from,window.camTween.to,ease);
+    if(window.camTween.prog>=1) window.camTween=null;
+  }
+  if(window.flt&&window.fCam) rn.render(sc,window.fCam);
+  else rn.render(sc,cm);
+  // ViewCube render (provided by viewcube module)
+  window._vcRender?.();
+  fF++;if(t-t0>=500){window.cubeStats.fps=M.round(fF*1000/(t-t0));window.updateCubeFaces?.();fF=0;t0=t;}
+});
+
+sS('\u03a3 AWAITING I/O \u2014 DROP MESH TO BEGIN');
+
+</script>
 </body>
 </html>
