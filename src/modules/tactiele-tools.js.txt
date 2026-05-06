@@ -1,0 +1,855 @@
+/**
+ * P3dK Plugin: Tactile Tools
+ * Provides a framework for physical tool metaphors (Occam Cleaver, Archimedes Punch, etc.)
+ * Handles surface-normal snapping, orientation toggling, gesture detection, and WASM CSG.
+ */
+
+import * as THREE from 'three';
+
+// ── MODULE STATE ─────────────────────────────────────────────────────────────
+let core = null;           // Reference to engineCore
+let activeTool = null;     // 'knife', 'rasp', 'pen', 'tape', 'punch', or null
+let toolCursor = null;     // THREE.Mesh indicator
+let toolOrientation = 0;   // 0 or Math.PI / 2
+let isDragging = false;
+let lastMouse = { x: 0, y: 0 };
+let currentGesture = null;
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// ── UI INJECTION ─────────────────────────────────────────────────────────────
+function injectToolbar() {
+    const toolbar = document.createElement('div');
+    toolbar.id = 'tactile-toolbar';
+    toolbar.style.cssText = `
+        position: fixed;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 100;
+        background: rgba(2, 4, 20, 0.8);
+        padding: 8px;
+        border: 1px solid rgba(0, 255, 255, 0.4);
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+    `;
+
+    const tools = [
+        { id: 'knife', icon: '🔪', name: 'Occam Cleaver' },
+        { id: 'rasp', icon: '🗜️', name: 'Rasp' },
+        { id: 'pen', icon: '🖊️', name: '3D Pen' },
+        { id: 'tape', icon: '📏', name: 'Tape' },
+        { id: 'punch', icon: '🔨', name: 'Archimedes Punch' }
+    ];
+
+    tools.forEach(t => {
+        const btn = document.createElement('button');
+        btn.innerHTML = `<span style="font-size: 20px;">${t.icon}</span>`;
+        btn.title = t.name;
+        btn.style.cssText = `
+            background: transparent;
+            border: 1px solid transparent;
+            color: #0ff;
+            width: 44px;
+            height: 44px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+        
+        btn.onmouseover = () => { if(activeTool !== t.id) btn.style.background = 'rgba(0, 255, 255, 0.1)'; };
+        btn.onmouseout = () => { if(activeTool !== t.id) btn.style.background = 'transparent'; };
+        
+        btn.onclick = () => selectTool(t.id, btn);
+        toolbar.appendChild(btn);
+    });
+
+    document.body.appendChild(toolbar);
+}
+
+function updateToolbarUI() {
+    const buttons = document.getElementById('tactile-toolbar').children;
+    const toolIds = ['knife', 'rasp', 'pen', 'tape', 'punch'];
+    
+    Array.from(buttons).forEach((btn, idx) => {
+        if (activeTool === toolIds[idx]) {
+            btn.style.background = 'rgba(255, 0, 255, 0.3)';
+            btn.style.borderColor = '#f0f';
+            btn.style.boxShadow = '0 0 10px rgba(255,0,255,0.4)';
+        } else {
+            btn.style.background = 'transparent';
+            btn.style.borderColor = 'transparent';
+            btn.style.boxShadow = 'none';
+        }
+    });
+}
+
+// ── TOOL STATE MANAGEMENT ────────────────────────────────────────────────────
+function selectTool(toolId) {
+    activeTool = activeTool === toolId ? null : toolId; 
+    updateToolbarUI();
+
+    if (activeTool) {
+        if (core.controls) core.controls.enabled = false;
+        createCursor();
+        if (typeof window.sS === 'function') window.sS(`> EQUIPPED: ${toolId.toUpperCase()} (Right-Click to rotate)`);
+    } else {
+        dropTool();
+    }
+}
+
+function dropTool() {
+    activeTool = null;
+    toolOrientation = 0;
+    isDragging = false;
+    currentGesture = null;
+    updateToolbarUI();
+    
+    if (toolCursor) toolCursor.visible = false;
+    
+    if (core.controls) core.controls.enabled = true;
+    if (typeof window.sS === 'function') window.sS('> TOOL DROPPED. Camera restored.');
+}
+
+function createCursor() {
+    if (toolCursor) {
+        core.scene.remove(toolCursor);
+        toolCursor.geometry.dispose();
+        toolCursor.material.dispose();
+    }
+
+    let geo;
+    if (activeTool === 'knife') geo = new THREE.BoxGeometry(0.2, 4, 10);
+    else if (activeTool === 'rasp') geo = new THREE.BoxGeometry(4, 1, 8);
+    else if (activeTool === 'pen') geo = new THREE.CylinderGeometry(0.5, 0.1, 4, 16);
+    else if (activeTool === 'punch') geo = new THREE.CylinderGeometry(2.2, 2.2, 4, 16);
+    else geo = new THREE.BoxGeometry(1, 1, 1);
+
+    geo.translate(0, geo.parameters.height / 2 || 2, 0);
+
+    const mat = new THREE.MeshBasicMaterial({ 
+        color: 0xff00ff, 
+        wireframe: true, 
+        transparent: true, 
+        opacity: 0.8,
+        depthTest: false 
+    });
+
+    toolCursor = new THREE.Mesh(geo, mat);
+    toolCursor.visible = false;
+    core.scene.add(toolCursor);
+}
+
+// ── RAYCASTING & SNAPPING LOGIC ──────────────────────────────────────────────
+function updateCursorPosition(clientX, clientY) {
+    if (!activeTool || !toolCursor) return;
+
+    const targetMesh = core.selectedMesh || window.msh;
+    if (!targetMesh) return;
+
+    mouse.x = (clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, core.camera);
+    const hits = raycaster.intersectObject(targetMesh);
+
+    if (hits.length > 0) {
+        toolCursor.visible = true;
+        const hit = hits[0];
+
+        toolCursor.position.copy(hit.point);
+
+        const normalMatrix = new THREE.Matrix3().getNormalMatrix(targetMesh.matrixWorld);
+        const worldNormal = hit.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+        
+        toolCursor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), worldNormal);
+        toolCursor.rotateZ(toolOrientation);
+
+    } else {
+        toolCursor.visible = false;
+    }
+}
+
+// ── WASM BOOLEAN OPERATIONS ──────────────────────────────────────────────────
+async function runOccamCleaver() {
+    const targetMesh = core.selectedMesh || window.msh;
+    if (!targetMesh || typeof window.geo2manifold !== 'function') return;
+
+    if (typeof window.sS === 'function') window.sS("> OCCAM CLEAVER: Slicing Mesh...");
+
+    // Yield to main thread for UI repaint
+    await new Promise(r => setTimeout(r, 20));
+
+    // Construct an infinitely large bounding box relative to the cut origin
+    const cutterGeo = new THREE.BoxGeometry(10000, 10000, 10000);
+    // Shift box to cover the entire Local +X half. 
+    // This perfectly aligns the split to the toolCursor's origin plane, discarding the covered half.
+    cutterGeo.translate(5000, 0, 0); 
+    cutterGeo.applyQuaternion(toolCursor.quaternion);
+    cutterGeo.translate(toolCursor.position.x, toolCursor.position.y, toolCursor.position.z);
+
+    let baseManifold, cutterManifold, resultManifold;
+    try {
+        baseManifold = window.geo2manifold(targetMesh.geometry.clone().applyMatrix4(targetMesh.matrixWorld));
+        cutterManifold = window.geo2manifold(cutterGeo);
+        
+        // Execute Split (Subtract discards the +X half and mathematically seals the boundary)
+        resultManifold = baseManifold.subtract(cutterManifold);
+        const resultGeo = window.manifold2geo(resultManifold);
+        
+        targetMesh.geometry.dispose();
+        targetMesh.geometry = resultGeo;
+        targetMesh.geometry.computeVertexNormals();
+        targetMesh.scale.set(1, 1, 1);
+        targetMesh.position.set(0, 0, 0);
+        targetMesh.rotation.set(0, 0, 0);
+        targetMesh.updateMatrixWorld();
+        
+        if (window.mem) window.mem.sv(resultGeo);
+        if (window.uH) window.uH();
+        
+        if (typeof window.sS === 'function') window.sS("> OCCAM CLEAVER: Slice Complete");
+    } catch (err) {
+        console.error("[TactileTools] Occam Cleaver Error:", err);
+    } finally {
+        // Strict WASM Heap Memory Management
+        if (baseManifold) baseManifold.delete();
+        if (cutterManifold) cutterManifold.delete();
+        if (resultManifold) resultManifold.delete();
+        cutterGeo.dispose();
+    }
+}
+
+async function runArchimedesPunch() {
+    const targetMesh = core.selectedMesh || window.msh;
+    if (!targetMesh || typeof window.geo2manifold !== 'function') return;
+
+    if (typeof window.sS === 'function') window.sS("> ARCHIMEDES PUNCH: Boring Toleranced Hole...");
+
+    // Yield to main thread for UI repaint
+    await new Promise(r => setTimeout(r, 20));
+
+    // Cylinder A: Hole (Radius 2.2mm for clearance). Punches into surface.
+    const holeGeo = new THREE.CylinderGeometry(2.2, 2.2, 20, 32);
+    holeGeo.translate(0, -10, 0); 
+    holeGeo.applyQuaternion(toolCursor.quaternion);
+    holeGeo.translate(toolCursor.position.x, toolCursor.position.y, toolCursor.position.z);
+
+    // Cylinder B: Peg (Radius 2.0mm for tight friction fit). Extends away from surface.
+    const pegGeo = new THREE.CylinderGeometry(2.0, 2.0, 10, 32);
+    pegGeo.translate(0, 5, 0); 
+    pegGeo.applyQuaternion(toolCursor.quaternion);
+    pegGeo.translate(toolCursor.position.x, toolCursor.position.y, toolCursor.position.z);
+
+    let baseManifold, holeManifold, resultManifold;
+    try {
+        baseManifold = window.geo2manifold(targetMesh.geometry.clone().applyMatrix4(targetMesh.matrixWorld));
+        holeManifold = window.geo2manifold(holeGeo);
+        
+        // Execute subtraction
+        resultManifold = baseManifold.subtract(holeManifold);
+        const resultGeo = window.manifold2geo(resultManifold);
+        
+        targetMesh.geometry.dispose();
+        targetMesh.geometry = resultGeo;
+        targetMesh.geometry.computeVertexNormals();
+        targetMesh.scale.set(1, 1, 1);
+        targetMesh.position.set(0, 0, 0);
+        targetMesh.rotation.set(0, 0, 0);
+        targetMesh.updateMatrixWorld();
+        
+        if (window.mem) window.mem.sv(resultGeo);
+
+        // Deposit the toleranced Peg as a new physical mesh in the scene
+        const pegMesh = new THREE.Mesh(pegGeo, new THREE.MeshStandardMaterial({ color: 0x00ffcc }));
+        core.scene.add(pegMesh);
+
+        if (window.uH) window.uH();
+        
+        if (typeof window.sS === 'function') window.sS("> ARCHIMEDES PUNCH: Hole Punched. Peg Deposited.");
+    } catch (err) {
+        console.error("[TactileTools] Archimedes Punch Error:", err);
+    } finally {
+        // Strict WASM Heap Memory Management
+        if (baseManifold) baseManifold.delete();
+        if (holeManifold) holeManifold.delete();
+        if (resultManifold) resultManifold.delete();
+        holeGeo.dispose();
+    }
+}
+
+// ── EVENT LISTENERS ──────────────────────────────────────────────────────────
+function onPointerMove(e) {
+    if (!activeTool) return;
+
+    updateCursorPosition(e.clientX, e.clientY);
+
+    // Gesture Detection Mapping
+    if (isDragging) {
+        const dx = e.clientX - lastMouse.x;
+        const dy = e.clientY - lastMouse.y;
+        
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            if (Math.abs(dy) > Math.abs(dx)) {
+                currentGesture = 'sawing';
+                console.log(`[TactileTools] SAWING (Vertical) - Speed: ${Math.abs(dy)}`);
+            } else {
+                currentGesture = 'scraping';
+                console.log(`[TactileTools] SCRAPING (Horizontal) - Speed: ${Math.abs(dx)}`);
+            }
+        }
+    } else {
+        currentGesture = null;
+    }
+
+    lastMouse.x = e.clientX;
+    lastMouse.y = e.clientY;
+}
+
+function onPointerDown(e) {
+    if (!activeTool) return;
+    if (e.target.closest('#ui') || e.target.closest('#tactile-toolbar')) return;
+    
+    if (e.button === 0) { 
+        isDragging = true;
+        currentGesture = null;
+        lastMouse.x = e.clientX;
+        lastMouse.y = e.clientY;
+    }
+}
+
+function onPointerUp(e) {
+    if (e.button === 0) {
+        isDragging = false;
+        
+        // Contextual Tool Executions
+        if (activeTool === 'knife' && currentGesture === 'sawing') {
+            runOccamCleaver();
+        } else if (activeTool === 'punch' && !currentGesture) {
+            // A clean, localized click (no drag gesture) triggers the punch
+            runArchimedesPunch();
+        }
+        
+        currentGesture = null;
+    }
+}
+
+function onContextMenu(e) {
+    if (!activeTool) return;
+    if (e.target.closest('#ui') || e.target.closest('#tactile-toolbar')) return;
+    
+    e.preventDefault(); 
+    
+    toolOrientation = toolOrientation === 0 ? Math.PI / 2 : 0;
+    updateCursorPosition(lastMouse.x, lastMouse.y);
+    console.log(`[TactileTools] Orientation changed: ${toolOrientation === 0 ? 'Saw' : 'Scraper'} mode.`);
+}
+
+function onKeyDown(e) {
+    if (e.key === 'Escape' && activeTool) {
+        dropTool();
+    }
+}
+
+// ── PLUGIN EXPORT ────────────────────────────────────────────────────────────
+export function install(engineCore) {
+    if (!engineCore.scene || !engineCore.camera) {
+        console.error('Tactile Tools: engineCore missing required properties (scene, camera).');
+        return;
+    }
+    
+    core = engineCore;
+
+    injectToolbar();
+
+    const domElement = core.renderer?.domElement || document;
+    domElement.addEventListener('pointermove', onPointerMove);
+    domElement.addEventListener('pointerdown', onPointerDown);
+    domElement.addEventListener('pointerup', onPointerUp);
+    domElement.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('keydown', onKeyDown);
+
+    console.log('✓ Tactile Tools framework installed.');
+}
+
+/**
+ * src/modules/tactile-tools.js
+ * High-performance mesh deformation: Vulcan Hammer & Shiva Rasp
+ */
+
+// --- 1. SPATIAL GRID INDEXING ---
+// A sparse voxel grid to instantly query vertices within a radius.
+class SpatialGrid {
+    constructor(positions, cellSize) {
+        this.cellSize = cellSize;
+        this.cells = new Map();
+        this.invCellSize = 1.0 / cellSize;
+        
+        for (let i = 0; i < positions.length; i += 3) {
+            const cx = Math.floor(positions[i] * this.invCellSize);
+            const cy = Math.floor(positions[i + 1] * this.invCellSize);
+            const cz = Math.floor(positions[i + 2] * this.invCellSize);
+            const key = `${cx},${cy},${cz}`;
+            
+            let cell = this.cells.get(key);
+            if (!cell) {
+                cell = [];
+                this.cells.set(key, cell);
+            }
+            cell.push(i);
+        }
+    }
+
+    // Returns array of starting indices (i) for positions within the bounding box
+    queryRadius(x, y, z, radius) {
+        const minX = Math.floor((x - radius) * this.invCellSize);
+        const maxX = Math.floor((x + radius) * this.invCellSize);
+        const minY = Math.floor((y - radius) * this.invCellSize);
+        const maxY = Math.floor((y + radius) * this.invCellSize);
+        const minZ = Math.floor((z - radius) * this.invCellSize);
+        const maxZ = Math.floor((z + radius) * this.invCellSize);
+
+        const result = [];
+        for (let cx = minX; cx <= maxX; cx++) {
+            for (let cy = minY; cy <= maxY; cy++) {
+                for (let cz = minZ; cz <= maxZ; cz++) {
+                    const cell = this.cells.get(`${cx},${cy},${cz}`);
+                    if (cell) {
+                        for (let i = 0; i < cell.length; i++) {
+                            result.push(cell[i]);
+                        }
+                    }
+                }
+            }
+        }
+        return result;
+    }
+}
+
+// --- 2. DEFORMATION LOGIC ---
+export class TactileTools {
+    constructor(engineCore) {
+        this.core = engineCore;
+        this.spatialGrid = null;
+        this.activeMesh = null;
+        this.gridDirty = true;
+    }
+
+    /**
+     * Call this when a tool is selected or when the mesh is fundamentally swapped.
+     */
+    buildIndex(radius) {
+        if (!this.core.selectedMesh) return;
+        this.activeMesh = this.core.selectedMesh;
+        const positions = this.activeMesh.geometry.attributes.position.array;
+        
+        // Cell size matches radius so we only ever query a 3x3x3 cell neighborhood
+        this.spatialGrid = new SpatialGrid(positions, radius);
+        this.gridDirty = false;
+    }
+
+    /**
+     * VULCAN HAMMER: Planar Snap
+     * Projects vertices within radius onto the plane defined by hitNormal.
+     * Uses a linear falloff to prevent mesh tearing at the radius boundary.
+     */
+    applyVulcanHammer(hitPoint, hitNormal, radius, intensity = 1.0) {
+        if (this.gridDirty) this.buildIndex(radius);
+        
+        const pos = this.activeMesh.geometry.attributes.position.array;
+        const indices = this.spatialGrid.queryRadius(hitPoint.x, hitPoint.y, hitPoint.z, radius);
+        
+        const hx = hitPoint.x, hy = hitPoint.y, hz = hitPoint.z;
+        const nx = hitNormal.x, ny = hitNormal.y, nz = hitNormal.z;
+        const rSq = radius * radius;
+
+        for (let j = 0; j < indices.length; j++) {
+            const i = indices[j];
+            const vx = pos[i], vy = pos[i + 1], vz = pos[i + 2];
+            
+            const dx = vx - hx;
+            const dy = vy - hy;
+            const dz = vz - hz;
+            
+            const distSq = dx*dx + dy*dy + dz*dz;
+            
+            if (distSq < rSq) {
+                const dist = Math.sqrt(distSq);
+                // Linear falloff: 1.0 at center, 0.0 at edge
+                const falloff = (1.0 - (dist / radius)) * intensity;
+                
+                // Distance from vertex to the mathematical plane
+                const dot = (dx * nx) + (dy * ny) + (dz * nz);
+                
+                // Project vertex onto the plane
+                pos[i]     -= dot * nx * falloff;
+                pos[i + 1] -= dot * ny * falloff;
+                pos[i + 2] -= dot * nz * falloff;
+            }
+        }
+
+        this.triggerUpdate();
+    }
+
+    /**
+     * SHIVA RASP: Local Laplacian Smoothing
+     * Averages each vertex's position with its spatial neighbors.
+     */
+    applyShivaRasp(hitPoint, radius, iterations = 1, intensity = 0.5) {
+        if (this.gridDirty) this.buildIndex(radius);
+
+        const pos = this.activeMesh.geometry.attributes.position.array;
+        const indices = this.spatialGrid.queryRadius(hitPoint.x, hitPoint.y, hitPoint.z, radius);
+        
+        const hx = hitPoint.x, hy = hitPoint.y, hz = hitPoint.z;
+        const rSq = radius * radius;
+        
+        // Temporary array to hold smoothed positions so we don't skew the math during iteration
+        const tempPos = new Float32Array(indices.length * 3);
+
+        for (let iter = 0; iter < iterations; iter++) {
+            for (let j = 0; j < indices.length; j++) {
+                const i = indices[j];
+                const vx = pos[i], vy = pos[i + 1], vz = pos[i + 2];
+                
+                const distSq = (vx - hx)**2 + (vy - hy)**2 + (vz - hz)**2;
+                
+                if (distSq < rSq) {
+                    // Find local spatial neighbors for this specific vertex (mini-radius)
+                    const neighborSearchRadius = radius * 0.25; 
+                    const neighbors = this.spatialGrid.queryRadius(vx, vy, vz, neighborSearchRadius);
+                    
+                    let sumX = 0, sumY = 0, sumZ = 0;
+                    let count = 0;
+
+                    for (let k = 0; k < neighbors.length; k++) {
+                        const ni = neighbors[k];
+                        sumX += pos[ni];
+                        sumY += pos[ni + 1];
+                        sumZ += pos[ni + 2];
+                        count++;
+                    }
+
+                    // Store target smoothed position
+                    if (count > 0) {
+                        tempPos[j * 3]     = sumX / count;
+                        tempPos[j * 3 + 1] = sumY / count;
+                        tempPos[j * 3 + 2] = sumZ / count;
+                    } else {
+                        tempPos[j * 3]     = vx;
+                        tempPos[j * 3 + 1] = vy;
+                        tempPos[j * 3 + 2] = vz;
+                    }
+                }
+            }
+
+            // Apply smoothed positions back to main array with falloff
+            for (let j = 0; j < indices.length; j++) {
+                const i = indices[j];
+                const vx = pos[i], vy = pos[i + 1], vz = pos[i + 2];
+                const distSq = (vx - hx)**2 + (vy - hy)**2 + (vz - hz)**2;
+
+                if (distSq < rSq) {
+                    const dist = Math.sqrt(distSq);
+                    const falloff = (1.0 - (dist / radius)) * intensity;
+                    
+                    pos[i]     += (tempPos[j * 3]     - vx) * falloff;
+                    pos[i + 1] += (tempPos[j * 3 + 1] - vy) * falloff;
+                    pos[i + 2] += (tempPos[j * 3 + 2] - vz) * falloff;
+                }
+            }
+        }
+
+        this.triggerUpdate();
+    }
+
+    /**
+     * Flags the geometry for upload to the GPU on the next RAF tick.
+     */
+    triggerUpdate() {
+        this.activeMesh.geometry.attributes.position.needsUpdate = true;
+        this.activeMesh.geometry.computeVertexNormals(); 
+        
+        // Rebuild spatial grid on mouse-up, not continuously, to save frames
+        this.gridDirty = true; 
+    }
+}
+
+
+/**
+ * P3dK Plugin: Tactile Tools
+ * Provides a framework for physical tool metaphors (Knife, Rasp, etc.)
+ * Handles surface-normal snapping, orientation toggling, and gesture detection.
+ */
+
+import * as THREE from 'three';
+
+// ── MODULE STATE ─────────────────────────────────────────────────────────────
+let core = null;           // Reference to engineCore
+let activeTool = null;     // 'knife', 'rasp', 'pen', 'tape', or null
+let toolCursor = null;     // THREE.Mesh indicator
+let toolOrientation = 0;   // 0 or Math.PI / 2
+let isDragging = false;
+let lastMouse = { x: 0, y: 0 };
+
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+// ── UI INJECTION ─────────────────────────────────────────────────────────────
+function injectToolbar() {
+    const toolbar = document.createElement('div');
+    toolbar.id = 'tactile-toolbar';
+    toolbar.style.cssText = `
+        position: fixed;
+        left: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        z-index: 100;
+        background: rgba(2, 4, 20, 0.8);
+        padding: 8px;
+        border: 1px solid rgba(0, 255, 255, 0.4);
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+    `;
+
+    const tools = [
+        { id: 'knife', icon: '🔪', name: 'Butter Knife' },
+        { id: 'rasp', icon: '🗜️', name: 'Rasp' },
+        { id: 'pen', icon: '🖊️', name: '3D Pen' },
+        { id: 'tape', icon: '📏', name: 'Tape' }
+    ];
+
+    tools.forEach(t => {
+        const btn = document.createElement('button');
+        btn.innerHTML = `<span style="font-size: 20px;">${t.icon}</span>`;
+        btn.title = t.name;
+        btn.style.cssText = `
+            background: transparent;
+            border: 1px solid transparent;
+            color: #0ff;
+            width: 44px;
+            height: 44px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        `;
+        
+        btn.onmouseover = () => { if(activeTool !== t.id) btn.style.background = 'rgba(0, 255, 255, 0.1)'; };
+        btn.onmouseout = () => { if(activeTool !== t.id) btn.style.background = 'transparent'; };
+        
+        btn.onclick = () => selectTool(t.id, btn);
+        toolbar.appendChild(btn);
+    });
+
+    document.body.appendChild(toolbar);
+}
+
+function updateToolbarUI() {
+    const buttons = document.getElementById('tactile-toolbar').children;
+    const toolIds = ['knife', 'rasp', 'pen', 'tape'];
+    
+    Array.from(buttons).forEach((btn, idx) => {
+        if (activeTool === toolIds[idx]) {
+            btn.style.background = 'rgba(255, 0, 255, 0.3)';
+            btn.style.borderColor = '#f0f';
+            btn.style.boxShadow = '0 0 10px rgba(255,0,255,0.4)';
+        } else {
+            btn.style.background = 'transparent';
+            btn.style.borderColor = 'transparent';
+            btn.style.boxShadow = 'none';
+        }
+    });
+}
+
+// ── TOOL STATE MANAGEMENT ────────────────────────────────────────────────────
+function selectTool(toolId) {
+    activeTool = activeTool === toolId ? null : toolId; // Toggle off if clicked again
+    updateToolbarUI();
+
+    if (activeTool) {
+        // Disable orbit controls
+        if (core.controls) core.controls.enabled = false;
+        createCursor();
+        
+        // Log status to main engine UI if available
+        if (typeof window.sS === 'function') window.sS(`> EQUIPPED: ${toolId.toUpperCase()} (Right-Click to rotate)`);
+    } else {
+        dropTool();
+    }
+}
+
+function dropTool() {
+    activeTool = null;
+    toolOrientation = 0;
+    isDragging = false;
+    updateToolbarUI();
+    
+    if (toolCursor) {
+        toolCursor.visible = false;
+    }
+    
+    // Re-enable orbit controls
+    if (core.controls) core.controls.enabled = true;
+    if (typeof window.sS === 'function') window.sS('> TOOL DROPPED. Camera restored.');
+}
+
+function createCursor() {
+    if (toolCursor) {
+        core.scene.remove(toolCursor);
+        toolCursor.geometry.dispose();
+        toolCursor.material.dispose();
+    }
+
+    // Geometry changes based on tool, defaulting to Knife (Thin Blade)
+    let geo;
+    if (activeTool === 'knife') geo = new THREE.BoxGeometry(0.2, 4, 10);
+    else if (activeTool === 'rasp') geo = new THREE.BoxGeometry(4, 1, 8);
+    else if (activeTool === 'pen') geo = new THREE.CylinderGeometry(0.5, 0.1, 4, 16);
+    else geo = new THREE.BoxGeometry(1, 1, 1);
+
+    // Shift geometry so the bottom sits exactly on the surface, not intersecting it
+    geo.translate(0, geo.parameters.height / 2 || 2, 0);
+
+    const mat = new THREE.MeshBasicMaterial({ 
+        color: 0xff00ff, 
+        wireframe: true, 
+        transparent: true, 
+        opacity: 0.8,
+        depthTest: false // Render over the mesh
+    });
+
+    toolCursor = new THREE.Mesh(geo, mat);
+    toolCursor.visible = false;
+    core.scene.add(toolCursor);
+}
+
+// ── RAYCASTING & SNAPPING LOGIC ──────────────────────────────────────────────
+function updateCursorPosition(clientX, clientY) {
+    if (!activeTool || !toolCursor) return;
+
+    // Standardize resolving the target mesh (handles decoupled core architectures)
+    const targetMesh = core.selectedMesh || window.msh;
+    if (!targetMesh) return;
+
+    // Convert mouse to normalized device coordinates
+    mouse.x = (clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, core.camera);
+    const hits = raycaster.intersectObject(targetMesh);
+
+    if (hits.length > 0) {
+        toolCursor.visible = true;
+        const hit = hits[0];
+
+        // 1. Move to intersection point
+        toolCursor.position.copy(hit.point);
+
+        // 2. Surface Snapping: Align Up-vector to world-space normal
+        const normalMatrix = new THREE.Matrix3().getNormalMatrix(targetMesh.matrixWorld);
+        const worldNormal = hit.face.normal.clone().applyMatrix3(normalMatrix).normalize();
+        
+        toolCursor.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), worldNormal);
+
+        // 3. Right-Click Orientation transform (Local Z rotation)
+        toolCursor.rotateZ(toolOrientation);
+
+    } else {
+        // Hide if not hovering over the mesh
+        toolCursor.visible = false;
+    }
+}
+
+// ── EVENT LISTENERS ──────────────────────────────────────────────────────────
+function onPointerMove(e) {
+    if (!activeTool) return;
+
+    updateCursorPosition(e.clientX, e.clientY);
+
+    // Gesture Detection
+    if (isDragging) {
+        const dx = e.clientX - lastMouse.x;
+        const dy = e.clientY - lastMouse.y;
+        
+        // Apply deadzone to filter out micro-jitters
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            if (Math.abs(dy) > Math.abs(dx)) {
+                console.log(`[TactileTools] SAWING (Vertical) - Speed: ${Math.abs(dy)}`);
+            } else {
+                console.log(`[TactileTools] SCRAPING (Horizontal) - Speed: ${Math.abs(dx)}`);
+            }
+        }
+    }
+
+    lastMouse.x = e.clientX;
+    lastMouse.y = e.clientY;
+}
+
+function onPointerDown(e) {
+    if (!activeTool) return;
+    
+    // Ignore UI clicks
+    if (e.target.closest('#ui') || e.target.closest('#tactile-toolbar')) return;
+    
+    if (e.button === 0) { // Left click
+        isDragging = true;
+        lastMouse.x = e.clientX;
+        lastMouse.y = e.clientY;
+    }
+}
+
+function onPointerUp(e) {
+    if (e.button === 0) isDragging = false;
+}
+
+function onContextMenu(e) {
+    if (!activeTool) return;
+    
+    // Ignore UI clicks
+    if (e.target.closest('#ui') || e.target.closest('#tactile-toolbar')) return;
+    
+    e.preventDefault(); // Prevent standard browser menu
+    
+    // Toggle between 0 and 90 degrees (saw vs scraper)
+    toolOrientation = toolOrientation === 0 ? Math.PI / 2 : 0;
+    
+    // Immediately force an update so the cursor rotates without needing to move the mouse
+    updateCursorPosition(lastMouse.x, lastMouse.y);
+    console.log(`[TactileTools] Orientation changed: ${toolOrientation === 0 ? 'Saw' : 'Scraper'} mode.`);
+}
+
+function onKeyDown(e) {
+    if (e.key === 'Escape' && activeTool) {
+        dropTool();
+    }
+}
+
+// ── PLUGIN EXPORT ────────────────────────────────────────────────────────────
+export function install(engineCore) {
+    if (!engineCore.scene || !engineCore.camera) {
+        console.error('Tactile Tools: engineCore missing required properties (scene, camera).');
+        return;
+    }
+    
+    core = engineCore;
+
+    // Inject DOM Elements
+    injectToolbar();
+
+    // Bind Document Level Input Listeners
+    const domElement = core.renderer?.domElement || document;
+    domElement.addEventListener('pointermove', onPointerMove);
+    domElement.addEventListener('pointerdown', onPointerDown);
+    domElement.addEventListener('pointerup', onPointerUp);
+    domElement.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('keydown', onKeyDown);
+
+    console.log('✓ Tactile Tools framework installed.');
+}

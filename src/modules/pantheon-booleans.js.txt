@@ -1,0 +1,135 @@
+import * as THREE from 'three';
+
+/**
+ * WASM Memory Tracker
+ * Collects Manifold objects during an async operation and guarantees 
+ * they are deleted from the WASM heap, even if the math throws an error.
+ */
+const withManifoldAsync = async (engineCore, fn) => {
+  const tracked = [];
+  const m = {
+    track: (obj) => { tracked.push(obj); return obj; },
+    wasm: engineCore.wasm
+  };
+  try {
+    return await fn(m);
+  } finally {
+    for (const obj of tracked) {
+      try { obj.delete(); } catch (e) {}
+    }
+  }
+};
+
+/**
+ * OCCAM CLEAVER (Planar Split)
+ * Slices the mesh along a plane defined by a point and a normal.
+ * Keeps the half the normal points toward.
+ */
+export const occamCleaver = async (engineCore, hitPoint, sliceNormal) => {
+  const targetMesh = engineCore.selectedMesh;
+  if (!targetMesh || !engineCore.wasm) return;
+
+  // 1. Construct the "Cleaver Block" (Half-space solid)
+  // We use a massive 10,000mm box. We translate it so its bottom face rests on the origin.
+  const blockGeo = new THREE.BoxGeometry(10000, 10000, 10000);
+  blockGeo.translate(0, 5000, 0); 
+  
+  // Align the block to the slice normal and position it at the hit point
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), sliceNormal.clone().normalize());
+  const matrix = new THREE.Matrix4().compose(hitPoint, quaternion, new THREE.Vector3(1, 1, 1));
+  blockGeo.applyMatrix4(matrix);
+
+  // 2. Execute Async CSG Subtraction
+  const newGeo = await withManifoldAsync(engineCore, async (m) => {
+    // Bring target mesh into world space for accurate boolean
+    targetMesh.updateMatrixWorld(true);
+    const targetClone = targetMesh.geometry.clone();
+    targetClone.applyMatrix4(targetMesh.matrixWorld);
+
+    // Convert to Manifold (Assuming engineCore has these bridge functions)
+    const mTarget = m.track(engineCore.geo2manifold(targetClone));
+    const mBlock = m.track(engineCore.geo2manifold(blockGeo));
+    
+    // Perform the split (subtracting the block removes the half we don't want)
+    const mResult = m.track(mTarget.subtract(mBlock));
+    
+    return engineCore.manifold2geo(mResult);
+  });
+
+  // 3. Update Three.js State
+  targetMesh.scale.set(1, 1, 1);
+  targetMesh.position.set(0, 0, 0);
+  targetMesh.rotation.set(0, 0, 0);
+  targetMesh.geometry.dispose();
+  targetMesh.geometry = newGeo;
+  targetMesh.updateMatrixWorld();
+  
+  blockGeo.dispose();
+};
+
+/**
+ * ARCHIMEDES PUNCH (Toleranced Peg & Hole)
+ * Punches a 2.2mm hole in Mesh A, and adds a 2.0mm peg to Mesh B.
+ */
+export const archimedesPunch = async (engineCore, meshA, meshB, point, normal) => {
+  if (!meshA || !meshB || !engineCore.wasm) return;
+
+  // Peg and Hole specifications
+  const depth = 10.0;
+  const radiusHole = 2.2;
+  const radiusPeg = 2.0;
+
+  // 1. Generate Three.js alignment matrices
+  // Align cylinders (which grow along Y) to the surface normal
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal.clone().normalize());
+  
+  // The cylinder center is half its depth. We push it halfway into the surface.
+  const holeCenter = point.clone().addScaledVector(normal, -depth / 2);
+  const pegCenter = point.clone().addScaledVector(normal, depth / 2);
+
+  const matHole = new THREE.Matrix4().compose(holeCenter, quaternion, new THREE.Vector3(1, 1, 1));
+  const matPeg = new THREE.Matrix4().compose(pegCenter, quaternion, new THREE.Vector3(1, 1, 1));
+
+  const geoHole = new THREE.CylinderGeometry(radiusHole, radiusHole, depth, 32).applyMatrix4(matHole);
+  const geoPeg = new THREE.CylinderGeometry(radiusPeg, radiusPeg, depth, 32).applyMatrix4(matPeg);
+
+  // 2. Execute Async CSG Operations concurrently
+  await withManifoldAsync(engineCore, async (m) => {
+    meshA.updateMatrixWorld(true);
+    meshB.updateMatrixWorld(true);
+
+    const cloneA = meshA.geometry.clone().applyMatrix4(meshA.matrixWorld);
+    const cloneB = meshB.geometry.clone().applyMatrix4(meshB.matrixWorld);
+
+    // Track all Manifold conversions
+    const mA = m.track(engineCore.geo2manifold(cloneA));
+    const mB = m.track(engineCore.geo2manifold(cloneB));
+    const mHole = m.track(engineCore.geo2manifold(geoHole));
+    const mPeg = m.track(engineCore.geo2manifold(geoPeg));
+
+    // Subtract Hole from A, Union Peg to B
+    const mResultA = m.track(mA.subtract(mHole));
+    const mResultB = m.track(mB.add(mPeg));
+
+    // Resolve back to Three.js
+    const newGeoA = engineCore.manifold2geo(mResultA);
+    const newGeoB = engineCore.manifold2geo(mResultB);
+
+    // Update Mesh A
+    meshA.scale.set(1, 1, 1); meshA.position.set(0, 0, 0); meshA.rotation.set(0, 0, 0);
+    meshA.geometry.dispose(); meshA.geometry = newGeoA; meshA.updateMatrixWorld();
+
+    // Update Mesh B
+    meshB.scale.set(1, 1, 1); meshB.position.set(0, 0, 0); meshB.rotation.set(0, 0, 0);
+    meshB.geometry.dispose(); meshB.geometry = newGeoB; meshB.updateMatrixWorld();
+  });
+
+  geoHole.dispose();
+  geoPeg.dispose();
+};
+
+export const install = (engineCore) => {
+  // Bind these to your UI dispatcher here
+  engineCore.tools.occamCleaver = (point, normal) => occamCleaver(engineCore, point, normal);
+  engineCore.tools.archimedesPunch = (mA, mB, point, normal) => archimedesPunch(engineCore, mA, mB, point, normal);
+};
