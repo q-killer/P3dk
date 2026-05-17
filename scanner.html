@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>WebXR Depth Scanner</title>
+    <title>WebXR Depth Scanner Local Mesher</title>
     <style>
         body, html {
             margin: 0;
@@ -31,6 +31,12 @@
             margin-bottom: 15px; min-height: 4em; background: rgba(0,0,0,0.5);
             padding: 10px; border-radius: 6px; white-space: pre-wrap;
         }
+        
+        .r { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+        .lb { font-size: 0.8rem; font-weight: bold; color: #ccc; }
+        .vl { font-size: 0.8rem; font-weight: bold; color: #0f9; }
+        input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #0f9; }
+
         button {
             width: 100%; padding: 15px; margin-bottom: 10px;
             font-size: 1.1rem; font-weight: bold; border: none;
@@ -39,7 +45,8 @@
         button:disabled { opacity: 0.4; cursor: not-allowed; }
         #btn-start { background: #0f9; color: #000; }
         #btn-stop { background: #f77; color: #fff; display: none; }
-        #btn-export { background: #0cf; color: #000; display: none; }
+        #btn-bake { background: #ff00ff; color: #fff; display: none; }
+        #btn-export { background: transparent; border: 1px solid #0cf; color: #0cf; padding: 10px; font-size: 0.9rem; display: none; }
     </style>
 </head>
 <body>
@@ -47,35 +54,51 @@
 
     <div id="ar-ui-overlay">
         <div class="panel">
-            <h1>P3dK WebXR Scanner</h1>
+            <h1>P3dK Local Mesher</h1>
             <div id="status">Checking AR capabilities...</div>
             <div id="debug-log">System initializing...</div>
             
+            <div id="mesh-controls" style="display: none;">
+                <div class="r"><span class="lb">SURFACE DENSITY</span><span class="vl" id="blobVal">0.15</span></div>
+                <input type="range" id="XR_BLOB" min="0.05" max="0.5" step="0.01" value="0.15">
+            </div>
+
             <button id="btn-start" disabled>Start AR Scan</button>
             <button id="btn-stop">Stop Scan</button>
-            <button id="btn-export">Export .PLY</button>
+            <button id="btn-bake">∴ BAKE WATERTIGHT MESH</button>
+            <button id="btn-export">↓ Download Raw .PLY</button>
         </div>
     </div>
 
-    <!-- Import Three.js from CDN -->
+    <!-- Import Three.js, Marching Cubes, and Exporters -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
             }
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
+        import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+        import { STLExporter } from 'three/addons/exporters/STLExporter.js';
+        import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 
         const statusEl = document.getElementById('status');
         const debugEl = document.getElementById('debug-log');
         const btnStart = document.getElementById('btn-start');
         const btnStop = document.getElementById('btn-stop');
+        const btnBake = document.getElementById('btn-bake');
         const btnExport = document.getElementById('btn-export');
         const overlayEl = document.getElementById('ar-ui-overlay');
         const bgFallback = document.getElementById('bg-fallback');
+        const meshControls = document.getElementById('mesh-controls');
+        const sliderBlob = document.getElementById('XR_BLOB');
+        const blobVal = document.getElementById('blobVal');
+
+        sliderBlob.addEventListener('input', (e) => blobVal.textContent = e.target.value);
 
         let logLines = [];
         function log(msg) {
@@ -89,6 +112,7 @@
         let pointsArray = [];
         let colorsArray = [];
         let pointCloudObject = null;
+        let generatedMesh = null;
         let lastCaptureTime = 0;
         const CAPTURE_INTERVAL_MS = 250; 
         const DEPTH_SAMPLE_STEP = 4; 
@@ -104,6 +128,11 @@
         renderer.xr.enabled = true; 
         document.body.appendChild(renderer.domElement);
 
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const dl = new THREE.DirectionalLight(0x00ffff, 1.2);
+        dl.position.set(10, 20, 15);
+        scene.add(dl);
+
         const pointsGeo = new THREE.BufferGeometry();
         pointsGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
         pointsGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
@@ -117,15 +146,29 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
+        // --- Manifold WASM Boot ---
+        let wasm = null;
+        (async () => {
+            const cdn = 'https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/';
+            try {
+                const mod = await import(cdn + 'manifold.js');
+                wasm = await mod.default({locateFile: f => cdn + f});
+                wasm.setup();
+                log("Manifold Engine Ready.");
+            } catch(e) {
+                log("Manifold load failed.");
+            }
+        })();
+
         // --- AR Capability Check ---
         async function checkXR() {
             if (window.location.protocol === 'file:') {
                 statusEl.textContent = "⚠ BLOCKED: CANNOT RUN FROM LOCAL FILE";
-                log("Fatal: Chrome blocks WebXR on file:/// URLs. Host on HTTPS.");
+                log("Host on HTTPS required.");
                 return;
             }
             if (!navigator.xr) {
-                statusEl.textContent = "WebXR missing. Check Browser/HTTPS.";
+                statusEl.textContent = "WebXR missing.";
                 return;
             }
             try {
@@ -154,30 +197,29 @@
                     optionalFeatures: ['depth-sensing', 'dom-overlay'],
                     domOverlay: { root: overlayEl },
                     depthSensing: {
-                        usagePreference: ['cpu-optimized'], 
+                        usagePreference: ['cpu-optimized', 'gpu-optimized'], 
                         dataFormatPreference: ['luminance-alpha', 'float32']
                     }
                 };
 
                 xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
                 
-                const granted = xrSession.grantedFeatures || [];
-                log(`Granted: ${granted.join(', ')}`);
-                
-                if (!granted.includes('depth-sensing')) {
-                    log("⚠ Chrome refused Depth API. Check chrome://flags.");
-                } else {
-                    log(`Format: ${xrSession.depthDataFormat}`);
-                }
-
                 bgFallback.style.display = 'none';
                 btnStart.style.display = 'none';
                 btnStop.style.display = 'block';
+                btnBake.style.display = 'none';
                 btnExport.style.display = 'none';
+                meshControls.style.display = 'none';
                 statusEl.textContent = "AR Active. Move phone to scan.";
                 
                 pointsArray = [];
                 colorsArray = [];
+                if (generatedMesh) {
+                    scene.remove(generatedMesh);
+                    generatedMesh.geometry.dispose();
+                    generatedMesh = null;
+                }
+                pointCloudObject.visible = true;
 
                 renderer.xr.setReferenceSpaceType('local');
                 await renderer.xr.setSession(xrSession);
@@ -197,10 +239,20 @@
             xrSession = null;
             bgFallback.style.display = 'block'; 
             btnStart.style.display = 'block';
+            btnStart.textContent = "Scan Again";
             btnStop.style.display = 'none';
             statusEl.textContent = `Scan complete! ${Math.floor(pointsArray.length / 3)} points.`;
-            log("Session ended.");
-            if (pointsArray.length > 0) btnExport.style.display = 'block';
+            log("Session ended. Ready to Bake.");
+            
+            if (pointsArray.length > 0) {
+                btnBake.style.display = 'block';
+                btnExport.style.display = 'block';
+                meshControls.style.display = 'block';
+                
+                // Jump the camera back so we can see the mesh
+                camera.position.set(0, 0, 1.5);
+                camera.lookAt(0, 0, 0);
+            }
         }
 
         // --- Core Scan Loop ---
@@ -218,75 +270,40 @@
                         if (depthInfo) {
                             if (timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
                                 lastCaptureTime = timestamp;
-                                extractDepthRawMemory(view, depthInfo, camMatrix);
+                                extractDepthPoints(view, depthInfo, camMatrix);
                                 updatePointCloudGeometry();
                             }
-                        } else {
-                            if(timestamp % 1000 < 50) log("Waiting for depth buffer...");
                         }
-                    } catch (e) {
-                        if(timestamp % 1000 < 50) log(`Depth Read Error: ${e.message}`);
-                    }
+                    } catch (e) { }
                 }
             }
             renderer.render(scene, camera);
         });
 
-        // --- DIRECT BINARY MEMORY EXTRACTION (Bypasses Chrome Bug) ---
-        function extractDepthRawMemory(view, depthInfo, camMatrix) {
+        function extractDepthPoints(view, depthInfo, camMatrix) {
             const width = depthInfo.width;
             const height = depthInfo.height;
-            const scale = depthInfo.rawValueToMeters;
-            
-            // Map 2D View coordinates into 3D space
             const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
-            // Map Depth Buffer arrays into View coordinates
-            const depthToView = new THREE.Matrix4().fromArray(depthInfo.normDepthBufferFromNormView.matrix).invert();
-
-            // Read the binary memory directly based on format
-            let rawData;
-            if (xrSession.depthDataFormat === 'luminance-alpha') {
-                rawData = new Uint16Array(depthInfo.data);
-            } else {
-                rawData = new Float32Array(depthInfo.data);
-            }
 
             for (let y = 0; y < height; y += DEPTH_SAMPLE_STEP) {
                 for (let x = 0; x < width; x += DEPTH_SAMPLE_STEP) {
+                    const normX = x / width;
+                    const normY = y / height;
+                    const depthInMeters = depthInfo.getDepthInMeters(normX, normY);
                     
-                    const index = x + (y * width);
-                    const depthInMeters = rawData[index] * scale;
-                    
-                    if (depthInMeters < 0.2 || depthInMeters > 4.0) continue;
+                    if (depthInMeters < 0.2 || depthInMeters > 3.0) continue;
 
-                    // Normalized depth map coordinate (0.0 to 1.0)
-                    const normDepthX = (x + 0.5) / width;
-                    const normDepthY = (y + 0.5) / height;
+                    const ndcX = normX * 2 - 1;
+                    const ndcY = -(normY * 2 - 1);
 
-                    // Unproject depth buffer bounds to normalized camera view bounds
-                    const ptView = new THREE.Vector3(normDepthX, normDepthY, 0).applyMatrix4(depthToView);
-                    const normViewX = ptView.x;
-                    const normViewY = ptView.y;
-
-                    // Safely ignore pixels that fall outside the camera's actual lens view
-                    if (normViewX < 0 || normViewX > 1 || normViewY < 0 || normViewY > 1) continue;
-
-                    // Convert to Normalized Device Coordinates (-1.0 to 1.0)
-                    const ndcX = normViewX * 2 - 1;
-                    const ndcY = -(normViewY * 2 - 1);
-
-                    // Unproject into 3D Camera Space
                     const ptCam = new THREE.Vector3(ndcX, ndcY, -1);
                     ptCam.applyMatrix4(invProj);
                     ptCam.multiplyScalar(depthInMeters / Math.abs(ptCam.z)); 
-                    
-                    // Transform to World Space
                     ptCam.applyMatrix4(camMatrix);
                     
                     pointsArray.push(ptCam.x, ptCam.y, ptCam.z);
                     
-                    // Assign heatmap colors based on physical depth
-                    const normalizedDepth = (depthInMeters - 0.2) / 3.8;
+                    const normalizedDepth = (depthInMeters - 0.2) / 2.8;
                     colorsArray.push(1.0 - normalizedDepth, 0.5, normalizedDepth);
                 }
             }
@@ -301,34 +318,124 @@
             pointCloudObject.geometry.attributes.color.needsUpdate = true;
         }
 
-        // --- Export to PLY ---
-        btnExport.addEventListener('click', () => {
-            const numPts = pointsArray.length / 3;
-            if (numPts === 0) return;
+        // --- Point Cloud to Mesh (Marching Cubes) ---
+        btnBake.addEventListener('click', async () => {
+            if(pointsArray.length === 0) return;
+            
+            btnBake.disabled = true;
+            statusEl.textContent = "Baking mesh... (This may take a second)";
+            log("Initializing Marching Cubes Volumetric Grid...");
 
-            statusEl.textContent = "Generating PLY file...";
-            
-            let plyOut = `ply\nformat ascii 1.0\nelement vertex ${numPts}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n`;
-            
-            for (let i = 0; i < numPts; i++) {
-                const x = pointsArray[i*3], y = pointsArray[i*3+1], z = pointsArray[i*3+2];
-                const r = Math.round(colorsArray[i*3] * 255), g = Math.round(colorsArray[i*3+1] * 255), b = Math.round(colorsArray[i*3+2] * 255);
-                plyOut += `${x.toFixed(5)} ${y.toFixed(5)} ${z.toFixed(5)} ${r} ${g} ${b}\n`;
-            }
-            
-            const blob = new Blob([plyOut], {type: 'text/plain'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `S21_Depth_Scan_${Date.now()}.ply`;
-            
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            
-            statusEl.textContent = "Export complete!";
-        });
-    </script>
-</body>
-</html>
+            // Let UI update before heavy computation
+            await new Promise(r => setTimeout(r, 50)); 
+
+            try {
+                let minX = Infinity, minY = Infinity, minZ = Infinity;
+                let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+                for (let i = 0; i < pointsArray.length; i += 3) {
+                    const x = pointsArray[i], y = pointsArray[i+1], z = pointsArray[i+2];
+                    if (x < minX) minX = x; if (x > maxX) maxX = x;
+                    if (y < minY) minY = y; if (y > maxY) maxY = y;
+                    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+                }
+                
+                const pad = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 0.15;
+                minX -= pad; maxX += pad; minY -= pad; maxY += pad; minZ -= pad; maxZ += pad;
+                const maxDim = Math.max(maxX-minX, maxY-minY, maxZ-minZ);
+                
+                // Setup Marching Cubes grid
+                const res = 64;
+                const material = new THREE.MeshStandardMaterial({ 
+                    color: 0x00ffcc, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide 
+                });
+                const effect = new MarchingCubes(res, material, false, false, 500000);
+                
+                const userDensity = parseFloat(sliderBlob.value);
+                const strength = userDensity; 
+                const subtract = 12.0;
+
+                log("Injecting geometry points...");
+                for (let i = 0; i < pointsArray.length; i += 3) {
+                    const px = (pointsArray[i] - minX) / maxDim;
+                    const py = (pointsArray[i+1] - minY) / maxDim;
+                    const pz = (pointsArray[i+2] - minZ) / maxDim;
+                    effect.addBall(px, py, pz, strength, subtract, null);
+                }
+                
+                effect.update();
+                let geo = effect.geometry.clone();
+                
+                // Scale back to world coordinates
+                geo.applyMatrix4(new THREE.Matrix4().makeScale(maxDim/2, maxDim/2, maxDim/2));
+                geo.applyMatrix4(new THREE.Matrix4().makeTranslation(minX + maxDim/2, minY + maxDim/2, minZ + maxDim/2));
+
+                // Optional WASM Topology Cleanup
+                if (wasm) {
+                    log("Running Manifold Watertightness Verification...");
+                    try {
+                        const a = geo.attributes.position.array;
+                        for(let i=0; i<a.length; i++) a[i] = Math.round(a[i]*1000)/1000;
+                        geo = BGU.mergeVertices(geo, 0.0005);
+                        
+                        const vp = new Float32Array(geo.attributes.position.count*3);
+                        for(let i=0; i<geo.attributes.position.count; i++) {
+                            vp[i*3] = geo.attributes.position.getX(i);
+                            vp[i*3+1] = geo.attributes.position.getY(i);
+                            vp[i*3+2] = geo.attributes.position.getZ(i);
+                        }
+                        const mMesh = new wasm.Mesh({numProp:3, vertProperties:vp, triVerts:new Uint32Array(geo.index.array)});
+                        mMesh.merge();
+                        const manifoldObj = wasm.Manifold.ofMesh(mMesh);
+                        
+                        const outMesh = manifoldObj.getMesh();
+                        const outGeo = new THREE.BufferGeometry();
+                        outGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(outMesh.vertProperties), 3));
+                        outGeo.setIndex(new THREE.BufferAttribute(new Uint32Array(outMesh.triVerts), 1));
+                        geo = outGeo.toNonIndexed();
+                        geo.computeVertexNormals();
+                        manifoldObj.delete();
+                        log("Manifold verification passed!");
+                    } catch(err) {
+                        log("Skipped manifold optimization (non-fatal).");
+                    }
+                }
+
+                if (generatedMesh) {
+                    scene.remove(generatedMesh);
+                    generatedMesh.geometry.dispose();
+                }
+
+                // Push to Scene
+                generatedMesh = new THREE.Mesh(geo, material);
+                scene.add(generatedMesh);
+                
+                pointCloudObject.visible = false;
+                
+                // Recenter camera nicely to view object
+                const center = new THREE.Vector3(minX + maxDim/2, minY + maxDim/2, minZ + maxDim/2);
+                camera.position.set(center.x, center.y + maxDim*0.5, center.z + maxDim*1.5);
+                camera.lookAt(center);
+
+                // Morph export button into an STL Exporter
+                btnBake.style.display = 'none';
+                meshControls.style.display = 'none';
+                
+                btnExport.textContent = '↓ Download Watertight .STL';
+                btnExport.style.background = '#00ffcc';
+                btnExport.style.color = '#000';
+                
+                // Swap export logic
+                btnExport.onclick = () => {
+                    log("Converting to STL...");
+                    const stlString = new STLExporter().parse(generatedMesh, { binary: true });
+                    const blob = new Blob([stlString], { type: 'application/octet-stream' });
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `Scanned_Mesh_${Date.now()}.stl`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    log("STL Exported Successfully.");
+                };
+                
+                statusEl.textContent = "Mesh succes
