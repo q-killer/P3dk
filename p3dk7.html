@@ -21,7 +21,9 @@
 <title>P3dK // PANTHEON V7</title>
 <link rel=icon type=image/svg+xml href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHJlY3Qgd2lkdGg9IjQ0IiBoZWlnaHQ9IjQ0IiBmaWxsPSIjMDEwMDEwIiByeD0iNiIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMjIiIHI9IjE4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmMGYiIHN0cm9rZS13aWR0aD0iMS40IiBzdHJva2UtZGFzaGFycmF5PSI3IDMiLz48ZWxsaXBzZSBjeD0iMjIiIGN5PSIyMiIgcng9IjExIiByeT0iMTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzBmZiIgc3Ryb2tlLXdpZHRoPSIxLjEiLz48Y2lyY2xlIGN4PSIyMiIgY3k9IjIyIiByPSIzIiBmaWxsPSIjZjBmIi8+PHRleHQgeD0iMjIiIHk9IjI3IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZmZmIiBmb250LWZhbWlseT0ibW9ub3NwYWNlIiBmb250LXNpemU9IjkiIGZvbnQtd2VpZ2h0PSJib2xkIj5QM2RLPC90ZXh0Pjwvc3ZnPg==">
 <style>
+/* ── CORE: theme variables ─────────────────────────────────────────────── */
 :root{--bg:#050508;--fg:#0ff;--ac:#f0f;--dm:#557;--p:rgba(5,5,8,.85);--bl:rgba(0,255,255,.15);--bh:rgba(0,255,255,.4);--bb:rgba(20,30,50,.4);--w:#ffa040}
+/* ── CORE: light mode override ─────────────────────────────────────────── */
 .lm{--bg:#e6e9ed;--fg:#000;--ac:#ff003c;--dm:#667;--p:rgba(230,233,237,.9);--bl:rgba(255,0,60,.15);--bh:rgba(255,0,60,.5);--bb:rgba(200,205,215,.4)}
 .lm body::before{opacity:0}.lm body::after{opacity:.05}
 .lm .ph,.lm .lb,.lm .vl,.lm .nt,.lm .btn,.lm #sts,.lm select,.lm input[type=number]{color:var(--fg)}
@@ -92,19 +94,29 @@ select{width:100%;background:var(--bg);color:var(--dm);border:1px solid var(--bh
 .abx h1{color:#f0f;margin:0 0 4px;font-size:14px;letter-spacing:3px}
 .abx p{color:var(--dm);line-height:1.6;font-size:9px;margin:3px 0}
 @media(max-width:768px) and (pointer:coarse){#ui{top:auto;bottom:0;left:0;width:100%;max-height:55vh;border-right:none;border-top:1px solid var(--bh);border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}#ui.col{transform:translateY(100%)}#tog{top:auto;left:14px;bottom:calc(55vh + 10px)}#tog.col{bottom:max(12px,env(safe-area-inset-bottom))}#fh{bottom:calc(55vh + 10px);left:52px;transition:bottom .3s,left .3s}#fh.col{bottom:max(12px,env(safe-area-inset-bottom));left:52px}#hud{top:8px;right:8px}}
-/* lowfx: applied when tab is backgrounded or on low-power devices.
-   Kills the CRT scanlines, vignette, and backdrop blurs — saves meaningful GPU/compositor cost. */
+/* ── STATES: lowfx — auto-applied when fps<40 or tab hidden ────────────── */
+/* Kills backdrop-filter blurs and CRT overlay — biggest mobile GPU win.    */
 .lowfx body::after,.lowfx body::before{display:none}
 .lowfx #ui,.lowfx .abx,.lowfx #fh button{backdrop-filter:none!important}
+/* ── MOBILE ─────────────────────────────────────────────────────────────── */
 </style>
 <script>
 // ── EARLY SCOPE MANAGER ── runs before module, stubs all onclick targets ──────
 (function(){
 const w=window,d=document;
 
-// Shorthand helpers
-w.sS=m=>{const e=d.getElementById('sts');if(e)e.textContent=m};
-w.uS=(e,v)=>{const el=d.getElementById(v);if(el)el.textContent=parseFloat(e.value).toFixed(e.step<1?2:0)};
+// ── UI RENDER QUEUE ──────────────────────────────────────────────────────────
+// Batches status bar and HUD text updates into a single rAF flush.
+// Prevents layout thrashing when sS() is called rapidly (CSG, CFD, scan progress).
+// _uiQ stores {id → value} — last write wins within a frame.
+const _uiQ=new Map();let _uiPending=false;
+const _flushUI=()=>{
+  _uiPending=false;
+  _uiQ.forEach((v,id)=>{const el=document.getElementById(id);if(el)el.textContent=v});
+  _uiQ.clear();
+};
+w.sS=m=>{_uiQ.set('sts',m);if(!_uiPending){_uiPending=true;requestAnimationFrame(_flushUI)}};
+w.uS=(e,v)=>{const el=document.getElementById(v);if(el)el.textContent=parseFloat(e.value).toFixed(e.step<1?2:0)};
 
 // Mobile breakpoint — used by togUI and future responsive logic
 const _mob=matchMedia('(max-width:768px) and (pointer:coarse)');
@@ -223,7 +235,7 @@ const stub=f=>()=>w.sS('> \u03a3 '+f.toUpperCase()+' — ENGINE LOADING...');
     <button class=ib id=thT onclick="event.stopPropagation();window.togT()" title="Theme">🌓</button>
   </div>
   <div class=pnl style="padding:6px 12px">
-    <input type=text id=srch placeholder="[ SEARCH PANELS ]" oninput="window.srh(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--bh);color:var(--fg);font:bold 11px monospace;outline:none;padding:4px 0">
+    <input type=text id=srch placeholder="[ SEARCH — / for commands ]" oninput="window.srh(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--bh);color:var(--fg);font:bold 11px monospace;outline:none;padding:4px 0">
   </div>
   <div class=pnl id=pSys>
     <div class="ph cl" onclick="window.tP(this)"><span>&#x3A3; I/O</span><span class=tg>MESH &bull; SPLAT &bull; URL</span><span class=ar>&#9658;</span></div>
@@ -313,7 +325,7 @@ const stub=f=>()=>w.sS('> \u03a3 '+f.toUpperCase()+' — ENGINE LOADING...');
       <div class=nt id=cylHint>&#x2460; Drag chip &#x2461; Click face &#x2462; Move=&#x00F8; &#x2463; Click to lock &#x2464; Move Y=depth &#x2465; SPACE=cut</div>
       <div class=g3><div class=db style="border-color:#f0f;color:#f0f" onpointerdown="window.startDrag(event,'hole')">&#x1F573; HOLE</div><div class=db style="border-color:#0f9;color:#0f9" onpointerdown="window.startDrag(event,'boss')">&#x1F7E2; BOSS</div><div class=db style="border-color:#0ff;color:#0ff" onpointerdown="window.startDrag(event,'heal')">&#x1F9F9; HEAL</div></div>
       <div class=dv></div>
-      <div class=r><span class=lb>&#x00F8; mm</span><input type=number id=cylDiaIn value=6 min=0.5 max=100 step=0.5 style="width:50px" oninput="cD1=Math.max(0.2,+this.value);window.updateCylPrv&&window.updateCylPrv()"><span class=lb style="margin-left:4px">&#x2113; mm</span><input type=number id=cylDepIn value=10 min=0.5 max=200 step=0.5 style="width:50px" oninput="cD2=Math.max(0.5,+this.value);window.updateCylPrv&&window.updateCylPrv()"></div>
+      <div class=r><span class=lb>&#x00F8; mm</span><input type=number id=cylDiaIn value=6 min=0.5 max=100 step=0.5 style="width:50px" oninput="window.cD1=Math.max(0.2,+this.value);window.updateCylPrv&&window.updateCylPrv()"><span class=lb style="margin-left:4px">&#x2113; mm</span><input type=number id=cylDepIn value=10 min=0.5 max=200 step=0.5 style="width:50px" oninput="window.cD2=Math.max(0.5,+this.value);window.updateCylPrv&&window.updateCylPrv()"></div>
       <div class=r><span class=lb>&#x00F8; LIVE</span><span class=vl id=codv>6.0</span><span class=lb style="margin-left:8px">&#x2113; LIVE</span><span class=vl id=clnv>10.0</span></div>
       <div class=dv></div>
       <label class=cr><input type=checkbox id=cbSnap onchange="window.togSnap()"> &#x1F9F2; GRID SNAP</label><label class=cr><input type=checkbox id=cbCylFaceSnap checked> &#x25CE; CENTER SNAP</label>
@@ -437,22 +449,75 @@ import{STLExporter}from'three/addons/exporters/STLExporter.js';
 import{GLTFExporter}from'three/addons/exporters/GLTFExporter.js';
 import*as BGU from'three/addons/utils/BufferGeometryUtils.js';
 
-// ── INSTANT UI SEARCH ──────────────────────────────────────────────────────────
-// Filters panels by text content. Ctrl+F focuses the search bar.
+// ── MODULE CONSTANTS ─────────────────────────────────────────────────────────
+const M=Math,$=id=>document.getElementById(id);
+const sS=m=>{window.sS(m)}; // delegate to window.sS (which uses the rAF queue)
+window.sS=window.sS||(m=>{const e=$('sts');if(e)e.textContent=m}); // fallback if queue not ready
+window.T=T;window.M=M;window.BGU=BGU;
+// ── COMMAND PALETTE ───────────────────────────────────────────────────────────
+// Ctrl+F to focus. Type to fuzzy-filter panels. Slash commands execute on Enter.
+// /wire /ghost /grid /stars /undo /redo /heal /restore /theme /stl /glb /3mf
+// /hollow /scan /cfd /stop /reset /xr /bake
+const _cmds={
+  '/wire':()=>{window.tog('w');window.sS('> ⌨ WIRE TOGGLE')},
+  '/ghost':()=>{window.tog('g');window.sS('> ⌨ GHOST TOGGLE')},
+  '/grid':()=>{window.tog('gr');window.sS('> ⌨ GRID TOGGLE')},
+  '/stars':()=>{window.tog('s');window.sS('> ⌨ STARS TOGGLE')},
+  '/undo':()=>window.doU(),
+  '/redo':()=>window.doD(),
+  '/heal':()=>window.healMesh(),
+  '/restore':()=>window.rstM(),
+  '/theme':()=>window.togT(),
+  '/stl':()=>window.doX('stl'),
+  '/glb':()=>window.doX('glb'),
+  '/obj':()=>window.doX('obj'),
+  '/3mf':()=>window.doX('3mf'),
+  '/hollow':()=>window.hollowMesh(),
+  '/scan':()=>window.scanOvh(),
+  '/cfd':()=>window.cfdStart(),
+  '/stop':()=>{window.cfdStop();window.stopXRScan()},
+  '/reset':()=>window.cfdReset(),
+  '/xr':()=>window.startXRScan(),
+  '/bake':()=>window.bakeXRMesh(),
+};
 window.srh=(q)=>{
-  const v=q.toLowerCase();
-  document.querySelectorAll('.pnl:not(:first-child)').forEach(p=>{
-    let m=0;
-    p.querySelectorAll('.r,.btn,.g2,.g3,select,.cr,.lb,.vl').forEach(e=>{
-      const h=e.innerText?.toLowerCase().includes(v)||(e.options&&Array.from(e.options).some(o=>o.text.toLowerCase().includes(v)));
-      e.style.display=h||!v?'':'none';
-      if(h)m=1;
+  const v=q.toLowerCase().trim();
+  const srch=document.getElementById('srch');
+  if(v.startsWith('/')){
+    // Slash command mode: show autocomplete hint in placeholder
+    const hint=Object.keys(_cmds).filter(k=>k.startsWith(v)).join('  ');
+    if(srch)srch.placeholder=hint||'[ NO MATCH ]';
+    document.querySelectorAll('.pnl:not(:first-child)').forEach(p=>p.style.display='');
+    return;
+  }
+  if(srch)srch.placeholder='[ SEARCH — / for commands ]';
+  if(!v){
+    document.querySelectorAll('.pnl:not(:first-child)').forEach(p=>{
+      p.style.display='';
+      p.querySelectorAll('.r,.btn,.g2,.g3,select,.cr,.lb,.vl').forEach(e=>e.style.display='');
     });
-    p.style.display=m||!v?'':'none';
-    if(v&&m)p.querySelector('.pb')?.classList.remove('hi');
+    return;
+  }
+  // Fuzzy panel filter — auto-opens matching panels
+  document.querySelectorAll('.pnl:not(:first-child)').forEach(p=>{
+    let hit=false;
+    p.querySelectorAll('.r,.btn,.g2,.g3,select,.cr,.lb,.vl').forEach(e=>{
+      const match=e.innerText?.toLowerCase().includes(v)||(e.options&&Array.from(e.options).some(o=>o.text.toLowerCase().includes(v)));
+      e.style.display=match?'':'none';
+      if(match)hit=true;
+    });
+    p.style.display=hit?'':'none';
+    if(hit){const pb=p.querySelector('.pb');if(pb)pb.classList.remove('hi')}
   });
 };
-window.sS=sS;window.T=T;window.M=M;window.BGU=BGU;
+// Execute slash command on Enter; clear on Escape
+document.getElementById('srch')?.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){
+    const fn=_cmds[e.target.value.trim().toLowerCase()];
+    if(fn){fn();e.target.value='';window.srh('');e.target.blur()}
+  }
+  if(e.key==='Escape'){e.target.value='';window.srh('');e.target.blur()}
+});
 window.uS=(e,v)=>{const el=$(v);if(el)el.textContent=parseFloat(e.value).toFixed(e.step<1?2:0)};
 window.upS=(v,ax)=>{if(!msh)return;sD=true;const n=+v/100;if(scLnk){msh.scale.set(n,n,n);['X','Y','Z'].forEach(id=>$(id)&&($(id).value=v))}else msh.scale[ax]=n};
 window.togLock=()=>{scLnk=!scLnk;$('bLk').textContent=scLnk?'🔒':'🔓'};
@@ -1305,6 +1370,9 @@ window.elongateDo=async()=>{
 // 3-step workflow: (1) click face → place; (2) drag mouse on face plane → set ø;
 // (3) click to lock ø, then move mouse vertically → set depth; (4) ENTER/click → cut
 let cylState=0,cMode='',cWn=null,cWp=null,cMesh=null,cylFd=null,cD1=6,cD2=10,cD3=10,kbBuf='',dragPlane=null,dragStart=null;
+// Expose cD1/cD2 as window properties so inline number inputs can write them
+Object.defineProperty(window,'cD1',{get:()=>cD1,set:v=>{cD1=v}});
+Object.defineProperty(window,'cD2',{get:()=>cD2,set:v=>{cD2=v}});
 const updCylPrv=()=>{
   if(cMesh){sc.remove(cMesh);cMesh.geometry.dispose();cMesh=null}
   if(!cWn||!cWp)return;
@@ -2050,7 +2118,6 @@ window.fKeys={};
 window.addEventListener('keydown',e=>{
   window.fKeys[e.key]=true;
   if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
-  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();document.getElementById('srch')?.focus();return}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();document.getElementById('srch')?.focus();return}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();window.doU();return}
   if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();window.doD();return}
@@ -3071,7 +3138,17 @@ rn.setAnimationLoop(t=>{
   if(window._splatUpdate)try{window._splatUpdate()}catch(e){}
   rn.render(sc,cm);
   const qi=cm.quaternion.clone().invert();vcCube.quaternion.copy(qi);vcRn.render(vcSc,vcCm);
-  fF++;if(t-t0>=1000){window.cubeStats.fps=M.round(fF*1000/(t-t0));uCF();fF=0;t0=t}
+  fF++;if(t-t0>=1000){
+    const fps2=M.round(fF*1000/(t-t0));
+    window.cubeStats.fps=fps2;uCF();fF=0;t0=t;
+    // Auto-quality scaling: enable lowfx when sustained fps < 40, restore above 55.
+    // Kills backdrop-filter blurs and CRT scanlines — biggest mobile GPU win.
+    // Only auto-toggle if user hasn't manually set a theme preference (tMO=false).
+    if(!window._fxLocked){
+      if(fps2<40&&!document.body.classList.contains('lowfx'))document.body.classList.add('lowfx');
+      else if(fps2>55&&document.body.classList.contains('lowfx')&&!window.bgTab)document.body.classList.remove('lowfx');
+    }
+  }
 });
 
 sS('\u03a3 AWAITING I/O \u2014 DROP MESH TO BEGIN');
