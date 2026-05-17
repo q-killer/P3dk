@@ -6,11 +6,8 @@
     <title>WebXR Depth Scanner</title>
     <style>
         body, html {
-            margin: 0;
-            overflow: hidden;
-            background-color: transparent !important;
-            color: #fff;
-            font-family: sans-serif;
+            margin: 0; overflow: hidden; background-color: transparent !important;
+            color: #fff; font-family: sans-serif;
         }
         #bg-fallback {
             position: fixed; inset: 0; background: #111; z-index: -1;
@@ -57,6 +54,7 @@
         </div>
     </div>
 
+    <!-- Import Three.js -->
     <script type="importmap">
         {
             "imports": {
@@ -110,6 +108,51 @@
         pointCloudObject = new THREE.Points(pointsGeo, pointsMat);
         scene.add(pointCloudObject);
 
+        // --- GPU Extraction Shader Setup ---
+        let glBinding = null;
+        let depthRenderTarget = null;
+        let depthBuffer = null;
+        const depthQuadScene = new THREE.Scene();
+        const depthOrthoCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+        const depthMaterial = new THREE.ShaderMaterial({
+            uniforms: { 
+                tDepth: { value: null },
+                isLuminanceAlpha: { value: 0.0 },
+                rawValueToMeters: { value: 1.0 }
+            },
+            vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
+            fragmentShader: `
+                uniform sampler2D tDepth;
+                uniform float isLuminanceAlpha;
+                uniform float rawValueToMeters;
+                varying vec2 vUv;
+
+                // Pack a float into an RGBA8 vector
+                vec4 packFloat(float depth) {
+                    float v = depth / 10.0; // clamp max 10m
+                    vec4 enc = vec4(1.0, 255.0, 65025.0, 16581375.0) * v;
+                    enc = fract(enc);
+                    enc -= enc.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0);
+                    return enc;
+                }
+
+                void main() {
+                    // WebGL readPixels natively inverts Y, so we flip vUv.y here
+                    vec4 texel = texture2D(tDepth, vec2(vUv.x, 1.0 - vUv.y));
+                    float depth = 0.0;
+                    
+                    if (isLuminanceAlpha > 0.5) {
+                        float rawDepth = (texel.r * 255.0) + (texel.a * 65280.0);
+                        depth = rawDepth * rawValueToMeters;
+                    } else {
+                        depth = texel.r * rawValueToMeters;
+                    }
+                    gl_FragColor = packFloat(depth);
+                }
+            `
+        });
+        depthQuadScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), depthMaterial));
+
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -118,6 +161,11 @@
 
         // --- AR Capability Check ---
         async function checkXR() {
+            if (window.location.protocol === 'file:') {
+                statusEl.textContent = "⚠ BLOCKED: CANNOT RUN FROM LOCAL FILE";
+                log("Fatal: Chrome blocks WebXR on file:/// URLs. Host on HTTPS.");
+                return;
+            }
             if (!navigator.xr) {
                 statusEl.textContent = "WebXR missing. Check Browser/HTTPS.";
                 return;
@@ -137,33 +185,29 @@
         }
         checkXR();
 
-        // --- Start AR Session (The Polite Configuration) ---
+        // --- Start AR Session ---
         btnStart.addEventListener('click', async () => {
             statusEl.textContent = "Launching AR...";
             logLines = []; 
             
             try {
-                // We STRICTLY request 'local' (matches Google test).
-                // We OPTIONALLY request depth and overlay so Chrome doesn't panic and block us.
+                // We STRICTLY request depth-sensing to force Chrome to give it to us.
+                // We provide ALL permutations so Samsung cannot reject the config.
                 const sessionInit = {
-                    requiredFeatures: ['local'],
-                    optionalFeatures: ['depth-sensing', 'dom-overlay'],
+                    requiredFeatures: ['local', 'depth-sensing'],
+                    optionalFeatures: ['dom-overlay'],
                     domOverlay: { root: overlayEl },
                     depthSensing: {
                         usagePreference: ['cpu-optimized', 'gpu-optimized'], 
-                        dataFormatPreference: ['luminance-alpha', 'float32']
+                        dataFormatPreference: ['float32', 'luminance-alpha']
                     }
                 };
 
                 xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
                 
-                // Check what features Chrome actually granted us!
                 const granted = xrSession.grantedFeatures || [];
                 log(`Granted: ${granted.join(', ')}`);
-                
-                if (!granted.includes('depth-sensing')) {
-                    log("⚠ WARNING: Chrome refused to grant Depth API. Scanning will not work. Check chrome://flags.");
-                }
+                log(`Depth Mode: ${xrSession.depthUsage} / ${xrSession.depthDataFormat}`);
 
                 bgFallback.style.display = 'none';
                 btnStart.style.display = 'none';
@@ -209,37 +253,47 @@
                     const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
                     
                     try {
-                        const depthInfo = frame.getDepthInformation(view);
-                        if (depthInfo) {
-                            if (timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
+                        // Branch based on what the Phone forced us to use
+                        if (xrSession.depthUsage === 'cpu-optimized') {
+                            const depthInfo = frame.getDepthInformation(view);
+                            if (depthInfo && timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
                                 lastCaptureTime = timestamp;
-                                extractDepthPoints(view, depthInfo, camMatrix);
+                                extractDepthPointsCPU(view, depthInfo, camMatrix);
                                 updatePointCloudGeometry();
                             }
-                        } else {
-                            if(timestamp % 1000 < 50) log("Waiting for depth buffer...");
+                        } else if (xrSession.depthUsage === 'gpu-optimized') {
+                            if (!glBinding) glBinding = new XRWebGLBinding(xrSession, renderer.getContext());
+                            const depthInfo = glBinding.getDepthInformation(view);
+                            if (depthInfo && timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
+                                lastCaptureTime = timestamp;
+                                extractDepthPointsGPU(view, depthInfo, camMatrix);
+                                updatePointCloudGeometry();
+                            }
                         }
                     } catch (e) {
-                        if(timestamp % 1000 < 50) log(`Depth Read Error: ${e.message}`);
+                        if(timestamp % 1000 < 50) log(`Extract Error: ${e.message}`);
                     }
                 }
             }
             renderer.render(scene, camera);
         });
 
-        function extractDepthPoints(view, depthInfo, camMatrix) {
+        // --- CPU EXTRACTION ---
+        function extractDepthPointsCPU(view, depthInfo, camMatrix) {
             const width = depthInfo.width;
             const height = depthInfo.height;
             const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
 
             for (let y = 0; y < height; y += DEPTH_SAMPLE_STEP) {
                 for (let x = 0; x < width; x += DEPTH_SAMPLE_STEP) {
-                    const depthInMeters = depthInfo.getDepthInMeters(x, y);
+                    const normX = x / width;
+                    const normY = y / height;
                     
+                    const depthInMeters = depthInfo.getDepthInMeters(normX, normY);
                     if (depthInMeters < 0.2 || depthInMeters > 4.0) continue;
 
-                    const ndcX = (x / width) * 2 - 1;
-                    const ndcY = -(y / height) * 2 + 1;
+                    const ndcX = normX * 2 - 1;
+                    const ndcY = -(normY * 2 - 1);
 
                     const ptCam = new THREE.Vector3(ndcX, ndcY, -1);
                     ptCam.applyMatrix4(invProj);
@@ -252,7 +306,68 @@
                     colorsArray.push(1.0 - normalizedDepth, 0.5, normalizedDepth);
                 }
             }
-            statusEl.textContent = `Scanning... Points: ${Math.floor(pointsArray.length / 3)}`;
+            statusEl.textContent = `Scanning (CPU)... Points: ${Math.floor(pointsArray.length / 3)}`;
+        }
+
+        // --- GPU EXTRACTION SHADER FALLBACK ---
+        function extractDepthPointsGPU(view, depthInfo, camMatrix) {
+            const width = depthInfo.width;
+            const height = depthInfo.height;
+            const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
+
+            depthMaterial.uniforms.tDepth.value = depthInfo.texture;
+            depthMaterial.uniforms.isLuminanceAlpha.value = xrSession.depthDataFormat === 'luminance-alpha' ? 1.0 : 0.0;
+            depthMaterial.uniforms.rawValueToMeters.value = depthInfo.rawValueToMeters;
+
+            if (!depthRenderTarget || depthRenderTarget.width !== width || depthRenderTarget.height !== height) {
+                if (depthRenderTarget) depthRenderTarget.dispose();
+                depthRenderTarget = new THREE.WebGLRenderTarget(width, height, {
+                    format: THREE.RGBAFormat,
+                    type: THREE.UnsignedByteType,
+                    minFilter: THREE.NearestFilter,
+                    magFilter: THREE.NearestFilter
+                });
+                depthBuffer = new Uint8Array(width * height * 4);
+            }
+
+            // Render depth texture into our RGBA render target
+            const prevRT = renderer.getRenderTarget();
+            renderer.setRenderTarget(depthRenderTarget);
+            renderer.render(depthQuadScene, depthOrthoCamera);
+            renderer.readRenderTargetPixels(depthRenderTarget, 0, 0, width, height, depthBuffer);
+            renderer.setRenderTarget(prevRT);
+
+            // Decode the packed float bytes
+            for (let y = 0; y < height; y += DEPTH_SAMPLE_STEP) {
+                for (let x = 0; x < width; x += DEPTH_SAMPLE_STEP) {
+                    const idx = (y * width + x) * 4;
+                    const r = depthBuffer[idx];
+                    const g = depthBuffer[idx+1];
+                    const b = depthBuffer[idx+2];
+                    const a = depthBuffer[idx+3];
+
+                    const normDepth = (r / 255.0) + (g / 65025.0) + (b / 16581375.0) + (a / 4228250625.0);
+                    const depthInMeters = normDepth * 10.0;
+
+                    if (depthInMeters < 0.2 || depthInMeters > 4.0) continue;
+
+                    const normX = x / width;
+                    const normY = y / height;
+                    const ndcX = normX * 2 - 1;
+                    const ndcY = -(normY * 2 - 1);
+
+                    const ptCam = new THREE.Vector3(ndcX, ndcY, -1);
+                    ptCam.applyMatrix4(invProj);
+                    ptCam.multiplyScalar(depthInMeters / Math.abs(ptCam.z)); 
+                    ptCam.applyMatrix4(camMatrix);
+                    
+                    pointsArray.push(ptCam.x, ptCam.y, ptCam.z);
+                    
+                    const normalizedDepth = (depthInMeters - 0.2) / 3.8;
+                    colorsArray.push(1.0 - normalizedDepth, 0.5, normalizedDepth);
+                }
+            }
+            statusEl.textContent = `Scanning (GPU)... Points: ${Math.floor(pointsArray.length / 3)}`;
         }
 
         function updatePointCloudGeometry() {
