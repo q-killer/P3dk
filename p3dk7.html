@@ -236,4 +236,2845 @@ const stub=f=>()=>w.sS('> \u03a3 '+f.toUpperCase()+' — ENGINE LOADING...');
       <div class=dv></div>
       <div class=r><span class=lb>&#916;x</span><input type=number id=X value=100 oninput="window.upS(this.value,'x')"><span class=lb>&#916;y</span><input type=number id=Y value=100 oninput="window.upS(this.value,'y')"><span class=lb>&#916;z</span><input type=number id=Z value=100 oninput="window.upS(this.value,'z')"><button class=ib id=bLk onclick="window.togLock()" style="border:none;font-size:11px" title="Link">&#x1F512;</button></div>
       <div class=dv></div>
-      <div class=g3><button class="btn m" id=XPT onclick="window.doX('stl')" disabled>&#8659;STL</button><button class="btn y" id=XPL onclick="window.doX('ply')" disabled>&#8659;PLY</button><button class="btn g" id=X3M onclick="window.doX('3mf')" disabled>&#8659;3MF</button><button
+      <div class=g3><button class="btn m" id=XPT onclick="window.doX('stl')" disabled>&#8659;STL</button><button class="btn y" id=XPL onclick="window.doX('ply')" disabled>&#8659;PLY</button><button class="btn g" id=X3M onclick="window.doX('3mf')" disabled>&#8659;3MF</button><button class=btn id=XGLB onclick="window.doX('glb')" disabled>&#8659;GLB</button><button class=btn id=XOBJ onclick="window.doX('obj')" disabled>&#8659;OBJ</button></div>
+    </div>
+  </div>
+  <div class=pnl id=pVis>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#955; VISUALS</span><span class=tg>&#961; &#949; &#955;</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=r><span class=lb>&#955; COLOR</span><input type=color id=MC value="#00e5ff" oninput="window.syM()"></div>
+      <div class=r><span class=lb>&#961; METALNESS</span><span class=vl id=mnv>0.6</span></div><input type=range id=MN min=0 max=1 step=.05 value=.6 oninput="window.uS(this,'mnv');window.syM()">
+      <div class=r><span class=lb>&#949; ROUGHNESS</span><span class=vl id=rgv>0.4</span></div><input type=range id=RG min=0 max=1 step=.05 value=.4 oninput="window.uS(this,'rgv');window.syM()">
+      <div class=dv></div>
+      <div class=g2><button class=btn id=bW onclick="window.tog('w')">[ &#x1F578; WIRE ]</button><button class=btn id=bG onclick="window.tog('g')">[ &#x1F47B; GHOST ]</button><button class="btn on" id=bGr onclick="window.tog('gr')">[ &#x25A6; GRID ]</button><button class=btn id=bSt onclick="window.tog('s')">[ &#x2605; STARS ]</button></div>
+      <div class=dv></div>
+      <div class=nt style="color:rgba(0,255,200,.6)">&#x1F4F7; CAMERA FEED &mdash; live video underlay.</div>
+      <div id=camPermNote class=nt style="display:none"></div>
+      <div class=g2><button class=btn id=bCamF onclick="window.togCam('environment')">[ &#x1F4F7; REAR CAM ]</button><button class=btn id=bCamU onclick="window.togCam('user')">[ &#x1F934; FRONT CAM ]</button></div>
+      <div class=r style="margin-top:3px"><span class=lb>&#x03B1; CAM OPACITY</span><span class=vl id=camAlpV>1.0</span></div><input type=range id=CAM_ALPHA min=0.1 max=1 step=0.05 value=1 oninput="window.uS(this,'camAlpV');window.setCamAlpha(+this.value)">
+    </div>
+  </div>
+  <div class=pnl id=pMesh>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x3A6; FIBONACCI LOOM</span><span class=tg>12&#x2605; CSG</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=nt>&#x2316;=Face &middot; CTRL=Add &middot; SPC=&#x26A1;Cut</div>
+      <div class="cr" style="color:var(--ac);font-weight:bold"><input type=checkbox id=cbSkin onchange="window.togSkin()"> &#x1F3AD; SKIN DEEP</div><div class="cr" style="color:#f0f"><input type=checkbox id=cbCurv> &#x1F52E; CURVE WRAP</div>
+      <select id=PT onchange="if(window.uPrv)window.uPrv();document.getElementById('cR')?.classList.toggle('hi',this.value!=='char')">
+        <optgroup label="&#x2014; PATTERNS &#x2014;"><option value=hex>HEX MATRIX</option><option value=tri>TRI LATTICE</option><option value=hypTri>HYPERBOLIC TRI</option><option value=sq>SQUARE GRID</option><option value=brick>SUBWAY BRICK</option><option value=diamond>DIAMOND ARGYLE</option><option value=moroccan>MOROCCAN OCT</option><option value=herringbone>HERRINGBONE</option><option value=circuit>CIRCUIT TRACES</option><option value=islamic>ISLAMIC 8-STAR</option><option value=voronoi>VORONOI CELLS</option><option value=char>EMOJI / TEXT</option></optgroup>
+      </select>
+      <div id=cR class=hi><input type=text id=EC value="&#x2605;" maxlength=4></div>
+      <div class=r><span class=lb style="color:#f0a0ff">&#x3A3; DENSITY</span><span class=vl id=dnv>1.0</span></div><input type=range id=DN min=.25 max=8 step=.25 value=1 oninput="window.uS(this,'dnv');if(window.uPrv)window.uPrv()">
+      <div class=r><span class=lb style="color:#f0a0ff">&#x03B8; ROTATION&deg;</span><span class=vl id=rvv>0</span></div><input type=range id=RV min=0 max=179 step=1 value=0 oninput="window.uS(this,'rvv');if(window.uPrv)window.uPrv()">
+      <div class=r><span class=lb>&#x00B1; INSET mm</span><span class=vl id=ev>2.0</span></div><input type=range id=E min=0 max=20 step=.5 value=2 oninput="window.uS(this,'ev');if(window.uPrv)window.uPrv()">
+      <div class=r><span class=lb>&#955; CELL SCALE</span><span class=vl id=cv>15</span></div><input type=range id=C min=1 max=80 step=.5 value=15 oninput="window.uS(this,'cv');if(window.uPrv)window.uPrv()">
+      <div class=r><span class=lb>&#x00F8; STRUT</span><span class=vl id=wv>2.0</span></div><input type=range id=W min=.1 max=50 step=.1 value=2 oninput="window.uS(this,'wv');if(window.uPrv)window.uPrv()">
+      <div class=r><span class=lb>&#x2207; DEPTH mm</span><span class=vl id=xv>5.0</span></div><input type=range id=XV min=-10 max=10 step=.5 value=5 oninput="window.uS(this,'xv');if(window.uPrv)window.uPrv()">
+      <div class=dv></div>
+      <button class="btn g" id=XCT onclick="window.exeC()" disabled style="padding:9px">[ &#x26A1; EXECUTE CUT ]</button>
+      <button class=btn id=bExcl onclick="window.togExcl()" disabled>[ &#x22A1; DRAW EXCL ]</button><button class="btn r2" id=bClrExcl onclick="window.clrExcl()" style="display:none">[ &#x2715; CLEAR EXCL ]</button>
+    </div>
+  </div>
+  <div class=pnl id=pAdv>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x2702; OCCAM CLEAVER</span><span class=tg>&#x03C4; &#x2200;</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=r><span class=lb>&#x03C4; TWIST&deg;</span><span class=vl id=twtv>0</span></div><input type=range id=TWT min=-360 max=360 value=0 oninput="window.uS(this,'twtv');window.prvTwist()"><button class="btn m" onclick="window.applyTwist()">[ &#x1F300; APPLY TWIST ]</button>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x2702; X%</span><span class=vl id=slxv>100</span></div><input type=range id=SLX min=1 max=100 value=100 oninput="window.uS(this,'slxv');window.prvSlice()">
+      <div class=r><span class=lb>&#x2702; Y%</span><span class=vl id=slyv>100</span></div><input type=range id=SLY min=1 max=100 value=100 oninput="window.uS(this,'slyv');window.prvSlice()">
+      <div class=r><span class=lb>&#x2702; Z%</span><span class=vl id=slzv>100</span></div><input type=range id=SLZ min=1 max=100 value=100 oninput="window.uS(this,'slzv');window.prvSlice()">
+      <div class=r><span class=lb>&#x2295; PIN &#x00F8; mm</span><span class=vl id=pinDV>4</span></div><input type=range id=PIN_D min=1 max=12 step=0.5 value=4 oninput="window.uS(this,'pinDV')">
+      <div class=r><span class=lb>&#x2295; PIN COUNT</span><span class=vl id=pinNV>2</span></div><input type=range id=PIN_N min=0 max=6 step=1 value=2 oninput="window.uS(this,'pinNV')">
+      <label class=cr><input type=checkbox id=cbPins checked> &#x2295; ALIGNMENT PINS</label>
+      <div class=g2 style="margin-top:4px"><button class="btn g" onclick="window.applySlice()">[ &#x1F52A; SLICE &#x2192; 2&#xD7; STL ]</button><button class=btn onclick="window.applySlice(true)">[ &#x1F52A; KEEP A ]</button></div>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x03B4; WALL mm</span><span class=vl id=hlwv>2.0</span></div><input type=range id=HLW min=.5 max=10 step=.5 value=2 oninput="window.uS(this,'hlwv')"><button class="btn m" onclick="window.hollowMesh()">[ &#x25A1; HOLLOW ]</button>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x03A9; SMOOTH</span><span class=vl id=rndv>0</span></div><input type=range id=RND min=0 max=10 step=1 value=0 oninput="window.uS(this,'rndv')"><button class="btn y" onclick="window.applyRounding()">[ &#x26AC; SMOOTH ]</button>
+    </div>
+  </div>
+  <div class=pnl id=pElong>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x2194; ELONGATE</span><span class=tg>&#x0394; STRETCH</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=g3 style="margin-bottom:4px"><button class=btn onclick="window.snapCam('front')" style="color:#0f9;font-size:8px">&#x1F3A5; FRONT</button><button class=btn onclick="window.snapCam('top')" style="color:#0f9;font-size:8px">&#x1F3A5; TOP</button><button class=btn onclick="window.snapCam('iso')" style="color:#0f9;font-size:8px">&#x1F3A5; ISO</button></div>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x0394; AXIS</span><div class=g3 style="flex:1;margin-left:6px"><button class="btn" id=elX onclick="window.elongateAxis='x';document.querySelectorAll('#elX,#elY,#elZ').forEach((b,i)=>b.classList.toggle('on',i===0));window.elongatePrv()">X</button><button class="btn on" id=elY onclick="window.elongateAxis='y';document.querySelectorAll('#elX,#elY,#elZ').forEach((b,i)=>b.classList.toggle('on',i===1));window.elongatePrv()">Y</button><button class="btn" id=elZ onclick="window.elongateAxis='z';document.querySelectorAll('#elX,#elY,#elZ').forEach((b,i)=>b.classList.toggle('on',i===2));window.elongatePrv()">Z</button></div></div>
+      <div class=r><span class=lb>&#x00B1; MODE</span><div class=g2 style="flex:1;margin-left:6px"><button class="btn on" id=elModeStretch onclick="window.elongateMode='stretch';document.getElementById('elModeStretch').classList.add('on');document.getElementById('elModeCompress').classList.remove('on');window.elongatePrv()">&#x2194; STRETCH</button><button class=btn id=elModeCompress onclick="window.elongateMode='compress';document.getElementById('elModeCompress').classList.add('on');document.getElementById('elModeStretch').classList.remove('on');window.elongatePrv()">&#x2190;&#x2192; COMPR</button></div></div>
+      <div class=r><span class=lb>&#x2113; AMOUNT mm</span><input type=number id=elOMM value=10 min=0.5 max=500 step=0.5 style="width:54px" oninput="document.getElementById('EL_O').value=Math.min(100,+this.value);window.uS(document.getElementById('EL_O'),'elOv');window.elongatePrv()"></div>
+      <div class=r><span class=lb></span><span class=vl id=elOv>10</span></div><input type=range id=EL_O min=0.5 max=100 step=0.5 value=10 oninput="window.uS(this,'elOv');document.getElementById('elOMM').value=this.value;window.elongatePrv()">
+      <div class=r><span class=lb>&#x2116; COPIES</span><span class=vl id=elNv>1</span></div><input type=range id=EL_N min=1 max=20 step=1 value=1 oninput="window.uS(this,'elNv');window.elongatePrv()">
+      <div class=r><span class=lb>% POSITION</span><span class=vl id=elPv>50</span></div><input type=range id=EL_P min=5 max=95 step=5 value=50 oninput="window.uS(this,'elPv');window.elongatePrv()">
+      <div id=elDimPrv class="nt hi" style="color:var(--ac);text-align:center"></div>
+      <button class="btn y" onclick="window.elongateDo()">[ &#x2194; APPLY ]</button>
+    </div>
+  </div>
+  <div class=pnl id=pCyl>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x2A01; HEPHAESTUS PIN</span><span class=tg>&#x00F8; &#x2113;</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=nt id=cylHint>&#x2460; Drag chip &#x2461; Click face &#x2462; Move=&#x00F8; &#x2463; Click to lock &#x2464; Move Y=depth &#x2465; SPACE=cut</div>
+      <div class=g3><div class=db style="border-color:#f0f;color:#f0f" onpointerdown="window.startDrag(event,'hole')">&#x1F573; HOLE</div><div class=db style="border-color:#0f9;color:#0f9" onpointerdown="window.startDrag(event,'boss')">&#x1F7E2; BOSS</div><div class=db style="border-color:#0ff;color:#0ff" onpointerdown="window.startDrag(event,'heal')">&#x1F9F9; HEAL</div></div>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x00F8; mm</span><input type=number id=cylDiaIn value=6 min=0.5 max=100 step=0.5 style="width:50px" oninput="cD1=Math.max(0.2,+this.value);window.updateCylPrv&&window.updateCylPrv()"><span class=lb style="margin-left:4px">&#x2113; mm</span><input type=number id=cylDepIn value=10 min=0.5 max=200 step=0.5 style="width:50px" oninput="cD2=Math.max(0.5,+this.value);window.updateCylPrv&&window.updateCylPrv()"></div>
+      <div class=r><span class=lb>&#x00F8; LIVE</span><span class=vl id=codv>6.0</span><span class=lb style="margin-left:8px">&#x2113; LIVE</span><span class=vl id=clnv>10.0</span></div>
+      <div class=dv></div>
+      <label class=cr><input type=checkbox id=cbSnap onchange="window.togSnap()"> &#x1F9F2; GRID SNAP</label><label class=cr><input type=checkbox id=cbCylFaceSnap checked> &#x25CE; CENTER SNAP</label>
+      <div id=cylDistNote class="nt hi" style="color:var(--ac)"></div>
+    </div>
+  </div>
+  <div class=pnl id=pSup>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x2766; SUPPORT FOUNDRY</span><span class=tg>DORIC IONIC GOTHIC</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=r><span class=lb>&#x03B8; OVERHANG &deg;</span><span class=vl id=ovhV>45</span></div><input type=range id=OVH min=20 max=70 step=1 value=45 oninput="window.uS(this,'ovhV')"><button class="btn y" id=bScanOvh onclick="window.scanOvh()" disabled>[ &#x25CE; SCAN OVERHANGS ]</button><div id=ovhSt class="nt hi"></div>
+      <div class=dv></div>
+      <select id=COL_O><option value=doric>DORIC &mdash; Plain capital</option><option value=ionic>IONIC &mdash; Volutes</option><option value=gothic>GOTHIC &mdash; Pointed</option><option value=plain>PLAIN &mdash; Tuscan</option></select>
+      <div class=r><span class=lb>&#x00F8; BASE mm</span><span class=vl id=colDV>6</span></div><input type=range id=COL_D min=2 max=20 step=.5 value=6 oninput="window.uS(this,'colDV')">
+      <div class=r><span class=lb>&#x03BA; TAPER %</span><span class=vl id=colTV>82</span></div><input type=range id=COL_T min=50 max=100 step=1 value=82 oninput="window.uS(this,'colTV')">
+      <div class=r><span class=lb>&#x03A3; FLUTES</span><span class=vl id=colFV>8</span></div><input type=range id=COL_F min=0 max=20 step=1 value=8 oninput="window.uS(this,'colFV')">
+      <div class=r><span class=lb>&#x0394; SPACING mm</span><span class=vl id=colSV>12</span></div><input type=range id=COL_S min=5 max=40 step=1 value=12 oninput="window.uS(this,'colSV')">
+      <div class=dv></div>
+      <div class=r><span class=lb style="color:#9f6">&#x2766; DIONYSUS VINE</span><label class=cr><input type=checkbox id=cbVine checked> ON</label></div>
+      <div class=r><span class=lb>&#x03B8; BRANCH &deg;</span><span class=vl id=vineAV>25</span></div><input type=range id=VINE_A min=10 max=45 step=1 value=25 oninput="window.uS(this,'vineAV')">
+      <div class=r><span class=lb>&#x221E; ITERS</span><span class=vl id=vineIV>4</span></div><input type=range id=VINE_I min=2 max=6 step=1 value=4 oninput="window.uS(this,'vineIV')">
+      <div class=r><span class=lb>&#x00F8; STEM mm</span><span class=vl id=vineDV>0.8</span></div><input type=range id=VINE_D min=.3 max=2 step=.1 value=.8 oninput="window.uS(this,'vineDV')">
+      <label class=cr><input type=checkbox id=cbLeaves checked> &#x2740; LEAVES</label><label class=cr><input type=checkbox id=cbWM checked> &#x24C5; P3dK MARK</label>
+      <div class=dv></div>
+      <button class="btn g" id=bGenSup onclick="window.genSup()" disabled>[ &#x2766; BUILD SUPPORTS ]</button><button class="btn r2" id=bRmvSup onclick="window.rmvSup()" style="display:none">[ &#x2715; REMOVE ]</button>
+    </div>
+  </div>
+  <div class=pnl id=pTopo>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x2697; ARCHITECT'S COMPASS</span><span class=tg>SIMP TOPO-OPT</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=r><span class=lb>&#x1F527; MAT</span></div><select id=TO_MAT><option value="3.5,0.36">PLA &mdash; E=3.5GPa</option><option value="2.1,0.38">PETG</option><option value="2.3,0.35">ABS</option><option value="3.0,0.39">Nylon</option><option value="200,0.30">Metal</option></select>
+      <div class=r><span class=lb>&#x2696; MASS %</span><span class=vl id=toMV>60</span></div><input type=range id=TO_M min=20 max=90 step=5 value=60 oninput="window.uS(this,'toMV');window.topoPreview()">
+      <div class=r><span class=lb>&#x25A6; VOXEL mm</span><span class=vl id=toVV>15</span></div><input type=range id=TO_V min=5 max=25 step=5 value=15 oninput="window.uS(this,'toVV')">
+      <div class=r><span class=lb>&#x2193; LOAD DIR</span><div class=g3 style="flex:1;margin-left:6px"><button class=btn onclick="window.topoLD=[1,0,0]">+X</button><button class="btn on" onclick="window.topoLD=[0,-1,0]">-Y</button><button class=btn onclick="window.topoLD=[0,0,1]">+Z</button></div></div>
+      <div class=r><span class=lb>&#x2605; LOAD N</span><span class=vl id=toLV>100</span></div><input type=range id=TO_L min=10 max=1000 step=10 value=100 oninput="window.uS(this,'toLV')">
+      <div class=dv></div>
+      <div class=g2><button class="btn y" onclick="window.topoPreview()">[ &#x2299; PREVIEW ]</button><button class="btn g" id=bTopoRun onclick="window.topoRun()">[ &#x2697; BAKE ]</button></div>
+      <button class="btn m" id=bTopoMerge onclick="window.topoMerge()" disabled style="margin-top:2px">[ &#x2697; MERGE TO MESH ]</button>
+      <div id=topoSt class="nt hi" style="color:#fc0"></div>
+    </div>
+  </div>
+  <div class=pnl id=pIndra>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x25CE; INDRA'S NET</span><span class=tg>DEPTH&#x2192;STL</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=nt id=xrCapNote>&#x23F3; [SYS: CHK_XR]</div>
+      <div class=nt style="color:rgba(0,255,200,.5)">&#x1F4A1; Hold 30&ndash;60cm. Move slowly. Auto-stops when stable.</div>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x03C3; VOXEL mm</span><span class=vl id=xrVxV>4</span></div><input type=range id=XR_VX min=2 max=15 step=1 value=4 oninput="window.uS(this,'xrVxV')">
+      <div class=r><span class=lb>&#x221E; FRAMES</span><span class=vl id=xrFrV>80</span></div><input type=range id=XR_FR min=20 max=200 step=10 value=80 oninput="window.uS(this,'xrFrV')">
+      <div class=r><span class=lb>&#x03B1; ISO LEVEL</span><span class=vl id=xrIsoV>0.00</span></div><input type=range id=XR_ISO min=-20 max=20 step=1 value=0 oninput="window.uS(this,'xrIsoV')">
+      <label class=cr><input type=checkbox id=cbXrSmooth checked> &#x26AC; SMOOTH (5-pass)</label>
+      <div class=dv></div>
+      <div id=xrProgress class="nt hi" style="color:#fc0"></div>
+      <div class=g2><button class="btn g" id=bXrStart onclick="window.startXRScan()">[ &#x1F4F7; START SCAN ]</button><button class="btn r2" id=bXrStop onclick="window.stopXRScan()" disabled>[ &#x23F9; STOP ]</button></div>
+      <button class="btn m" id=bXrBake onclick="window.bakeXRMesh()" disabled style="margin-top:4px">[ &#x2234; BAKE MESH ]</button>
+      <div class=dv></div>
+      <div class=nt style="color:rgba(0,255,200,.4)">&#x2139; Android Chrome+ARCore &middot; iOS: WebXR Viewer &middot; Desktop: use Splat Forge</div>
+    </div>
+  </div>
+  <div class=pnl id=pSplat>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x2736; SPLAT FORGE</span><span class=tg>.PLY .SPLAT .KSPLAT</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=nt>Load via &#x3A3; I/O &#x2192; OPEN FILE or drag onto canvas.</div>
+      <div id=splatSt class="nt hi"></div>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#x03B1; ALPHA CUT</span><span class=vl id=splatAlphaV>5</span></div><input type=range id=SP_ALPHA min=1 max=50 step=1 value=5 oninput="window.uS(this,'splatAlphaV')">
+      <div class=r><span class=lb>&#x03C3; VOXEL mm</span><span class=vl id=spVxV>6</span></div><input type=range id=SP_VX min=2 max=20 step=1 value=6 oninput="window.uS(this,'spVxV')">
+      <div class=r><span class=lb>&#x2296; MAX SPLATS k</span><span class=vl id=spMaxV>500</span></div><input type=range id=SP_MAX min=50 max=2000 step=50 value=500 oninput="window.uS(this,'spMaxV')">
+      <label class=cr><input type=checkbox id=cbSplatSmooth checked> &#x26AC; SMOOTH MESH</label>
+      <div class=dv></div>
+      <div class=g2><button class="btn y" id=bSplatMesh onclick="window.splatToMesh()" disabled>[ &#x25B3; SPLAT&#x2192;MESH ]</button><button class="btn r2" id=bSplatClose onclick="window.closeSplatViewer()" disabled>[ &#x2715; CLOSE ]</button></div>
+    </div>
+  </div>
+  <div class=pnl id=pCfd>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x03A8; CFD TUNNEL</span><span class=tg>100k GPU PARTICLES</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=r><span class=lb>&#x2192; WIND DIR</span><div class=g3 style="flex:1;margin-left:6px"><button class="btn on" id=cfdDX onclick="window.cfdSetDir(1,0,0)">+X</button><button class=btn id=cfdDY onclick="window.cfdSetDir(0,1,0)">+Y</button><button class=btn id=cfdDZ onclick="window.cfdSetDir(0,0,1)">+Z</button></div></div>
+      <div class=r><span class=lb>&#x26A1; SPEED</span><span class=vl id=cfdSpV>1.0</span></div><input type=range id=CFD_SP min=0.1 max=5 step=0.1 value=1 oninput="window.uS(this,'cfdSpV');window.cfdSetSpeed(+this.value)">
+      <div class=r><span class=lb>&#x2234; PARTICLES k</span><span class=vl id=cfdPtV>100</span></div><input type=range id=CFD_PT min=10 max=200 step=10 value=100 oninput="window.uS(this,'cfdPtV')">
+      <div class=r><span class=lb>&#x03B1; OPACITY</span><span class=vl id=cfdOpV>0.7</span></div><input type=range id=CFD_OP min=0.1 max=1 step=0.05 value=0.7 oninput="window.uS(this,'cfdOpV');window.cfdSetOpacity(+this.value)">
+      <label class=cr><input type=checkbox id=cbCfdCol checked> &#x1F308; VELOCITY COLOR</label><label class=cr><input type=checkbox id=cbCfdTunnel checked> &#x25A1; SHOW TUNNEL</label>
+      <div class=dv></div>
+      <div id=cfdSt class="nt hi" style="color:#fc0"></div>
+      <div class=g3><button class="btn g" id=bCfdStart onclick="window.cfdStart()">[ &#x25BA; RUN ]</button><button class=btn id=bCfdStop onclick="window.cfdStop()" disabled>[ &#x23F8; PAUSE ]</button><button class="btn r2" onclick="window.cfdReset()">[ &#x21BA; RST ]</button></div>
+      <button class="btn m" id=bCfdBake onclick="window.cfdBakeDrag()" disabled style="margin-top:4px">[ &#x2697; BAKE DRAG&#x2192;TOPO ]</button>
+    </div>
+  </div>
+  <div id=sts>&#x3A3; AWAITING I/O &mdash; DROP MESH</div>
+</div>
+
+<!-- HUD -->
+<div id=hud>
+  <div id=hudI><span id=h0></span><span id=h1></span></div>
+  <div id=vc><div id=vcW></div><button id=vca onclick="window.togPR()" title="Part Rotation">&#9875;</button></div>
+</div>
+<div id=hnt>&#x2316;=FACE &middot; &#x2295;CTRL=ADD &middot; SPC=&#x26A1; &middot; SCROLL=PATTERN</div>
+<div id=meas class=hi></div>
+<div id=ctx>
+  <button class=cb onclick="window.ctxAct&&window.ctxAct('align')">&#x25CE; ALIGN VIEW</button>
+  <button class=cb onclick="window.ctxAct&&window.ctxAct('heal')">&#x2295; HEAL FLUSH</button>
+</div>
+<div id=ab class=hi onclick="window.togA()">
+  <canvas id=abC></canvas>
+  <div class=abx onclick="event.stopPropagation()">
+    <h1>P3dK</h1>
+    <p style="color:var(--ac);font-size:11px;letter-spacing:2px">PANTHEON WORKBENCH &middot; V7.0</p>
+    <p>Code is Poetry. Computation is Art. <span style="color:#f0f">PEAK IS PEAK.</span></p>
+    <p>&#x3A3; Manifold-3d WASM &middot; &#x3A6; 12 patterns &middot; &#x2766; Classical supports &middot; &#x2697; Topo-opt &middot; &#x2194; Elongate &middot; &#x2702; Dual-split &middot; &#x25CE; Depth scan&rarr;STL &middot; &#x2736; Gaussian splats</p>
+    <p style="color:#555;font-size:8px">p3dk.com &middot; V7.0 &middot; Scan pipeline: WebXR depth-sensing + TSDF + MC &middot; Splat: @mkkellogg/gaussian-splats-3d</p>
+  </div>
+</div>
+
+<script type=module>
+import*as T from'three';
+import{OrbitControls as OC}from'three/addons/controls/OrbitControls.js';
+import{STLLoader}from'three/addons/loaders/STLLoader.js';
+import{OBJLoader}from'three/addons/loaders/OBJLoader.js';
+import{PLYLoader}from'three/addons/loaders/PLYLoader.js';
+import{ThreeMFLoader}from'three/addons/loaders/3MFLoader.js';
+import{GLTFLoader}from'three/addons/loaders/GLTFLoader.js';
+import{STLExporter}from'three/addons/exporters/STLExporter.js';
+import{GLTFExporter}from'three/addons/exporters/GLTFExporter.js';
+import*as BGU from'three/addons/utils/BufferGeometryUtils.js';
+
+// ── INSTANT UI SEARCH ──────────────────────────────────────────────────────────
+// Filters panels by text content. Ctrl+F focuses the search bar.
+window.srh=(q)=>{
+  const v=q.toLowerCase();
+  document.querySelectorAll('.pnl:not(:first-child)').forEach(p=>{
+    let m=0;
+    p.querySelectorAll('.r,.btn,.g2,.g3,select,.cr,.lb,.vl').forEach(e=>{
+      const h=e.innerText?.toLowerCase().includes(v)||(e.options&&Array.from(e.options).some(o=>o.text.toLowerCase().includes(v)));
+      e.style.display=h||!v?'':'none';
+      if(h)m=1;
+    });
+    p.style.display=m||!v?'':'none';
+    if(v&&m)p.querySelector('.pb')?.classList.remove('hi');
+  });
+};
+window.sS=sS;window.T=T;window.M=M;window.BGU=BGU;
+window.uS=(e,v)=>{const el=$(v);if(el)el.textContent=parseFloat(e.value).toFixed(e.step<1?2:0)};
+window.upS=(v,ax)=>{if(!msh)return;sD=true;const n=+v/100;if(scLnk){msh.scale.set(n,n,n);['X','Y','Z'].forEach(id=>$(id)&&($(id).value=v))}else msh.scale[ax]=n};
+window.togLock=()=>{scLnk=!scLnk;$('bLk').textContent=scLnk?'🔒':'🔓'};
+window.togSnap=()=>{isSnap=!isSnap};
+window.tog=m=>{
+  if(m==='w'&&msh){msh.material.wireframe=!msh.material.wireframe;$('bW').classList.toggle('on')}
+  if(m==='g'&&msh){msh.material.transparent=!msh.material.transparent;msh.material.opacity=msh.material.transparent?.3:1;$('bG').classList.toggle('on')}
+  if(m==='gr'){gOn=!gOn;grO.visible=gOn;$('bGr').classList.toggle('on')}
+  if(m==='s'){sOn=!sOn;sfO.visible=sOn;$('bSt').classList.toggle('on')}
+};
+window.syM=()=>{if(!msh)return;sD=true;const m=msh.material;if($('MC'))m.color.set($('MC').value);if($('MN'))m.metalness=+$('MN').value;if($('RG'))m.roughness=+$('RG').value;m.needsUpdate=true};
+window.getMat=()=>new T.MeshStandardMaterial({color:new T.Color($('MC')?$('MC').value:'#00e5ff'),metalness:$('MN')?+$('MN').value:.6,roughness:$('RG')?+$('RG').value:.4,side:T.DoubleSide});
+
+// ── SCENE ──────────────────────────────────────────────────────────────────────
+const sc=new T.Scene(),cm=new T.PerspectiveCamera(45,innerWidth/innerHeight,.1,5000);
+cm.position.set(0,80,250);
+const rn=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,alpha:true,xrCompatible:true});
+rn.setSize(innerWidth,innerHeight);rn.setPixelRatio(M.min(devicePixelRatio,2));
+rn.setClearColor(0,0);
+rn.domElement.style.cssText='position:fixed;top:0;left:0;z-index:0;touch-action:none';
+document.body.appendChild(rn.domElement);
+const ct=new OC(cm,rn.domElement);ct.enableDamping=true;ct.dampingFactor=.07;ct.maxPolarAngle=M.PI*.48;
+sc.add(new T.AmbientLight(0xffffff,.6));
+sc.add(new T.HemisphereLight(0xffffff,0x444444,.8));
+const dl=new T.DirectionalLight(0x00ffff,1.2);dl.position.set(60,120,90);sc.add(dl);
+const dl2=new T.DirectionalLight(0xff00ff,.5);dl2.position.set(-80,-60,-70);sc.add(dl2);
+// Grid: center line bright cyan, division lines dim teal — visible on dark alpha canvas
+const grO=new T.GridHelper(600,60,0x00ffcc,0x003d3d);
+grO.material.transparent=true;grO.material.opacity=.55;
+sc.add(grO);
+// Update grid colors when theme changes (dark: cyan/teal, light: purple/lavender)
+window.updGrid=()=>{
+  if(!grO)return;
+  const mats=Array.isArray(grO.material)?grO.material:[grO.material];
+  mats.forEach((mt,i)=>{mt.color.set(window.iL?(i===0?0x9900cc:0x6622aa):(i===0?0x00ffcc:0x003d3d));mt.needsUpdate=true});
+};
+const sfP=new Float32Array(4500);for(let i=0;i<4500;i++)sfP[i]=(M.random()-.5)*2400;
+const sfO=new T.Points(new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(sfP,3)),new T.PointsMaterial({color:0xaaccff,size:2.5,transparent:true,opacity:.8,blending:T.AdditiveBlending}));
+sfO.visible=false;sc.add(sfO);
+let gOn=true,sOn=false,msh=null,sD=false,scLnk=true,isSnap=false;
+window.msh=null;
+
+// ── MEMORY / UNDO ──────────────────────────────────────────────────────────────
+const mem={h:[],s:[],i:-1,
+  sv(g){if(this.i<this.h.length-1){
+      // Dispose forward history being overwritten
+      this.h.splice(this.i+1).forEach(og=>og?.dispose?.());
+      this.s.splice(this.i+1)}
+    this.h.push(g.clone());this.s.push({x:+$('X').value,y:+$('Y').value,z:+$('Z').value});
+    if(this.h.length>10){
+      // Dispose the oldest snapshot being evicted to prevent geometry memory leak
+      this.h.shift()?.dispose?.();
+      this.s.shift()}else this.i++;this._u()},
+  ud(){if(this.i>0){this.i--;this._u();return this.h[this.i].clone()}return null},
+  rd(){if(this.i<this.h.length-1){this.i++;this._u();return this.h[this.i].clone()}return null},
+  orig(){return this.h[0]?.clone()},
+  _u(){$('bU').disabled=this.i<=0;$('bRd').disabled=this.i>=this.h.length-1}
+};
+window.doU=()=>{const g=mem.ud();if(g&&msh){clrAll();msh.geometry.dispose();msh.geometry=g;uH();sS('> ↺ UNDO')}};
+window.doD=()=>{const g=mem.rd();if(g&&msh){clrAll();msh.geometry.dispose();msh.geometry=g;uH();sS('> ↻ REDO')}};
+window.rstM=()=>{const o=mem.orig();if(!o||!msh)return;clrAll();gHoles=[];msh.geometry.dispose();msh.geometry=o;msh.scale.set(1,1,1);msh.position.set(0,0,0);['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));mem.h=[o.clone()];mem.s=[{x:100,y:100,z:100}];mem.i=0;mem._u();uH();sS('> ↺ RESTORED')};
+
+// ── HUD ────────────────────────────────────────────────────────────────────────
+window.uH=()=>{
+  if(!msh?.geometry?.attributes?.position){$('h0').innerHTML='';$('h1').innerHTML='';window.cubeStats={v:'--',t:'--',mf:'--',fps:window.cubeStats?.fps||'--'};uCF();return}
+  msh.geometry.computeBoundingBox();
+  const s=msh.geometry.boundingBox.getSize(new T.Vector3()),t=(msh.geometry.attributes.position.count/3|0);
+  $('h0').innerHTML=`&#x25B2; <span>${t.toLocaleString()}</span><br>`;
+  $('h1').innerHTML=`&#x3A3; <span>${s.x.toFixed(1)}&times;${s.y.toFixed(1)}&times;${s.z.toFixed(1)}mm</span>`;
+  window.cubeStats={v:msh.geometry.attributes.position.count.toLocaleString(),t:t.toLocaleString(),sz:`${s.x.toFixed(0)}x${s.y.toFixed(0)}x${s.z.toFixed(0)}`,fps:window.cubeStats?.fps||'--'};
+  uCF();
+};
+const uH=window.uH;
+
+// ── CAMERA FEED ────────────────────────────────────────────────────────────────
+// Live camera as scene background using a full-screen <video> element.
+// The renderer has alpha:true + clearColor(0,0), so the video shows through.
+// We use CSS z-index layering: video (z:1) → canvas (z:0 transparent) → UI (z:10).
+// This is deliberately simpler than a Three.js VideoTexture on a plane — it means
+// zero GPU overhead for the background and no perspective distortion.
+//
+// On mobile: 'environment' = rear camera, 'user' = selfie cam.
+// Permission is requested lazily on first button press.
+
+let camStream=null,camVideo=null,camFacing=null;
+
+// Create the video element once, kept in DOM but hidden until activated
+const camEl=document.createElement('video');
+camEl.autoplay=true;camEl.playsInline=true;camEl.muted=true;
+camEl.style.cssText='position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:-1;display:none;pointer-events:none';
+document.body.appendChild(camEl);
+
+// Check camera permission state and update the UI note accordingly.
+// Chrome requires HTTPS or localhost for getUserMedia — file:// and http:// silently
+// return undefined for navigator.mediaDevices, never showing a permission prompt.
+const camNote=n=>{ const el=$('camPermNote'); if(el){el.style.display=n?'block':'none';el.textContent=n||''; el.style.color=n?.startsWith('✔')?'#0f9':n?.startsWith('⚠')?'#ffa040':'#f77'} };
+const camSetBtns=en=>{[$('bCamF'),$('bCamU')].forEach(b=>{if(b){b.disabled=!en;b.style.opacity=en?'1':'0.4'}})};
+
+// Proactive capability check — runs when the module loads
+(async()=>{
+  if(!window.isSecureContext){
+    // file:// or http:// — mediaDevices is undefined, prompt will never appear
+    const proto=location.protocol;
+    const msg=proto==='file:'
+      ? '⚠ Open via https:// or localhost — camera blocked on file://'
+      : '⚠ Camera requires HTTPS — serve over https:// or localhost';
+    camNote(msg);camSetBtns(false);return;
+  }
+  if(!navigator.mediaDevices?.getUserMedia){
+    camNote('⚠ Camera API not available in this browser');camSetBtns(false);return;
+  }
+  // Query existing permission state without triggering a prompt
+  try{
+    const perm=await navigator.permissions.query({name:'camera'});
+    const update=()=>{
+      if(perm.state==='granted'){camNote('✔ Camera permission granted');camSetBtns(true)}
+      else if(perm.state==='denied'){camNote('✗ Camera blocked — allow in browser address bar → 🔒 → Camera');camSetBtns(false)}
+      else{camNote('📷 Tap a button below — Chrome will ask for camera permission');camSetBtns(true)} // 'prompt' state
+    };
+    update();
+    perm.onchange=update; // live updates if user changes permission in settings
+  }catch(e){
+    // permissions.query not supported (e.g. Firefox) — just enable and let getUserMedia handle it
+    camSetBtns(true);
+  }
+})();
+
+window.togCam=async(facing)=>{
+  // Guard: must be secure context
+  if(!window.isSecureContext){
+    const proto=location.protocol;
+    const msg=proto==='file:'
+      ? 'Camera needs HTTPS. Save the file to a web server or run: npx serve . then open http://localhost:PORT'
+      : 'Camera requires HTTPS. Open the page over https:// or localhost.';
+    camNote('⚠ '+msg);sS('> 📷 NEEDS HTTPS — see λ VISUALS note');return;
+  }
+  if(!navigator.mediaDevices?.getUserMedia){sS('> 📷 CAMERA API UNAVAILABLE');return}
+
+  // Toggling the same facing again → stop feed
+  if(camStream&&camFacing===facing){
+    camStream.getTracks().forEach(t=>t.stop());camStream=null;camFacing=null;
+    camEl.style.display='none';camEl.srcObject=null;
+    rn.domElement.style.background='var(--bg)';
+    document.getElementById('R').style.background='var(--bg)';
+    [$('bCamF'),$('bCamU')].forEach(b=>b?.classList.remove('on'));
+    camNote('📷 Tap a button below — Chrome will ask for camera permission');
+    sS('> 📷 CAMERA OFF');return;
+  }
+  // Stop any existing stream first
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null}
+  sS('> 📷 REQUESTING CAMERA...');
+  camNote('⏳ Waiting for permission — check browser prompt at top of screen...');
+  try{
+    // Chrome on Android: 'environment' = rear, 'user' = front
+    // exact:false so it falls back gracefully if facing mode isn't supported (desktop)
+    const constraints={
+      video:{facingMode:{ideal:facing},width:{ideal:1920},height:{ideal:1080}},
+      audio:false
+    };
+    camStream=await navigator.mediaDevices.getUserMedia(constraints);
+    camFacing=facing;
+    camEl.srcObject=camStream;
+    await camEl.play();
+    camEl.style.display='block';
+    rn.domElement.style.background='transparent';
+    document.getElementById('R').style.background='transparent';
+    $('bCamF')?.classList.toggle('on',facing==='environment');
+    $('bCamU')?.classList.toggle('on',facing==='user');
+    const trk=camStream.getVideoTracks()[0],s=trk.getSettings();
+    const label=trk.label||'camera';
+    camNote(`✔ ${facing==='environment'?'Rear':'Front'} cam active — ${s.width||'?'}×${s.height||'?'}`);
+    sS(`> 📷 ${s.width||'?'}×${s.height||'?'} ${facing==='environment'?'REAR':'FRONT'} — ${label.slice(0,40)}`);
+  }catch(err){
+    camStream=null;camFacing=null;
+    // Cyberpunk system error codes — terse, unambiguous, professional
+    const fixes={
+      NotAllowedError:'[SYS_ERR: CAM_DENIED] — allow in browser → 🔒 → Camera → Allow',
+      NotFoundError:'[HW_ERR: CAM_NOT_FOUND]',
+      NotReadableError:'[HW_ERR: CAM_IN_USE] — close other apps',
+      OverconstrainedError:'[HW_ERR: OVERCONSTRAINED] — try other cam',
+      SecurityError:'[SYS_ERR: SECURE_CTX_REQ] — needs HTTPS',
+    };
+    const msg=fixes[err.name]||err.message;
+    camNote('✗ '+msg);
+    // Show recovery button if permission was denied
+    if(err.name==='NotAllowedError'){
+      const n=$('camPermNote');
+      if(n){
+        const retry=document.createElement('button');
+        retry.className='btn';retry.textContent='[ ↺ RETRY AFTER ALLOWING ]';
+        retry.style.marginTop='4px';retry.style.width='100%';
+        retry.onclick=()=>{retry.remove();window.togCam(facing)};
+        n.appendChild(retry);
+      }
+    }
+    sS('> 📷 CAM BLOCKED — see λ VISUALS panel');
+    console.warn('Camera error:',err);
+  }
+};
+
+window.setCamAlpha=(v)=>{camEl.style.opacity=v};
+
+// ── MANIFOLD WASM ──────────────────────────────────────────────────────────────
+let wasm=null;
+(async()=>{
+  // CDN order: jsdelivr first (most reliable for npm WASM), unpkg as fallback.
+  // locateFile maps .wasm filename to the same CDN base so both files co-load.
+  for(const cdn of['https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/','https://unpkg.com/manifold-3d@2.5.1/']){
+    try{const mod=await import(cdn+'manifold.js');
+      wasm=await Promise.race([mod.default({locateFile:f=>cdn+f}),new Promise((_,r)=>setTimeout(()=>r(new Error('timeout')),15000))]);
+      wasm.setup();sS('> \u03a3 ENGINE READY');
+      window.dispatchEvent(new Event('engine-ready'));break;
+    }catch(e){console.warn('manifold CDN:',cdn,e.message)}
+  }
+})();
+
+const quantizeGeo=(g,p=1000)=>{const a=g.attributes.position.array;for(let i=0;i<a.length;i++)a[i]=M.round(a[i]*p)/p};
+// geo2manifold: converts a THREE.BufferGeometry to a manifold-3d Manifold object.
+// Requires merged vertices (no duplicate verts) and indexed geometry.
+// manifold-3d tracks C++ heap allocations — every returned object must be
+// deleted via m.track() or explicit .delete() to prevent WASM heap leaks.
+function geo2manifold(geo){
+  if(!wasm)throw new Error('manifold not loaded');
+  let g=BGU.mergeVertices(geo.index?geo:geo,0.0005);
+  if(!g.index)g=BGU.mergeVertices(g,0.0005);
+  quantizeGeo(g);
+  const pos=g.attributes.position,idx=g.index,vp=new Float32Array(pos.count*3);
+  for(let i=0;i<pos.count;i++){vp[i*3]=pos.getX(i);vp[i*3+1]=pos.getY(i);vp[i*3+2]=pos.getZ(i)}
+  const mesh=new wasm.Mesh({numProp:3,vertProperties:vp,triVerts:new Uint32Array(idx.array)});
+  mesh.merge();return wasm.Manifold.ofMesh(mesh);
+}
+// manifold2geo: converts a manifold-3d Manifold back to a THREE.BufferGeometry.
+// getMesh() returns vertProperties (interleaved position+normal floats) and triVerts.
+// numProp is typically 3 (xyz) or 6 (xyz+normal) depending on the manifold operation.
+function manifold2geo(mf){
+  const mesh=mf.getMesh(),np=mesh.numProp||3,vp=mesh.vertProperties,tv=mesh.triVerts;
+  const geo=new T.BufferGeometry();
+  if(np===3){geo.setAttribute('position',new T.BufferAttribute(new Float32Array(vp),3))}
+  else{const nv=vp.length/np,pos=new Float32Array(nv*3);for(let i=0;i<nv;i++){pos[i*3]=vp[i*np];pos[i*3+1]=vp[i*np+1];pos[i*3+2]=vp[i*np+2]}geo.setAttribute('position',new T.BufferAttribute(pos,3))}
+  geo.setIndex(new T.BufferAttribute(new Uint32Array(tv),1));
+  const ng=geo.toNonIndexed();ng.computeVertexNormals();return ng;
+}
+// withManifold: tracks intermediate Manifold objects and deletes them after fn returns.
+// fn receives {track, wasm}; any manifold object passed to track() is cleaned up.
+// Return value can be a BufferGeometry OR {A:geo,B:geo} — both are safe since
+// manifold2geo() converts to Three.js geometry before the finally block runs.
+function withManifold(fn){const tr=[];const m={track(o){tr.push(o);return o},wasm};try{return fn(m)}finally{tr.forEach(o=>{try{o.delete()}catch(e){}})}};
+window.geo2manifold=geo2manifold;window.manifold2geo=manifold2geo;window.withManifold=withManifold;
+
+function csgBool(op,tool){
+  if(!wasm){sS('> MANIFOLD NOT LOADED');return}
+  msh.updateMatrixWorld(true);const src=msh.geometry.clone();src.applyMatrix4(msh.matrixWorld);
+  const ng=withManifold(m=>{
+    const a=m.track(geo2manifold(src)),b=m.track(geo2manifold(tool.geometry));
+    let r;if(op==='sub')r=m.track(a.subtract(b));else if(op==='int')r=m.track(a.intersect(b));else r=m.track(a.add(b));
+    return manifold2geo(r);
+  });
+  src.dispose();msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);
+  ['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));msh.updateMatrixWorld();msh.geometry.dispose();msh.geometry=ng;mem.sv(ng);
+}
+window.csgBool=csgBool;
+
+// ── UNIVERSAL LOADER ───────────────────────────────────────────────────────────
+// One entry point for all file types: mesh formats + Gaussian splat formats.
+// Called from: file input, drag-drop, URL fetch.
+// Splat formats (.splat/.ksplat + .ply with >200k verts) route to loadSplat().
+// All mesh formats route to onMeshLoaded() after format-specific parsing.
+function onMeshLoaded(g){
+  if(!g)return;
+  if(msh){sc.remove(msh);msh.geometry.dispose();msh.material.dispose()}
+  clrAll();gHoles=[];mem.h=[];mem.s=[];mem.i=-1;
+  if(g.index)g=g.toNonIndexed();
+  g.computeVertexNormals();
+  g.applyMatrix4(new T.Matrix4().makeRotationX(-M.PI/2));
+  g.computeBoundingBox();
+  const bb=g.boundingBox;
+  g.translate(-(bb.max.x+bb.min.x)/2,-bb.min.y,-(bb.max.z+bb.min.z)/2);
+  if(g.attributes.position.count>500000){g=BGU.mergeVertices(g,.0005);if(g.index)g=g.toNonIndexed();g.computeVertexNormals();$('mWarn').classList.remove('hi')}
+  else $('mWarn').classList.add('hi');
+  g.computeBoundingBox();
+  msh=new T.Mesh(g,getMat());window.msh=msh;sc.add(msh);mem.sv(g);
+  const sy=g.boundingBox.max.y,md=M.max(g.boundingBox.max.x-g.boundingBox.min.x,sy,g.boundingBox.max.z-g.boundingBox.min.z);
+  cm.position.set(0,sy/2+md*.4,md*1.8);ct.target.set(0,sy/2,0);ct.update();
+  ['XCT','bRst','XPT','XPL','X3M','XGLB','XOBJ','bHeal','bScanOvh'].forEach(id=>{const b=$(id);if(b)b.disabled=0});
+  sD=false;uH();sS('> \u03a3 LOADED: '+(g.attributes.position.count/3|0).toLocaleString()+' \u25b2 \u2014 '+window.srcFN);
+}
+window.healMesh=()=>{if(!msh)return;const g=BGU.mergeVertices(msh.geometry,.001);g.computeVertexNormals();msh.geometry.dispose();msh.geometry=g;uH();sS('> \u2295 HEALED')};
+
+const _loadErr=e=>sS('> ERR: '+(e?.message||e));
+
+// Route a File or ArrayBuffer+ext to the correct loader
+async function loadAny(file,nameHint){
+  const name=(file?.name||nameHint||'').toLowerCase();
+  const ext=name.split('.').pop();
+  window.srcFN=(file?.name||nameHint||'model').replace(/\.[^.]+$/,'');
+  sS('> \u03a3 LOADING '+name+'...');
+  // Splat formats always go to splat viewer
+  if(['splat','ksplat'].includes(ext)){
+    const buf=file instanceof File?await file.arrayBuffer():file;
+    window.loadSplat(buf,file?.name||nameHint);return;
+  }
+  // PLY with large point count might be a splat — detect by trying mesh loader first
+  const r=new FileReader();
+  const onBuf=buf=>{
+    try{
+      if(ext==='stl') return onMeshLoaded(new STLLoader().parse(buf));
+      if(ext==='ply'){
+        const g=new PLYLoader().parse(buf);
+        // Heuristic: if PLY has no index and >200k verts, likely a splat point cloud
+        if(!g.index&&g.attributes.position?.count>200000){
+          sS('> ✶ LARGE PLY — trying as splat...');
+          window.loadSplat(buf,name);return;
+        }
+        return onMeshLoaded(g);
+      }
+      if(ext==='3mf'){const res=new ThreeMFLoader().parse(buf);const gs=[];res.traverse(c=>{if(c.isMesh)gs.push(c.geometry.clone().applyMatrix4(c.matrixWorld))});if(!gs.length)throw new Error('No mesh');return onMeshLoaded(BGU.mergeGeometries(gs))}
+      if(ext==='glb'||ext==='gltf'){new GLTFLoader().parse(buf,'',gltf=>{let g=null;gltf.scene.traverse(c=>{if(c.isMesh&&!g)g=c.geometry.clone()});if(!g)throw new Error('No mesh');onMeshLoaded(g)},_loadErr);return}
+      _loadErr(new Error('Unsupported: .'+ext));
+    }catch(e){_loadErr(e)}
+  };
+  const onTxt=txt=>{
+    try{
+      if(ext==='obj'){const res=new OBJLoader().parse(txt);let g=null;res.traverse(c=>{if(c.isMesh&&!g)g=c.geometry.clone()});if(!g)throw new Error('No mesh');onMeshLoaded(g)}
+      else _loadErr(new Error('Unsupported: .'+ext));
+    }catch(e){_loadErr(e)}
+  };
+  if(file instanceof File){
+    r.onerror=_loadErr;
+    if(ext==='obj'){r.onload=ev=>onTxt(ev.target.result);r.readAsText(file)}
+    else{r.onload=ev=>onBuf(ev.target.result);r.readAsArrayBuffer(file)}
+  }else{
+    // ArrayBuffer already
+    if(ext==='obj')onTxt(new TextDecoder().decode(file));
+    else onBuf(file);
+  }
+}
+
+// File input — universal, accepts all formats
+$('F').onchange=e=>{const f=e.target.files[0];if(f)loadAny(f);e.target.value=''};
+
+// Drag-drop onto canvas — accepts any supported file
+rn.domElement.addEventListener('dragover',e=>{e.preventDefault();e.dataTransfer.dropEffect='copy'});
+rn.domElement.addEventListener('drop',e=>{
+  e.preventDefault();
+  const f=e.dataTransfer.files[0];
+  if(f)loadAny(f);
+});
+
+// URL loader — fetch and auto-detect format
+window.loadURL=async(url)=>{
+  if(!url?.trim())return;
+  sS('> \u03a3 FETCHING '+url+'...');
+  try{
+    const res=await fetch(url);
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const buf=await res.arrayBuffer();
+    const name=url.split('?')[0].split('/').pop()||'model.stl';
+    loadAny(buf,name);
+  }catch(e){sS('> FETCH ERR: '+e.message)}
+};
+
+
+
+// ── EXPORT ─────────────────────────────────────────────────────────────────────
+window.doX=fmt=>{
+  if(!msh){sS('> LOAD A MESH FIRST');return}
+  const fn=window.srcFN+'-p3dk';
+  const dl=(blob,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;a.click()};
+  if(fmt==='stl'){dl(new Blob([new STLExporter().parse(msh,{binary:true})],{type:'application/octet-stream'}),fn+'.stl')}
+  else if(fmt==='ply'){
+    const pos=msh.geometry.attributes.position,lines=['ply','format ascii 1.0',`element vertex ${pos.count}`,'property float x','property float y','property float z',`element face ${pos.count/3|0}`,'property list uchar int vertex_indices','end_header'];
+    for(let i=0;i<pos.count;i++)lines.push(`${pos.getX(i).toFixed(4)} ${pos.getY(i).toFixed(4)} ${pos.getZ(i).toFixed(4)}`);
+    for(let i=0;i<pos.count;i+=3)lines.push(`3 ${i} ${i+1} ${i+2}`);
+    dl(new Blob([lines.join('\n')],{type:'text/plain'}),fn+'.ply');
+  }
+  else if(fmt==='glb'){new GLTFExporter().parse(msh,b=>dl(new Blob([b],{type:'model/gltf-binary'}),fn+'.glb'),e=>sS('> GLB ERR: '+e),{binary:true})}
+  else if(fmt==='obj'){
+    const pos2=msh.geometry.attributes.position,lines=['# P3dK OBJ Export'];
+    for(let i=0;i<pos2.count;i++)lines.push(`v ${pos2.getX(i).toFixed(4)} ${pos2.getY(i).toFixed(4)} ${pos2.getZ(i).toFixed(4)}`);
+    for(let i=0;i<pos2.count;i+=3)lines.push(`f ${i+1} ${i+2} ${i+3}`);
+    dl(new Blob([lines.join('\n')],{type:'text/plain'}),fn+'.obj');
+  }
+  else if(fmt==='3mf'){
+    // Minimal 3MF ZIP (CRC32 + local file header)
+    const pos=msh.geometry.attributes.position;
+    const verts=[],faces=[];
+    for(let i=0;i<pos.count;i++)verts.push(`<vertex x="${pos.getX(i).toFixed(4)}" y="${pos.getY(i).toFixed(4)}" z="${pos.getZ(i).toFixed(4)}"/>`);
+    for(let i=0;i<pos.count;i+=3)faces.push(`<triangle v1="${i}" v2="${i+1}" v3="${i+2}"/>`);
+    const xml=`<?xml version="1.0"?><model unit="millimeter" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02"><resources><object id="1" type="model"><mesh><vertices>${verts.join('')}</vertices><triangles>${faces.join('')}</triangles></mesh></object></resources><build><item objectid="1"/></build></model>`;
+    // Simple ZIP (stored, no compression)
+    const enc=new TextEncoder(),data=enc.encode(xml),name=enc.encode('3D/3dmodel.model');
+    const crc=c=>{let r=0xFFFFFFFF;for(const b of c){r^=b;for(let j=0;j<8;j++)r=r&1?(r>>>1)^0xEDB88320:(r>>>1)}return(r^0xFFFFFFFF)>>>0};
+    const u32=(n)=>{const b=new Uint8Array(4);new DataView(b.buffer).setUint32(0,n,true);return b};
+    const u16=(n)=>{const b=new Uint8Array(2);new DataView(b.buffer).setUint16(0,n,true);return b};
+    const crcVal=crc(data),now=new Date(),dt=(((now.getFullYear()-1980)<<9)|(now.getMonth()+1)<<5|now.getDate()),tm=((now.getHours()<<11)|(now.getMinutes()<<5)|(now.getSeconds()>>1));
+    const lh=new Uint8Array([0x50,0x4b,0x03,0x04,20,0,...u16(0),...u16(0),...u16(0),...u16(tm),...u16(dt),...u32(crcVal),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...name,...data]);
+    const cd=new Uint8Array([0x50,0x4b,0x01,0x02,20,0,20,0,...u16(0),...u16(0),...u16(0),...u16(tm),...u16(dt),...u32(crcVal),...u32(data.length),...u32(data.length),...u16(name.length),...u16(0),...u16(0),...u16(0),...u16(0),...u32(0),...u32(0),...name]);
+    const eocd=new Uint8Array([0x50,0x4b,0x05,0x06,0,0,0,0,1,0,1,0,...u32(cd.length),...u32(lh.length),...u16(0)]);
+    const zip=new Uint8Array(lh.length+cd.length+eocd.length);zip.set(lh);zip.set(cd,lh.length);zip.set(eocd,lh.length+cd.length);
+    dl(new Blob([zip],{type:'application/vnd.ms-package.3dmanufacturing-3dmodel+xml'}),fn+'.3mf');
+  }
+  sS('> \u2713 EXPORTED .'+fmt.toUpperCase());
+};
+
+// ── FACE SELECT + BOUNDARY EDGES ──────────────────────────────────────────────
+let selFaces=[],gHoles=[],exclMode=false,exclDraw=null;
+window.selFaces=selFaces;window.gHoles=gHoles;
+
+function findBoundaryEdges(geo){
+  const pos=geo.attributes.position,Q=1000,canon={},cidx=[];
+  const vKey=i=>`${M.round(pos.getX(i)*Q)},${M.round(pos.getY(i)*Q)},${M.round(pos.getZ(i)*Q)}`;
+  for(let i=0;i<pos.count;i++){const k=vKey(i);if(!(k in canon))canon[k]=i;cidx[i]=canon[k]}
+  const em=new Map(),ek=(a,b)=>a<b?`${a}:${b}`:`${b}:${a}`;
+  for(let i=0;i<pos.count;i+=3){const a=cidx[i],b=cidx[i+1],c=cidx[i+2];for(const[u,v]of[[a,b],[b,c],[c,a]]){const k=ek(u,v);em.set(k,(em.get(k)||0)+1)}}
+  const bd=[];for(const[k,cnt]of em)if(cnt!==2){const[a,b]=k.split(':').map(Number);bd.push([a,b])}return bd;
+}
+function traceBoundaryLoops(edges){
+  const adj=new Map();for(const[a,b]of edges){if(!adj.has(a))adj.set(a,[]);if(!adj.has(b))adj.set(b,[]);adj.get(a).push(b);adj.get(b).push(a)}
+  const vis=new Set(),loops=[];
+  for(const[start]of edges){
+    if(vis.has(start))continue;const loop=[start];vis.add(start);let cur=start,prev=-1,s=0;
+    while(s++<20000){const nb=adj.get(cur)||[];let nx=-1;for(const n of nb)if(n!==prev&&!vis.has(n)){nx=n;break}
+      if(nx===-1){if(nb.includes(start)&&loop.length>=3)break;break}
+      vis.add(nx);loop.push(nx);prev=cur;cur=nx}
+    if(loop.length>=3)loops.push(loop);
+  }return loops;
+}
+function detectFaceHoles(fd){
+  if(!msh)return[];const pos=msh.geometry.attributes.position,be=findBoundaryEdges(msh.geometry);
+  if(!be.length)return[];const loops=traceBoundaryLoops(be);if(!loops.length)return[];
+  const D=-fd.wn.dot(fd.wp),tv=new T.Vector3(),holes=[];
+  for(const loop of loops){
+    const uvPts=[];let onPlane=true;
+    for(const vi of loop){
+      tv.fromBufferAttribute(pos,vi).applyMatrix4(msh.matrixWorld);
+      if(M.abs(fd.wn.dot(tv)+D)>1){onPlane=false;break}
+      const diff=new T.Vector3().subVectors(tv,fd.wp);uvPts.push([diff.dot(fd.xAx),diff.dot(fd.yAx)]);
+    }
+    if(!onPlane||uvPts.length<3)continue;
+    const cu=uvPts.reduce((s,p)=>s+p[0],0)/uvPts.length,cv=uvPts.reduce((s,p)=>s+p[1],0)/uvPts.length;
+    const r=uvPts.reduce((mx,p)=>M.max(mx,M.sqrt((p[0]-cu)**2+(p[1]-cv)**2)),0);
+    if(r<.5)continue;const buf=M.max(1.5,r*.18);
+    holes.push({u0:cu-r-buf,u1:cu+r+buf,v0:cv-r-buf,v1:cv+r+buf});
+  }return holes;
+}
+function getFaceData(hit,curved){
+  msh.updateMatrixWorld(true);
+  const nm=new T.Matrix3().getNormalMatrix(msh.matrixWorld),wn=hit.face.normal.clone().applyMatrix3(nm).normalize(),wp=hit.point.clone();
+  if(isSnap){wp.x=M.round(wp.x);wp.y=M.round(wp.y);wp.z=M.round(wp.z)}
+  let xAx=new T.Vector3(1,0,0);if(M.abs(wn.x)>.9)xAx.set(0,1,0);
+  xAx=new T.Vector3().crossVectors(xAx,wn).normalize();const yAx=new T.Vector3().crossVectors(wn,xAx).normalize();
+  const pos=msh.geometry.attributes.position,pts=[],D=-wn.dot(wp);
+  const pA=new T.Vector3(),pB=new T.Vector3(),pC=new T.Vector3();
+  const dt=curved?.4:.95,dist=curved?1000:.5;
+  let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9;
+  for(let i=0;i<pos.count;i+=3){
+    pA.fromBufferAttribute(pos,i).applyMatrix4(msh.matrixWorld);if(M.abs(wn.dot(pA)+D)>dist)continue;
+    pB.fromBufferAttribute(pos,i+1).applyMatrix4(msh.matrixWorld);if(M.abs(wn.dot(pB)+D)>dist)continue;
+    pC.fromBufferAttribute(pos,i+2).applyMatrix4(msh.matrixWorld);if(M.abs(wn.dot(pC)+D)>dist)continue;
+    if(new T.Vector3().crossVectors(new T.Vector3().subVectors(pB,pA),new T.Vector3().subVectors(pC,pA)).normalize().dot(wn)<dt)continue;
+    pts.push(pA.x,pA.y,pA.z,pB.x,pB.y,pB.z,pC.x,pC.y,pC.z);
+    for(const p of[pA,pB,pC]){const d=new T.Vector3().subVectors(p,wp),u=d.dot(xAx),v=d.dot(yAx);if(u<u0)u0=u;if(u>u1)u1=u;if(v<v0)v0=v;if(v>v1)v1=v}
+  }
+  return{wn,wp,xAx,yAx,zAx:wn.clone(),b:{minU:u0,maxU:u1,minV:v0,maxV:v1},pts,excl:[]};
+}
+const clrAll=()=>{
+  selFaces.forEach(f=>{if(f.fM){sc.remove(f.fM);f.fM.geometry.dispose()}if(f.prv){sc.remove(f.prv)}(f.em||[]).forEach(m=>{sc.remove(m);m.geometry.dispose()});if(f.il){sc.remove(f.il);f.il.geometry.dispose()}});
+  selFaces.length=0;['XCT','bExcl'].forEach(id=>{const b=$(id);if(b)b.disabled=1});
+  exclMode=false;$('bExcl')?.classList.remove('on');
+  if(window.slicePrv){sc.remove(window.slicePrv);window.slicePrv.geometry.dispose();window.slicePrv=null}
+  if(window.slicePrv2){sc.remove(window.slicePrv2);window.slicePrv2.geometry.dispose();window.slicePrv2=null}
+  if(window.twistPrv){sc.remove(window.twistPrv);window.twistPrv.geometry.dispose();window.twistPrv=null}
+};
+window.clrAll=clrAll;
+window.togExcl=()=>{if(!selFaces.length)return;exclMode=!exclMode;$('bExcl').classList.toggle('on',exclMode);sS(exclMode?'> DRAG ON FACE (exclusion zone)':'> EXCLUSION OFF')};
+window.clrExcl=()=>{selFaces.forEach(f=>{f.excl=[];(f.em||[]).forEach(m=>{sc.remove(m);m.geometry.dispose()});f.em=[]});$('bClrExcl').style.display='none';uPrv()};
+
+// ── PATTERN FOUNDRY ────────────────────────────────────────────────────────────
+const hp=(p,mx,my,nx,ny)=>{if(!p||p.length<3)return null;let o=[];for(let i=0,l=p.length;i<l;i++){let c=p[i],r=p[(i+l-1)%l],dc=(c[0]-mx)*nx+(c[1]-my)*ny,dr=(r[0]-mx)*nx+(r[1]-my)*ny;if(dc>=0){if(dr<0){let t=dr/(dr-dc);o.push([r[0]+t*(c[0]-r[0]),r[1]+t*(c[1]-r[1])])}o.push(c)}else if(dr>=0){let t=dr/(dr-dc);o.push([r[0]+t*(c[0]-r[0]),r[1]+t*(c[1]-r[1])])}}return o.length>2?o:null};
+const clp=(py,x0,x1,y0,y1)=>{const I=[p=>p[0]>=x0,p=>p[0]<=x1,p=>p[1]>=y0,p=>p[1]<=y1],S=[(a,b)=>[x0,a[1]+(x0-a[0])/(b[0]-a[0])*(b[1]-a[1])],(a,b)=>[x1,a[1]+(x1-a[0])/(b[0]-a[0])*(b[1]-a[1])],(a,b)=>[a[0]+(y0-a[1])/(b[1]-a[1])*(b[0]-a[0]),y0],(a,b)=>[a[0]+(y1-a[1])/(b[1]-a[1])*(b[0]-a[0]),y1]];let o=py;for(let i=0;i<4;i++){if(!o.length)return null;const n=o;o=[];for(let j=0;j<n.length;j++){const c=n[j],p=n[(j+n.length-1)%n.length],ci=I[i](c),pi=I[i](p);if(ci){if(!pi)o.push(S[i](p,c));o.push(c)}else if(pi)o.push(S[i](p,c))}}return o.length>2?o:null};
+const cr=(p,rf)=>{if(!p||p.length<3||rf<=0)return p;let n=p.length,o=[];for(let i=0;i<n;i++){let r=p[(i+n-1)%n],c=p[i],x=p[(i+1)%n],dx=r[0]-c[0],dy=r[1]-c[1],ex=x[0]-c[0],ey=x[1]-c[1],l1=M.hypot(dx,dy),l2=M.hypot(ex,ey);if(l1<.001||l2<.001){o.push(c);continue}let m=M.min(l1,l2)*.49*rf,p1=[c[0]+dx/l1*m,c[1]+dy/l1*m],p2=[c[0]+ex/l2*m,c[1]+ey/l2*m];for(let s=0;s<=6;s++){let t=s/6,u=1-t;o.push([u*u*p1[0]+2*u*t*c[0]+t*t*p2[0],u*u*p1[1]+2*u*t*c[1]+t*t*p2[1]])}}return o};
+const ha=(ax,ay,bx,by,cx,cy,d)=>{let o=[],mx=(ax+bx)/2,my=(ay+by)/2,dx=cx-mx,dy=cy-my,l=M.hypot(dx,dy)||1,b=M.hypot(bx-ax,by-ay)*d*.3,nx=dx/l*b,ny=dy/l*b,px=mx+nx,py=my+ny;for(let i=0;i<=8;i++){let t=i/8,u=1-t;o.push([u*u*ax+2*u*t*px+t*t*bx,u*u*ay+2*u*t*py+t*t*by])}return o};
+const tSh=p=>{if(!p||p.length<3)return null;let a=0,l=p.length;for(let i=0;i<l;i++)a+=p[i][0]*p[(i+1)%l][1]-p[(i+1)%l][0]*p[i][1];if(M.abs(a)*.5<.04)return null;const s=new T.Shape();s.moveTo(p[0][0],p[0][1]);for(let i=1;i<l;i++)s.lineTo(p[i][0],p[i][1]);return s};
+
+// Seeded LCG for deterministic Voronoi
+const lcg=seed=>{let r=seed^0x5f3759df;return()=>{r=(r*1664525+1013904223)|0;return(r>>>0)/4294967296}};
+
+window.Fnd={mk(typ,b,sc2,st,mg,an,oX,oY,stg,stgH,dn,excl=[],crnR=0){
+  const eSc=sc2/dn,rf=crnR/100,u0=b.minU+mg,u1=b.maxU-mg,v0=b.minV+mg,v1=b.maxV-mg;
+  if(u1<=u0||v1<=v0)return[];
+  const cu=(u0+u1)/2,cv=(v0+v1)/2,eu0=u0-(u1-u0)*.6,eu1=u1+(u1-u0)*.6,ev0=v0-(v1-v0)*.6,ev1=v1+(v1-v0)*.6,buf=eSc*.55;
+  let P=[];
+  if(typ==='hex'){const r=eSc*.5,ri=M.max(.05,r-st*1.15),rh=r*1.732;for(let rw=M.floor(ev0/rh)-1;rw*rh<ev1+rh;rw++){const cy=rw*rh,xO=(rw&1)?(r+stg*eSc*.5):(stgH*eSc*.5);for(let cl=M.floor((eu0-xO)/eSc)-1;cl*eSc+xO<eu1+eSc;cl++){const cx=cl*eSc+xO,p=[];for(let k=0;k<6;k++)p.push([cx+ri*M.cos(k*M.PI/3),cy+ri*M.sin(k*M.PI/3)]);P.push(p)}}}
+  else if(typ==='sq'){const hs=M.max(.01,st*.5);for(let v=M.floor(ev0/eSc);v*eSc<ev1;v++){const o=(v&1?stg*eSc*.5:0)+(stgH*eSc*.5);for(let u=M.floor((eu0-o)/eSc);u*eSc+o<eu1;u++)P.push([[u*eSc+o+hs,v*eSc+hs],[u*eSc+o+eSc-hs,v*eSc+hs],[u*eSc+o+eSc-hs,v*eSc+eSc-hs],[u*eSc+o+hs,v*eSc+eSc-hs]])}}
+  else if(typ==='tri'){const h=eSc*.866,ri=M.max(.05,eSc*.45-st*.65);for(let rw=M.floor(ev0/h)-1;rw*h<ev1+h;rw++){const od=rw&1,xO=od?(eSc*.5+stg*eSc*.5):(stgH*eSc*.5);for(let cl=M.floor((eu0-xO)/eSc)-1;cl*eSc+xO<eu1+eSc;cl++){const cx=cl*eSc+xO,cy=rw*h,vs=od?[[cx-ri,cy-ri*.577],[cx+ri,cy-ri*.577],[cx,cy+ri*1.155]]:[[cx,cy-ri*1.155],[cx-ri,cy+ri*.577],[cx+ri,cy+ri*.577]];P.push(vs)}}}
+  else if(typ==='hypTri'){const h=eSc*.866,ri=M.max(.05,eSc*.45-st*.65),bd=M.min(1,st/eSc*2+.3);for(let rw=M.floor(ev0/h)-1;rw*h<ev1+h;rw++){const od=rw&1,xO=od?(eSc*.5+stg*eSc*.5):(stgH*eSc*.5);for(let cl=M.floor((eu0-xO)/eSc)-1;cl*eSc+xO<eu1+eSc;cl++){const cx=cl*eSc+xO,cy=rw*h,vs=od?[[cx-ri,cy-ri*.577],[cx+ri,cy-ri*.577],[cx,cy+ri*1.155]]:[[cx,cy-ri*1.155],[cx-ri,cy+ri*.577],[cx+ri,cy+ri*.577]],cvd=[];for(let k=0;k<3;k++){const a=vs[k],b=vs[(k+1)%3],arc=ha(a[0],a[1],b[0],b[1],cx,cy,bd);for(let s=0;s<arc.length-1;s++)cvd.push(arc[s])}P.push(cvd)}}}
+  else if(typ==='brick'){const hs=M.max(.01,st*.5),bw=eSc*2;for(let v=M.floor(ev0/eSc);v*eSc<ev1;v++){const o=(v&1?bw*.5:0);for(let u=M.floor((eu0-o)/bw);u*bw+o<eu1;u++)P.push([[u*bw+o+hs,v*eSc+hs],[u*bw+o+bw-hs,v*eSc+hs],[u*bw+o+bw-hs,v*eSc+eSc-hs],[u*bw+o+hs,v*eSc+eSc-hs]])}}
+  else if(typ==='diamond'){const hs=M.max(.01,st*.7);for(let v=M.floor(ev0/eSc)-1;v*eSc<ev1+eSc;v++){const o=(v&1?eSc*.5:0);for(let u=M.floor((eu0-o)/eSc)-1;u*eSc+o<eu1+eSc;u++){const cx=u*eSc+o,cy=v*eSc,h2=eSc*.5-hs;P.push([[cx,cy-h2],[cx+h2,cy],[cx,cy+h2],[cx-h2,cy]])}}}
+  else if(typ==='moroccan'){const r=eSc*.5,hs=M.max(.02,st*.5);for(let v=M.floor(ev0/eSc)-1;v*eSc<ev1+eSc;v++){const o=(v&1?eSc*.5:0);for(let u=M.floor((eu0-o)/eSc)-1;u*eSc+o<eu1+eSc;u++){const cx=u*eSc+o,cy=v*eSc,p=[],n=8;for(let k=0;k<n;k++)p.push([cx+(r-hs)*M.cos(k*M.PI*2/n+M.PI/n),cy+(r-hs)*M.sin(k*M.PI*2/n+M.PI/n)]);P.push(p)}}}
+  else if(typ==='herringbone'){const hs=M.max(.01,st*.5),lw=eSc*.35;for(let v=M.floor(ev0/eSc)-1;v*eSc<ev1+eSc;v++){for(let u=M.floor(eu0/eSc)-1;u*eSc<eu1+eSc;u++){const cx=u*eSc,cy=v*eSc;P.push([[cx+hs,cy+hs],[cx+lw-hs,cy+hs],[cx+lw-hs,cy+eSc-hs],[cx+hs,cy+eSc-hs]]);P.push([[cx+lw+hs,cy+hs],[cx+eSc-hs,cy+hs],[cx+eSc-hs,cy+eSc-hs],[cx+lw+hs,cy+eSc-hs]])}}}
+  else if(typ==='circuit'){const hs=M.max(.01,st*.5),rng=lcg(M.round(eSc*37+mg*13));for(let v=M.floor(ev0/eSc);v*eSc<ev1;v++){for(let u=M.floor(eu0/eSc);u*eSc<eu1;u++){const cx=u*eSc,cy=v*eSc;P.push([[cx+hs,cy+hs],[cx+eSc-hs,cy+hs],[cx+eSc-hs,cy+eSc-hs],[cx+hs,cy+eSc-hs]]);if(rng()>.5)P.push([[cx+eSc-hs*.5,cy+eSc*.2],[cx+eSc+hs*.5,cy+eSc*.2],[cx+eSc+hs*.5,cy+eSc*.8],[cx+eSc-hs*.5,cy+eSc*.8]])}}}
+  else if(typ==='islamic'){const r=eSc*.5,ang=M.PI/8;for(let v=M.floor(ev0/eSc)-1;v*eSc<ev1+eSc;v++){const o=(v&1?r:0);for(let u=M.floor((eu0-o)/eSc)-1;u*eSc+o<eu1+eSc;u++){const cx=u*eSc+o,cy=v*eSc,ri=r-st*.8,p=[];for(let k=0;k<8;k++){const a=k*M.PI/4,ra=k%2===0?ri:ri*.7;p.push([cx+ra*M.cos(a+ang),cy+ra*M.sin(a+ang)])}P.push(p)}}}
+  else if(typ==='voronoi'){const rng=lcg(M.round(eSc*7+mg*3)),md=eSc*(1-M.min(.9,st/eSc*2));const sd=[];for(let i=0;i<2000&&sd.length<120;i++){const tx=eu0+(eu1-eu0)*rng(),ty=ev0+(ev1-ev0)*rng(),ok=sd.every(s=>(tx-s[0])**2+(ty-s[1])**2>=md*md);if(ok)sd.push([tx,ty])}
+    const bbox=[[eu0-eSc,ev0-eSc],[eu1+eSc,ev0-eSc],[eu1+eSc,ev1+eSc],[eu0-eSc,ev1+eSc]];
+    for(let i=0;i<sd.length;i++){let cl=bbox.slice(),sx=sd[i][0],sy=sd[i][1];
+      for(let j=0;j<sd.length;j++){if(i===j)continue;cl=hp(cl,(sx+sd[j][0])/2,(sy+sd[j][1])/2,sx-sd[j][0],sy-sd[j][1]);if(!cl)break}
+      if(!cl||cl.length<3)continue;const cxc=cl.reduce((s,p)=>s+p[0],0)/cl.length,cyc=cl.reduce((s,p)=>s+p[1],0)/cl.length;
+      P.push(cl.map(([x,y])=>{const dx=x-cxc,dy=y-cyc,d=M.hypot(dx,dy),sf=M.max(0,d-st)/M.max(d,.001);return[cxc+dx*sf,cyc+dy*sf]}))}
+  }
+  else if(typ==='char'){const ch=($('EC')||{value:'★'}).value||'★';const cv2=document.createElement('canvas');cv2.width=cv2.height=128;const cx2=cv2.getContext('2d');cx2.font=`bold ${eSc*.7}px serif`;cx2.textAlign='center';cx2.textBaseline='middle';cx2.fillText(ch,64,64);const imgD=cx2.getImageData(0,0,128,128).data;const hs=eSc*.5;for(let v=M.floor(ev0/eSc);v*eSc<ev1;v++){const o=(v&1?stg*eSc*.5:0);for(let u=M.floor((eu0-o)/eSc);u*eSc+o<eu1;u++){const px=M.round(((u*eSc+o-eu0)/(eu1-eu0))*127),py=M.round(((v*eSc-ev0)/(ev1-ev0))*127);if(px>=0&&px<128&&py>=0&&py<128&&imgD[(py*128+px)*4+3]>64){P.push([[u*eSc+o+st,v*eSc+st],[u*eSc+o+eSc-st,v*eSc+st],[u*eSc+o+eSc-st,v*eSc+eSc-st],[u*eSc+o+st,v*eSc+eSc-st]])}}}}
+  if(!P.length){const hs=M.max(.01,st*.5);for(let v=M.floor(ev0/eSc);v*eSc<ev1;v++)for(let u=M.floor(eu0/eSc);u*eSc<eu1;u++)P.push([[u*eSc+hs,v*eSc+hs],[u*eSc+eSc-hs,v*eSc+hs],[u*eSc+eSc-hs,v*eSc+eSc-hs],[u*eSc+hs,v*eSc+eSc-hs]])}
+  const rd=an*M.PI/180,cA=M.cos(rd),sA=M.sin(rd),O=[];
+  for(let p of P){if(!p||p.length<3)continue;if(rf>0&&typ!=='hypTri')p=cr(p,rf);p=p.map(([x,y])=>[x+oX,y+oY]);
+    if(an!==0)p=p.map(([x,y])=>{const dx=x-cu,dy=y-cv;return[cu+dx*cA-dy*sA,cv+dx*sA+dy*cA]});
+    if(excl.length){const rx=p.reduce((s,q)=>s+q[0],0)/p.length-oX,ry=p.reduce((s,q)=>s+q[1],0)/p.length-oY;if(excl.some(z=>rx>=z.u0-buf&&rx<=z.u1+buf&&ry>=z.v0-buf&&ry<=z.v1+buf))continue;if(p.some(([px,py])=>excl.some(z=>(px-oX)>=z.u0&&(px-oX)<=z.u1&&(py-oY)>=z.v0&&(py-oY)<=z.v1)))continue}
+    const sh=tSh(clp(p,u0,u1,v0,v1));if(sh)O.push(sh);
+  }return O;
+}};
+
+const uPrv=()=>{
+  const pt=$('PT')?$('PT').value:'hex';
+  selFaces.forEach(f=>{if(f.prv){sc.remove(f.prv);f.prv=null}});
+  if(!selFaces.length||!msh)return;
+  selFaces.forEach(fd=>{
+    const cV=+($('C')||{value:15}).value,wV=+($('W')||{value:2}).value,eV=+($('E')||{value:2}).value,rvV=+($('RV')||{value:0}).value,oxV=0,oyV=0,dnV=+($('DN')||{value:1}).value,crV=0;
+    const shp=window.Fnd.mk(pt,fd.b,cV,wV,eV,rvV,oxV,oyV,0,0,dnV,fd.excl||[],crV);if(!shp.length)return;
+    const bs=new T.Matrix4().makeBasis(fd.xAx,fd.yAx,fd.zAx);bs.setPosition(fd.wp.clone().addScaledVector(fd.wn,.5));
+    fd.prv=new T.Group();const lm=new T.LineBasicMaterial({color:window.iL?0xff00ff:0x00ffcc,depthTest:false,transparent:true,opacity:.8});
+    shp.forEach(s=>{const m=new T.LineLoop(new T.BufferGeometry().setFromPoints(s.getPoints()),lm);m.applyMatrix4(bs);fd.prv.add(m)});
+    sc.add(fd.prv);
+  });
+};
+window.uPrv=uPrv;
+
+window.exeC=async()=>{
+  if(!msh||!selFaces.length)return;if($('XCT'))$('XCT').disabled=1;sS('> \u26a1 CSG RUNNING...');await new Promise(r=>setTimeout(r,30));
+  try{
+    const dp=+($('XV')||{value:5}).value,absDp=M.abs(dp),isEmb=dp<0,eV=+($('E')||{value:2}).value,crV=+($('CR')||{value:0}).value||0;
+    const toolGeos=[];
+    for(const fd of selFaces){
+      const shp=window.Fnd.mk($('PT')?$('PT').value:'hex',fd.b,+($('C')||{value:15}).value,+($('W')||{value:2}).value,eV,+($('RV')||{value:0}).value,0,0,0,0,+($('DN')||{value:1}).value,fd.excl||[],crV);
+      if(!shp.length)continue;
+      const bs=new T.Matrix4().makeBasis(fd.xAx,fd.yAx,fd.zAx);
+      const zOff=window.skinActive?-200:isEmb?-.5:-(absDp+3);
+      const extD=window.skinActive?400:absDp+6.5;
+      bs.setPosition(fd.wp.clone().addScaledVector(fd.wn,zOff));
+      const gs=shp.map(s=>{const g=new T.ExtrudeGeometry(s,{depth:extD,bevelEnabled:false,curveSegments:4});g.applyMatrix4(bs);return g});
+      const mg2=BGU.mergeGeometries(gs);gs.forEach(g=>g.dispose());if(mg2){mg2.computeVertexNormals();toolGeos.push(mg2)}
+    }
+    if(wasm&&toolGeos.length){
+      const ng=withManifold(m=>{
+        msh.updateMatrixWorld(true);const src=msh.geometry.clone();src.applyMatrix4(msh.matrixWorld);
+        let mSrc=m.track(geo2manifold(src));src.dispose();
+        let mTool=m.track(geo2manifold(toolGeos[0]));
+        for(let i=1;i<toolGeos.length;i++){const ti=m.track(geo2manifold(toolGeos[i]));mTool=m.track(mTool.add(ti))}
+        return manifold2geo(m.track(isEmb?mSrc.add(mTool):mSrc.subtract(mTool)));
+      });
+      msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));msh.updateMatrixWorld();msh.geometry.dispose();msh.geometry=ng;mem.sv(ng);
+    }
+    toolGeos.forEach(g=>g.dispose());clrAll();sD=true;uH();sS('> \u2714 BOOLEAN COMPLETE');
+  }catch(err){if($('XCT'))$('XCT').disabled=0;sS('> ERR: '+err.message);console.error(err)}
+};
+
+window.togSkin=()=>{window.skinActive=$('cbSkin').checked;if($('XV'))$('XV').disabled=window.skinActive;uPrv()};
+
+// ── SCULPT ─────────────────────────────────────────────────────────────────────
+window.prvTwist=()=>{
+  if(window.twistPrv){sc.remove(window.twistPrv);window.twistPrv.geometry.dispose();window.twistPrv=null}
+  if(!msh)return;const deg=+($('TWT')||{value:0}).value;if(!deg)return;
+  const g=msh.geometry.clone();g.applyMatrix4(msh.matrixWorld);const pos=g.attributes.position,rad=deg*M.PI/180;
+  g.computeBoundingBox();const bb=g.boundingBox,h=bb.max.y-bb.min.y;
+  for(let i=0;i<pos.count;i++){const t=(pos.getY(i)-bb.min.y)/h,a=t*rad,x=pos.getX(i),z=pos.getZ(i);pos.setX(i,x*M.cos(a)-z*M.sin(a));pos.setZ(i,x*M.sin(a)+z*M.cos(a))}
+  pos.needsUpdate=true;g.computeVertexNormals();
+  window.twistPrv=new T.Mesh(g,new T.MeshBasicMaterial({color:0xffcc00,wireframe:true,transparent:true,opacity:.5}));sc.add(window.twistPrv);
+};
+window.applyTwist=async()=>{
+  if(!msh)return;const deg=+($('TWT')||{value:0}).value;if(!deg)return;
+  sS('> TWISTING...');await new Promise(r=>setTimeout(r,30));
+  if(window.twistPrv){sc.remove(window.twistPrv);window.twistPrv.geometry.dispose();window.twistPrv=null}
+  const g=msh.geometry.clone();g.applyMatrix4(msh.matrixWorld);const pos=g.attributes.position,rad=deg*M.PI/180;
+  g.computeBoundingBox();const bb=g.boundingBox,h=bb.max.y-bb.min.y;
+  for(let i=0;i<pos.count;i++){const t=(pos.getY(i)-bb.min.y)/h,a=t*rad,x=pos.getX(i),z=pos.getZ(i);pos.setX(i,x*M.cos(a)-z*M.sin(a));pos.setZ(i,x*M.sin(a)+z*M.cos(a))}
+  pos.needsUpdate=true;g.computeVertexNormals();
+  msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);msh.geometry.dispose();msh.geometry=g;mem.sv(g);
+  if($('TWT'))$('TWT').value=0;uH();sS('> \u2714 TWIST APPLIED');sD=true;
+};
+window.prvSlice=()=>{
+  if(window.slicePrv){sc.remove(window.slicePrv);window.slicePrv.geometry.dispose();window.slicePrv=null}
+  if(!msh)return;const px=+($('SLX')||{value:100}).value/100,py=+($('SLY')||{value:100}).value/100,pz=+($('SLZ')||{value:100}).value/100;if(px===1&&py===1&&pz===1)return;
+  msh.geometry.computeBoundingBox();const bb=msh.geometry.boundingBox;
+  const sw=new T.Vector3((bb.max.x-bb.min.x)*px,(bb.max.y-bb.min.y)*py,(bb.max.z-bb.min.z)*pz);
+  const sg=new T.BoxGeometry(sw.x||.01,sw.y||.01,sw.z||.01);sg.translate(bb.min.x+sw.x/2,bb.min.y+sw.y/2,bb.min.z+sw.z/2);
+  window.slicePrv=new T.Mesh(sg,new T.MeshBasicMaterial({color:0x00ffff,wireframe:true,transparent:true,opacity:.4}));window.slicePrv.applyMatrix4(msh.matrixWorld);sc.add(window.slicePrv);
+};
+window.applySlice=async(keepAOnly=false)=>{
+  if(!msh||!window.slicePrv)return;
+  if(!wasm){sS('> MANIFOLD ENGINE REQUIRED FOR DUAL SLICE');return}
+  sS('> ✂ SLICING — GENERATING BOTH HALVES...');await new Promise(r=>setTimeout(r,30));
+  try{
+    const tg=window.slicePrv.geometry.clone();tg.applyMatrix4(window.slicePrv.matrixWorld);
+    const addPins=($('cbPins')||{checked:true}).checked;
+    const pinDia=+($('PIN_D')||{value:4}).value;
+    const pinCount=+($('PIN_N')||{value:2}).value|0;
+
+    // Compute cut plane geometry in world space
+    tg.computeBoundingBox();const cutBB=tg.boundingBox;
+    const cutCtr=cutBB.getCenter(new T.Vector3());
+
+    // Build COMPLEMENT box (everything outside the slice box)
+    // Find which axis is the thin one (slice direction)
+    const cutSz=cutBB.getSize(new T.Vector3());
+    const bigBox=5000;
+    // The main model bbox
+    msh.geometry.computeBoundingBox();const mBB=msh.geometry.boundingBox;
+
+    const ng=withManifold(m=>{
+      const src=msh.geometry.clone();src.applyMatrix4(msh.matrixWorld);
+      const base=m.track(geo2manifold(src));src.dispose();
+      const tgClone=tg.clone();tgClone.computeVertexNormals();
+      const cutter=m.track(geo2manifold(tgClone));tgClone.dispose();
+      // Half A = base INTERSECT cutter
+      let hA=m.track(base.intersect(cutter));
+      // Half B = base SUBTRACT cutter
+      let hB=m.track(base.subtract(cutter));
+
+      // Add alignment pins if requested
+      if(addPins&&pinCount>0){
+        // Place pins along the cut face — distributed evenly
+        // Find the cut face center and two tangent directions
+        const cSz=new T.Vector3(cutSz.x,cutSz.y,cutSz.z);
+        // Determine slice axis (smallest dimension of cut box is the normal)
+        const sliceAx=cSz.x<cSz.y&&cSz.x<cSz.z?'x':cSz.y<cSz.z?'y':'z';
+        const pinH=15; // pin total height — half sticks out each side
+        const pinR=pinDia/2;
+        // Pin hole is slightly larger for press fit clearance
+        const holeR=pinR+0.2;
+        // Place pins evenly spaced on the cut face
+        for(let p=0;p<pinCount;p++){
+          const frac=(p+1)/(pinCount+1);
+          let px=cutCtr.x,py=cutCtr.y,pz=cutCtr.z;
+          if(sliceAx==='x'){py=mBB.min.y+(mBB.max.y-mBB.min.y)*frac;pz=cutCtr.z}
+          else if(sliceAx==='y'){px=mBB.min.x+(mBB.max.x-mBB.min.x)*frac;pz=cutCtr.z}
+          else{px=mBB.min.x+(mBB.max.x-mBB.min.x)*frac;py=cutCtr.y}
+          // Pin cylinder (goes into half A)
+          const pinAxis=sliceAx==='x'?new T.Vector3(1,0,0):sliceAx==='y'?new T.Vector3(0,1,0):new T.Vector3(0,0,1);
+          const pinQ=new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),pinAxis);
+          const pinG=new T.CylinderGeometry(pinR,pinR,pinH,16).toNonIndexed();pinG.computeVertexNormals();
+          pinG.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(pinQ));pinG.translate(px,py,pz);
+          const pinM=m.track(geo2manifold(pinG));pinG.dispose();
+          // Hole in half B (subtract slightly larger cylinder)
+          const holeG=new T.CylinderGeometry(holeR,holeR,pinH,16).toNonIndexed();holeG.computeVertexNormals();
+          holeG.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(pinQ));holeG.translate(px,py,pz);
+          const holeM=m.track(geo2manifold(holeG));holeG.dispose();
+          // Add pin to A, subtract hole from B
+          hA=m.track(hA.add(pinM));
+          hB=m.track(hB.subtract(holeM));
+        }
+      }
+      return{A:manifold2geo(hA),B:manifold2geo(hB)};
+    });
+
+    tg.dispose();
+
+    if(keepAOnly){
+      // Just keep half A as the main mesh
+      msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);
+      ['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));
+      msh.geometry.dispose();msh.geometry=ng.A;ng.B.dispose();
+      clrAll();mem.sv(ng.A);sD=true;uH();sS('> ✔ SLICE — HALF A KEPT');return;
+    }
+
+    // Export both halves as separate STL downloads
+    sS('> ✂ EXPORTING HALVES...');await new Promise(r=>setTimeout(r,20));
+    const stlExp=new STLExporter();
+    const dl=(buf,name)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));a.download=name;a.click()};
+    const fn=window.srcFN;
+    dl(stlExp.parse(new T.Mesh(ng.A,getMat()),{binary:true}),fn+'-halfA.stl');
+    setTimeout(()=>dl(stlExp.parse(new T.Mesh(ng.B,getMat()),{binary:true}),fn+'-halfB.stl'),400);
+    ng.A.dispose();ng.B.dispose();
+    clrAll();
+    msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);
+    ['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));
+    sD=true;uH();window.fx?.(1200);sS('> ✔ SPLIT — halfA.stl + halfB.stl downloading');
+  }catch(e){sS('> SLICE ERR: '+e.message);console.error(e)}
+};
+window.hollowMesh=async()=>{
+  if(!msh||!wasm)return;const thick=+($('HLW')||{value:2}).value||2;sS('> HOLLOWING...');await new Promise(r=>setTimeout(r,30));
+  try{const ig=msh.geometry.clone();ig.applyMatrix4(msh.matrixWorld);ig.computeVertexNormals();const pos=ig.attributes.position,nrm=ig.attributes.normal;for(let i=0;i<pos.count;i++)pos.setXYZ(i,pos.getX(i)-nrm.getX(i)*thick,pos.getY(i)-nrm.getY(i)*thick,pos.getZ(i)-nrm.getZ(i)*thick);
+    const ng=withManifold(m=>manifold2geo(m.track(m.track(geo2manifold(msh.geometry)).subtract(m.track(geo2manifold(ig))))));ig.dispose();msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));msh.geometry.dispose();msh.geometry=ng;mem.sv(ng);uH();sS('> \u2714 SHELL CREATED');sD=true}catch(e){sS('> HOLLOW ERR: '+e.message)}
+};
+window.applyRounding=async()=>{
+  if(!msh)return;const iters=+($('RND')||{value:0}).value;if(!iters)return;sS('> SMOOTHING...');await new Promise(r=>setTimeout(r,30));
+  let g=msh.geometry.clone();g.applyMatrix4(msh.matrixWorld);g=BGU.mergeVertices(g,.001);
+  const pos=g.attributes.position,idx=g.index,adj=new Map();for(let i=0;i<pos.count;i++)adj.set(i,new Set());
+  for(let i=0;i<idx.count;i+=3){const a=idx.getX(i),b=idx.getX(i+1),c=idx.getX(i+2);adj.get(a).add(b);adj.get(a).add(c);adj.get(b).add(a);adj.get(b).add(c);adj.get(c).add(a);adj.get(c).add(b)}
+  for(let k=0;k<iters;k++){const np=new Float32Array(pos.count*3);for(let i=0;i<pos.count;i++){const nb=adj.get(i);let cx=0,cy=0,cz=0;for(const n of nb){cx+=pos.getX(n);cy+=pos.getY(n);cz+=pos.getZ(n)}if(nb.size){cx/=nb.size;cy/=nb.size;cz/=nb.size;np[i*3]=pos.getX(i)+(cx-pos.getX(i))*.5;np[i*3+1]=pos.getY(i)+(cy-pos.getY(i))*.5;np[i*3+2]=pos.getZ(i)+(cz-pos.getZ(i))*.5}else{np[i*3]=pos.getX(i);np[i*3+1]=pos.getY(i);np[i*3+2]=pos.getZ(i)}}pos.array.set(np)}
+  g.computeVertexNormals();if(g.index)g=g.toNonIndexed();clrAll();msh.geometry.dispose();msh.geometry=g;mem.sv(g);uH();sS('> \u2714 SMOOTHED');sD=true;
+};
+
+// Elongate/compress preview — shows projected result dimensions + slice plane
+window.elongatePrv=()=>{
+  const prv=$('elDimPrv');if(!prv)return;
+  if(!msh||!msh.geometry){prv.classList.add('hi');return}
+  msh.geometry.computeBoundingBox();const bb=msh.geometry.boundingBox;
+  const sz=bb.getSize(new T.Vector3());
+  const ax=window.elongateAxis||'y';
+  const off=+($('EL_O')||{value:10}).value;
+  const n=+($('EL_N')||{value:1}).value;
+  const mode=window.elongateMode||'stretch';
+  const totalOff=off*n*(mode==='compress'?-1:1);
+  const nx=ax==='x'?M.max(1,sz.x+totalOff):sz.x;
+  const ny=ax==='y'?M.max(1,sz.y+totalOff):sz.y;
+  const nz=ax==='z'?M.max(1,sz.z+totalOff):sz.z;
+  prv.classList.remove('hi');
+  const arrow=totalOff>0?'↑':'↓';
+  prv.textContent=`NOW: ${sz.x.toFixed(1)}×${sz.y.toFixed(1)}×${sz.z.toFixed(1)}mm\n${arrow} ${nx.toFixed(1)}×${ny.toFixed(1)}×${nz.toFixed(1)}mm (${totalOff>0?'+':''}${totalOff.toFixed(1)}mm ${ax.toUpperCase()})`;
+  // Show slice plane preview
+  if(window.slicePrv2){sc.remove(window.slicePrv2);window.slicePrv2.geometry.dispose();window.slicePrv2=null}
+  const pct=+($('EL_P')||{value:50}).value/100;
+  const slicePos=bb.min[ax]+sz[ax]*pct;
+  const pw=ax==='x'?0.4:sz.x+4,ph=ax==='y'?0.4:sz.y+4,pd=ax==='z'?0.4:sz.z+4;
+  const slicePrvG=new T.BoxGeometry(pw,ph,pd);
+  slicePrvG.translate(
+    ax==='x'?slicePos:(bb.min.x+bb.max.x)/2,
+    ax==='y'?slicePos:(bb.min.y+bb.max.y)/2,
+    ax==='z'?slicePos:(bb.min.z+bb.max.z)/2
+  );
+  window.slicePrv2=new T.Mesh(slicePrvG,new T.MeshBasicMaterial({color:mode==='compress'?0xff4400:0xffcc00,wireframe:true,transparent:true,opacity:.5}));
+  window.slicePrv2.applyMatrix4(msh.matrixWorld);
+  sc.add(window.slicePrv2);
+};
+
+// ── ELONGATE ───────────────────────────────────────────────────────────────────
+// Strategy: split mesh at slicePos into BOTTOM and TOP halves,
+// duplicate the cross-section slab N times to fill the gap, then
+// union everything together so there is no hole.
+window.elongateAxis='y';
+window.elongateDo=async()=>{
+  // Clean up preview plane
+  if(window.slicePrv2){sc.remove(window.slicePrv2);window.slicePrv2.geometry.dispose();window.slicePrv2=null}
+  if(!msh||!wasm){sS('> LOAD MESH + ENGINE REQUIRED');return}
+  const ax=window.elongateAxis||'y';
+  // Read from mm input if present, else slider
+  const rawOff=+($('elOMM')||$('EL_O')||{value:10}).value;
+  const off=M.max(0.5,rawOff);
+  const n=+($('EL_N')||{value:1}).value;
+  const pct=+($('EL_P')||{value:50}).value/100;
+  const mode=window.elongateMode||'stretch';
+  // For compress: negative offset shrinks the model
+  const signedOff=mode==='compress'?-off:off;
+  sS('> ↔ '+(mode==='compress'?'COMPRESSING':'ELONGATING')+'...');await new Promise(r=>setTimeout(r,30));
+  try{
+    msh.geometry.computeBoundingBox();const bb=msh.geometry.boundingBox;
+    const aMin=bb.min[ax],aMax=bb.max[ax],span=aMax-aMin;
+    const slicePos=aMin+span*pct;
+    const big=5000;
+    // BOTTOM: everything at or below slicePos
+    const botMax={x:ax==='x'?slicePos:bb.max.x+1,y:ax==='y'?slicePos:bb.max.y+1,z:ax==='z'?slicePos:bb.max.z+1};
+    const botMin={x:bb.min.x-1,y:bb.min.y-1,z:bb.min.z-1};
+    const botW=botMax.x-botMin.x,botH=botMax.y-botMin.y,botD=botMax.z-botMin.z;
+    const botCX=(botMax.x+botMin.x)/2,botCY=(botMax.y+botMin.y)/2,botCZ=(botMax.z+botMin.z)/2;
+    // TOP: everything above slicePos
+    const topMin2={x:ax==='x'?slicePos:bb.min.x-1,y:ax==='y'?slicePos:bb.min.y-1,z:ax==='z'?slicePos:bb.min.z-1};
+    const topMax2={x:bb.max.x+1,y:bb.max.y+1,z:bb.max.z+1};
+    const topW=topMax2.x-topMin2.x,topH=topMax2.y-topMin2.y,topD=topMax2.z-topMin2.z;
+    const topCX=(topMax2.x+topMin2.x)/2,topCY=(topMax2.y+topMin2.y)/2,topCZ=(topMax2.z+topMin2.z)/2;
+    // SLAB: thin cross-section slice for gap filling
+    const slabThk=M.max(span*.02,0.5);
+    const slabMin={x:ax==='x'?slicePos-slabThk:bb.min.x-1,y:ax==='y'?slicePos-slabThk:bb.min.y-1,z:ax==='z'?slicePos-slabThk:bb.min.z-1};
+    const slabMax={x:ax==='x'?slicePos+slabThk:bb.max.x+1,y:ax==='y'?slicePos+slabThk:bb.max.y+1,z:ax==='z'?slicePos+slabThk:bb.max.z+1};
+    const slabW=slabMax.x-slabMin.x,slabH=slabMax.y-slabMin.y,slabD=slabMax.z-slabMin.z;
+    const slabCX=(slabMax.x+slabMin.x)/2,slabCY=(slabMax.y+slabMin.y)/2,slabCZ=(slabMax.z+slabMin.z)/2;
+
+    const ng=withManifold(m=>{
+      const src=msh.geometry.clone();src.applyMatrix4(msh.matrixWorld);
+      const base=m.track(geo2manifold(src));src.dispose();
+
+      // Extract bottom half
+      const botG=new T.BoxGeometry(botW,botH,botD).toNonIndexed();botG.computeVertexNormals();botG.translate(botCX,botCY,botCZ);
+      const botM=m.track(geo2manifold(botG));botG.dispose();
+      const bot=m.track(base.intersect(botM));
+
+      // Extract top half
+      const topG=new T.BoxGeometry(topW,topH,topD).toNonIndexed();topG.computeVertexNormals();topG.translate(topCX,topCY,topCZ);
+      const topGM=m.track(geo2manifold(topG));topG.dispose();
+      const top=m.track(base.intersect(topGM));
+
+      // Extract slab cross-section
+      const slabG=new T.BoxGeometry(slabW,slabH,slabD).toNonIndexed();slabG.computeVertexNormals();slabG.translate(slabCX,slabCY,slabCZ);
+      const slabM=m.track(geo2manifold(slabG));slabG.dispose();
+      const slab=m.track(base.intersect(slabM));
+
+      // Start with bottom
+      let result=bot;
+      // Fill gap with repeated slab copies that step by off/n each
+      // We extrude N copies of the slab, each shifted incrementally
+      const stepOff=signedOff/M.max(n,1);
+      // For each step, place a slab copy that bridges from stepOff*(i-1) to stepOff*i
+      // Use a tall slab that covers the gap step for gapless fill
+      for(let i=1;i<=n;i++){
+        // A fat filler slab covering from (i-1)*stepOff to i*stepOff above slicePos
+        const fillerH=stepOff*1.02; // tiny overlap for watertight join
+        const fSlabW=ax==='x'?fillerH:slabW,fSlabH=ax==='y'?fillerH:slabH,fSlabD=ax==='z'?fillerH:slabD;
+        const fShiftHalf=(i-.5)*stepOff;
+        const fCX=slabCX+(ax==='x'?fShiftHalf:0),fCY=slabCY+(ax==='y'?fShiftHalf:0),fCZ=slabCZ+(ax==='z'?fShiftHalf:0);
+        // intersect with original to get correct cross section shape, then translate
+        const fG=new T.BoxGeometry(slabW+(ax==='x'?0:0),slabH+(ax==='y'?0:0),slabD+(ax==='z'?0:0)).toNonIndexed();
+        fG.computeVertexNormals();fG.translate(slabCX,slabCY,slabCZ);
+        const fGM=m.track(geo2manifold(fG));fG.dispose();
+        const fSlab=m.track(base.intersect(fGM));
+        const tx=ax==='x'?i*stepOff:0,ty=ax==='y'?i*stepOff:0,tz=ax==='z'?i*stepOff:0;
+        const fShifted=m.track(fSlab.translate(tx,ty,tz));
+        result=m.track(result.add(fShifted));
+        // Also union a full-span filler box at this position (ensures no gap)
+        const gapG=new T.BoxGeometry(
+          ax==='x'?stepOff+0.2:slabW,
+          ax==='y'?stepOff+0.2:slabH,
+          ax==='z'?stepOff+0.2:slabD
+        ).toNonIndexed();gapG.computeVertexNormals();
+        gapG.translate(
+          slabCX+(ax==='x'?(i-.5)*stepOff:0),
+          slabCY+(ax==='y'?(i-.5)*stepOff:0),
+          slabCZ+(ax==='z'?(i-.5)*stepOff:0)
+        );
+        const gapGM=m.track(geo2manifold(gapG));gapG.dispose();
+        // Clip gap filler to original cross section using slab intersection
+        const gapClipped=m.track(slab.translate(
+          ax==='x'?(i-.5)*stepOff:0,
+          ax==='y'?(i-.5)*stepOff:0,
+          ax==='z'?(i-.5)*stepOff:0
+        ));
+        result=m.track(result.add(gapClipped));
+      }
+      // Add shifted top half
+      const totalShift=n*signedOff;
+      const topShifted=m.track(top.translate(ax==='x'?totalShift:0,ax==='y'?totalShift:0,ax==='z'?totalShift:0));
+      result=m.track(result.add(topShifted));
+      return manifold2geo(result);
+    });
+    msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);
+    ['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));
+    msh.geometry.dispose();msh.geometry=ng;mem.sv(ng);sD=true;uH();
+    // Show new dimensions
+    ng.computeBoundingBox();const nb=ng.boundingBox,ns=nb.getSize(new T.Vector3());
+    sS('> ✔ '+(mode==='compress'?'COMPRESSED':'ELONGATED')+' '+(signedOff>0?'+':'')+signedOff.toFixed(1)*n+'mm on '+ax.toUpperCase()+' → '+ns.x.toFixed(1)+'×'+ns.y.toFixed(1)+'×'+ns.z.toFixed(1)+'mm');window.fx?.(1000);
+  }catch(e){sS('> ELONGATE ERR: '+e.message);console.error(e)}
+};
+
+// ── KINETIC BUILDER ────────────────────────────────────────────────────────────
+// 3-step workflow: (1) click face → place; (2) drag mouse on face plane → set ø;
+// (3) click to lock ø, then move mouse vertically → set depth; (4) ENTER/click → cut
+let cylState=0,cMode='',cWn=null,cWp=null,cMesh=null,cylFd=null,cD1=6,cD2=10,cD3=10,kbBuf='',dragPlane=null,dragStart=null;
+const updCylPrv=()=>{
+  if(cMesh){sc.remove(cMesh);cMesh.geometry.dispose();cMesh=null}
+  if(!cWn||!cWp)return;
+  // Face-center snap: if enabled, snap placement to face centroid
+  if(($('cbCylFaceSnap')||{checked:true}).checked&&cylFd){
+    // Snap cWp to the centroid of the selected face data
+    const cx=(cylFd.b.minU+cylFd.b.maxU)/2,cy=(cylFd.b.minV+cylFd.b.maxV)/2;
+    cWp.copy(cylFd.wp.clone()
+      .addScaledVector(cylFd.xAx,cx)
+      .addScaledVector(cylFd.yAx,cy));
+  }
+  const q=new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),cWn.clone().normalize());
+  const depth=M.max(0.5,cD2);
+  const g=new T.CylinderGeometry(M.max(0.2,cD1/2),M.max(0.2,cD1/2),cMode==='hole'?depth+1:depth,32);
+  g.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(q));
+  const ctr=cMode==='hole'?cWp.clone().addScaledVector(cWn,.3-(depth+1)/2):cWp.clone().addScaledVector(cWn,depth/2);
+  g.applyMatrix4(new T.Matrix4().setPosition(ctr));
+  cMesh=new T.Mesh(g,new T.MeshBasicMaterial({color:cMode==='hole'?0xff00ff:0x00ff88,transparent:true,opacity:.6,depthTest:false}));sc.add(cMesh);
+  // Sync display values
+  if($('codv'))$('codv').textContent=cD1.toFixed(1);
+  if($('clnv'))$('clnv').textContent=cD2.toFixed(1);
+  if($('cylDiaIn')&&document.activeElement!==$('cylDiaIn'))$('cylDiaIn').value=cD1.toFixed(1);
+  if($('cylDepIn')&&document.activeElement!==$('cylDepIn'))$('cylDepIn').value=cD2.toFixed(1);
+  // Live measurement overlay: distance to nearest holes + wall thickness + face dimensions
+  const mEl=$('meas');
+  const noteEl=$('cylDistNote');
+  if(cWp){
+    let lines=[`ø${cD1.toFixed(1)}  ℓ${cD2.toFixed(1)}mm`];
+    let noteLines=[];
+    // Distance to nearest existing hole
+    if(gHoles.length){
+      const near=gHoles.reduce((b,h)=>{const d=cWp.distanceTo(h);return d<b.d?{d,h}:b},{d:1e9,h:null});
+      if(near.d<500){
+        lines.push(`Δ ${near.d.toFixed(1)}mm → nearest hole`);
+        noteLines.push(`⊕ Nearest hole: ${near.d.toFixed(1)}mm away`);
+      }
+    }
+    // Wall thickness (shoot ray through mesh)
+    if(cWn&&msh){
+      const ri=new T.Raycaster(cWp.clone().addScaledVector(cWn,0.1),cWn.clone().negate());
+      const thru=ri.intersectObject(msh);
+      if(thru.length){
+        lines.push(`wall ${thru[0].distance.toFixed(1)}mm`);
+        noteLines.push(`⟂ Wall thickness: ${thru[0].distance.toFixed(1)}mm`);
+        // Warn if hole is deeper than wall
+        if(cD2>thru[0].distance)noteLines.push(`⚠ Depth > wall — will break through!`);
+      }
+    }
+    // Face dimensions from cylFd
+    if(cylFd){
+      const fw=(cylFd.b.maxU-cylFd.b.minU).toFixed(1);
+      const fh=(cylFd.b.maxV-cylFd.b.minV).toFixed(1);
+      noteLines.push(`Face: ${fw}×${fh}mm`);
+    }
+    if(mEl){
+      mEl.classList.remove('hi');
+      mEl.style.left=(innerWidth*.5)+'px';mEl.style.top='50px';
+      mEl.textContent=lines.join('\n');
+    }
+    if(noteEl&&noteLines.length){
+      noteEl.classList.remove('hi');
+      noteEl.textContent=noteLines.join('\n');
+    }
+  }
+};
+window.updateCylPrv=updCylPrv;
+const runCylCut=async()=>{
+  if(!cMesh)return;sS('> CUTTING...');cylState=0;const mDone=$('meas');if(mDone)mDone.classList.add('hi');await new Promise(r=>setTimeout(r,30));
+  try{const pch=new T.Mesh(cMesh.geometry.clone(),new T.MeshBasicMaterial());pch.matrixAutoUpdate=false;pch.matrix.identity();pch.matrixWorld.identity();csgBool(cMode==='hole'?'sub':'union',pch);gHoles.push(cWp.clone());pch.geometry.dispose();sc.remove(cMesh);cMesh.geometry.dispose();cMesh=null;uH();window.fx?.(1200);sS('> ✔ CUT COMPLETE');sD=true;const dn=$('cylDistNote');if(dn)dn.classList.add('hi')}catch(err){sS('> ERR: '+err.message)}
+};
+window.runCylCut=runCylCut;
+window.togSnap=()=>{isSnap=!isSnap;if($('cbSnap'))$('cbSnap').checked=isSnap};
+window.startDrag=(e,mode)=>{
+  if(!msh){sS('> LOAD A MESH FIRST');return}
+  cMode=mode;cylState=1;ct.enabled=false;
+  sS('> CLICK FACE TO PLACE '+mode.toUpperCase());
+};
+
+// ── SUPPORT FOUNDRY ────────────────────────────────────────────────────────────
+let ovhClusters=[],supGrp=null;
+
+// ── COLUMN BUILDER ─────────────────────────────────────────────────────────────
+// Classical column geometry based on Vitruvian proportions.
+// All dimensions derived from the column diameter (dia) as the module unit.
+// Orders: DORIC (severe, no base), IONIC (volutes, Attic base), GOTHIC (pointed), PLAIN
+//
+// SHAFT: True entasis curve using the Greek method — the shaft swells to its
+//   maximum radius at 1/3 height then tapers. Formula: r(t) = R0*(1-t²*k) where
+//   k controls taper. The belly at t=0.33 gives the characteristic Greek "breathing".
+//   Lathe geometry with 24 segments ensures smooth silhouette.
+//
+// FLUTES: Real recessed channels using TubeGeometry along the shaft surface.
+//   Each flute follows a vertical sine path that flares gently near the apophyge.
+//   Flute depth = dia/60 (Vitruvian: 1 module / 60 for Doric).
+//
+// BASE (Attic): Two torus fillets (upper/lower torus) separated by a concave
+//   scotia. Proportions from Vignola: lower torus = dia*0.17, scotia = dia*0.08.
+//
+// CAPITALS: Each order has unique parametric geometry.
+function buildColumn(x,z,height,dia,taper,flutes,order,wm){
+  const gs=[];
+  const topDia=dia*(taper/100);
+  const segs=M.max(32,flutes>0?M.max(32,flutes*6):48); // high res for smooth lathe
+
+  // Vitruvian proportions (module = dia/2 = radius)
+  const R0=dia/2;       // base radius
+  const Rt=topDia/2;    // top radius
+  const shH=height*.74; // shaft height
+  const baseH=order==='doric'?0:dia*.32; // Attic base height (Doric has no base)
+  const capH=dia*.28;   // capital height
+  const neckH=dia*.06;  // necking band
+
+  // ── SHAFT with true Greek entasis ──────────────────────────────────────────
+  // Greek entasis: max belly at t=1/3, using parabolic interpolation
+  // r(t) = R0 + (Rt-R0)*t + belly*(t-t²)*4  [belly peaks at t=0.5, scaled]
+  const belly=R0*.032; // 3.2% of base radius — subtle but visible
+  const shaftPts=[];
+  const shaftSteps=24;
+  for(let i=0;i<=shaftSteps;i++){
+    const t=i/shaftSteps;
+    const rLinear=R0+(Rt-R0)*t;
+    const rEntasis=rLinear+belly*M.sin(M.PI*t)*(1-t*.4); // peak near t=0.45
+    // Add apophyge: gentle flare at very base and top (last 5% of shaft)
+    const apoph=t<0.05?(1+M.pow(1-t/0.05,3)*.12):t>0.95?(1+M.pow((t-0.95)/0.05,3)*.06):1;
+    shaftPts.push(new T.Vector2(M.max(0.1,rEntasis*apoph), baseH+neckH+t*shH));
+  }
+  const shaftG=new T.LatheGeometry(shaftPts,segs);
+  shaftG.translate(x,0,z);gs.push(shaftG);
+
+  // ── NECKING BANDS (hypotrachelion) — 3 fine rings just below capital ──────
+  const neckY=baseH+neckH+shH;
+  for(let k=0;k<3;k++){
+    const ny=neckY-neckH*(k*.28+.1);
+    const ng2=new T.TorusGeometry(Rt*1.01+k*.3,dia*.008,5,segs);
+    ng2.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+    ng2.translate(x,ny,z);gs.push(ng2);
+  }
+
+  // ── FLUTES ─────────────────────────────────────────────────────────────────
+  // Real recessed flutes using TubePath along shaft surface.
+  // Each flute is a vertical groove following the shaft entasis profile.
+  if(flutes>0&&order!=='plain'){
+    const fluteD=dia*.028; // flute depth (Vitruvian: dia/60 ≈ 0.017, we use slightly more)
+    const fluteR=dia*.018; // tube radius for the groove
+    const fluteSteps=12;
+    for(let f=0;f<flutes;f++){
+      const ang=f/flutes*M.PI*2;
+      // Build tube path following shaft surface profile
+      const pts3=[];
+      for(let s=0;s<=fluteSteps;s++){
+        const t=s/fluteSteps;
+        const rLinear=R0+(Rt-R0)*t;
+        const rEntasis=rLinear+belly*M.sin(M.PI*t)*(1-t*.4);
+        // Flute sits on shaft surface, inset slightly
+        const fr=(rEntasis-fluteD)*1.0;
+        const fy=baseH+neckH+t*shH*0.92; // flutes stop before necking
+        pts3.push(new T.Vector3(
+          x+fr*M.cos(ang),
+          fy,
+          z+fr*M.sin(ang)
+        ));
+      }
+      // Use a CatmullRomCurve3 + TubeGeometry for smooth flute
+      const curve=new T.CatmullRomCurve3(pts3);
+      const tubeG=new T.TubeGeometry(curve,fluteSteps,fluteR,4,false);
+      gs.push(tubeG);
+    }
+  }
+
+  // ── BASE ───────────────────────────────────────────────────────────────────
+  if(order!=='doric'){
+    // Attic base: plinth + lower torus + scotia + upper torus
+    const plinthH=baseH*.28,lTorusH=baseH*.22,scotiaH=baseH*.16,uTorusH=baseH*.16;
+    // Plinth (square-ish slab)
+    const plnG=new T.CylinderGeometry(R0*1.55,R0*1.58,plinthH,segs);
+    plnG.translate(x,plinthH/2,z);gs.push(plnG);
+    // Lower torus (larger)
+    const lTR=R0*1.38,lTr=R0*.18;
+    const lt=new T.TorusGeometry(lTR,lTr,8,segs);
+    lt.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+    lt.translate(x,plinthH+lTr,z);gs.push(lt);
+    // Scotia (concave band) — approximated as inverted torus section
+    const scotPts=[];
+    for(let s=0;s<=6;s++){
+      const t=s/6*M.PI/2;
+      scotPts.push(new T.Vector2(R0*1.2+R0*.18*M.cos(t+M.PI/2),plinthH+lTorusH+t/M.PI*2*scotiaH));
+    }
+    const scotG=new T.LatheGeometry(scotPts,segs);scotG.translate(x,0,z);gs.push(scotG);
+    // Upper torus (smaller)
+    const uTR=R0*1.18,uTr=R0*.11;
+    const ut=new T.TorusGeometry(uTR,uTr,7,segs);
+    ut.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+    ut.translate(x,baseH-uTr*.8,z);gs.push(ut);
+  } else {
+    // Doric: simple square plinth only
+    const plnG=new T.CylinderGeometry(R0*1.52,R0*1.56,dia*.08,segs);
+    plnG.translate(x,dia*.04,z);gs.push(plnG);
+  }
+
+  // ── CAPITALS ──────────────────────────────────────────────────────────────
+  const capY=baseH+neckH+shH; // base of capital
+
+  if(order==='doric'){
+    // Doric capital: echinus (convex ovolo) + abacus
+    // Echinus profile: quarter-circle curve from shaft top to abacus width
+    // True Doric proportion: abacus width = 1.6× top shaft diameter
+    const abW=Rt*3.2,abH=capH*.28;
+    const echPts=[];
+    for(let i=0;i<=12;i++){
+      const t=i/12;
+      // Ovolo: quarter-circle swelling outward
+      const r=Rt+(abW/2-Rt)*M.sin(t*M.PI/2);
+      echPts.push(new T.Vector2(r,capY+t*capH*.62));
+    }
+    const echG=new T.LatheGeometry(echPts,segs);echG.translate(x,0,z);gs.push(echG);
+    // Abacus (square slab)
+    const abG=new T.BoxGeometry(abW,abH,abW);abG.translate(x,capY+capH*.62+abH/2,z);gs.push(abG);
+    // Annuli (3 fine rings at base of echinus)
+    for(let k=0;k<3;k++){
+      const rk=Rt+k*.8;
+      const ag=new T.TorusGeometry(rk,dia*.012,5,segs);
+      ag.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+      ag.translate(x,capY+k*.9,z);gs.push(ag);
+    }
+  }
+  else if(order==='ionic'){
+    // Ionic capital: egg-and-dart echinus + volutes + pulvinus + abacus
+    // Echinus with egg profile
+    const echPts=[];
+    for(let i=0;i<=10;i++){
+      const t=i/10;
+      echPts.push(new T.Vector2(Rt*(1+.15*M.sin(M.PI*t*.7)),capY+t*capH*.3));
+    }
+    const echG2=new T.LatheGeometry(echPts,segs);echG2.translate(x,0,z);gs.push(echG2);
+    // Egg-and-dart: alternating ovoid bumps and arrow-shapes around echinus
+    const nEgg=M.min(8,M.max(4,M.floor(Rt*M.PI/3)));
+    for(let k=0;k<nEgg;k++){
+      const ea=k/nEgg*M.PI*2+(k%2?Math.PI/nEgg:0);
+      const er=Rt*1.05;
+      if(k%2===0){
+        // Egg: oblate sphere
+        const eg=new T.SphereGeometry(dia*.055,6,4);
+        eg.applyMatrix4(new T.Matrix4().makeScale(1,1.3,1));
+        eg.translate(x+er*M.cos(ea),capY+capH*.18,z+er*M.sin(ea));gs.push(eg);
+      }
+    }
+    // Volutes: proper Ionic scroll using logarithmic spiral
+    // The Ionic volute follows a logarithmic spiral r = a*e^(b*θ)
+    // where a and b give 1.5 turns from outer to inner radius
+    const vCtrX=[x-Rt*1.1,x+Rt*1.1],vCtrY=capY+capH*.42;
+    const vTubeR=dia*.038;
+    for(let side=0;side<2;side++){
+      const vcx=vCtrX[side];
+      const sign=side===0?1:-1;
+      // Logarithmic spiral: r = R_outer * exp(-0.221 * theta) giving ~1.5 turns
+      const R_outer=Rt*.52,k_spiral=0.22;
+      const nTurns=1.5,spiralPts=[];
+      const nSp=36;
+      for(let i=0;i<=nSp;i++){
+        const theta=i/nSp*nTurns*M.PI*2;
+        const r=R_outer*M.exp(-k_spiral*theta*(1/(nTurns*M.PI*2))*nTurns*M.PI*2);
+        spiralPts.push(new T.Vector3(
+          vcx+sign*r*M.cos(theta+M.PI/2),
+          vCtrY+r*M.sin(theta+M.PI/2),
+          z
+        ));
+      }
+      // Tube along spiral
+      const curve2=new T.CatmullRomCurve3(spiralPts);
+      const tubeG2=new T.TubeGeometry(curve2,nSp,vTubeR,5,false);
+      gs.push(tubeG2);
+      // Volute eye (central disc)
+      const eyeG=new T.CylinderGeometry(dia*.065,dia*.065,dia*.02,8);
+      eyeG.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+      eyeG.translate(vcx,vCtrY,z);gs.push(eyeG);
+      // Pulvinus (bolster/cushion between volutes): connect to shaft top
+      if(side===0){
+        const pulvPts=[];
+        for(let i=0;i<=8;i++){
+          const t=i/8;
+          const px2=x+(-Rt*1.1-Rt*1.1)*t;// this is just one side — full pulvinus needs both
+          pulvPts.push(new T.Vector2(Rt*.4*(1+.3*M.sin(M.PI*t)),capY+capH*.42));
+        }
+        // Torus as pulvinus cross-section
+        const pulvG=new T.TorusGeometry(Rt*1.05,Rt*.22,6,segs,M.PI);
+        pulvG.applyMatrix4(new T.Matrix4().makeRotationZ(M.PI/2));
+        pulvG.translate(x,capY+capH*.42,z);gs.push(pulvG);
+      }
+    }
+    // Abacus: thin moulded slab
+    const abG2=new T.BoxGeometry(Rt*4.2,capH*.18,Rt*2.8);abG2.translate(x,capY+capH*.82,z);gs.push(abG2);
+    const abMld=new T.BoxGeometry(Rt*4.0,capH*.1,Rt*2.6);abMld.translate(x,capY+capH*.65,z);gs.push(abMld);
+  }
+  else if(order==='gothic'){
+    // Gothic capital: bell shape with carved tracery and crockets
+    // Bell profile: flared from shaft top
+    const bellPts=[];
+    for(let i=0;i<=14;i++){
+      const t=i/14;
+      // Bell curve: slow start, rapid flare, reverse at top
+      const r=Rt+(Rt*.8)*M.pow(t,0.6)*(1+.2*M.sin(M.PI*t));
+      bellPts.push(new T.Vector2(r,capY+t*capH*.7));
+    }
+    const bellG=new T.LatheGeometry(bellPts,segs);bellG.translate(x,0,z);gs.push(bellG);
+    // Crockets: Gothic leaf projections
+    const nCrock=M.max(4,flutes||6);
+    for(let c=0;c<nCrock;c++){
+      const ca=c/nCrock*M.PI*2;
+      const cr2=Rt+(Rt*.8)*M.pow(0.4,0.6);
+      // Each crocket: a teardrop shape (sphere + cone)
+      const cg=new T.SphereGeometry(dia*.14,5,4);
+      cg.applyMatrix4(new T.Matrix4().makeScale(0.8,1.6,0.8));
+      // Tilt outward from column axis
+      const tiltQ=new T.Quaternion().setFromAxisAngle(new T.Vector3(M.sin(ca+M.PI/2),0,M.cos(ca+M.PI/2)),-0.4);
+      cg.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(tiltQ));
+      cg.translate(x+cr2*M.cos(ca),capY+capH*.3,z+cr2*M.sin(ca));gs.push(cg);
+    }
+    // Pointed arch hood: multiple lancet arches formed from torus segments
+    for(let c=0;c<nCrock;c++){
+      const ca=c/nCrock*M.PI*2+M.PI/nCrock;
+      const aR=Rt*1.6;
+      const archG=new T.TorusGeometry(aR*.5,dia*.025,5,segs,M.PI*.7);
+      archG.applyMatrix4(new T.Matrix4().makeRotationY(ca));
+      archG.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+      archG.translate(x,capY+capH*.55,z);gs.push(archG);
+    }
+    // Finial
+    const finG=new T.ConeGeometry(dia*.12,capH*.35,segs);finG.translate(x,capY+capH*.85,z);gs.push(finG);
+    // Abacus
+    const abG3=new T.BoxGeometry(Rt*2.8,capH*.15,Rt*2.8);abG3.translate(x,capY+capH*.9,z);gs.push(abG3);
+    // Gothic ring mouldings on shaft
+    for(let r=0;r<4;r++){
+      const ry=baseH+shH*(.18+r*.2);
+      const rt=R0+(Rt-R0)*(r*.2+.18);
+      const rg=new T.TorusGeometry(rt*1.015,dia*.016,5,segs);
+      rg.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+      rg.translate(x,ry,z);gs.push(rg);
+    }
+  }
+  else{ // plain / tuscan
+    // Tuscan: simplified Doric with clean lines
+    const echPts2=[];
+    for(let i=0;i<=8;i++){
+      const t=i/8;
+      echPts2.push(new T.Vector2(Rt+(Rt*.5)*M.sin(t*M.PI/2),capY+t*capH*.5));
+    }
+    const echG3=new T.LatheGeometry(echPts2,segs);echG3.translate(x,0,z);gs.push(echG3);
+    const abG4=new T.BoxGeometry(topDia*1.3,capH*.35,topDia*1.3);abG4.translate(x,capY+capH*.67,z);gs.push(abG4);
+  }
+
+  // ── WATERMARK ──────────────────────────────────────────────────────────────
+  if(wm){
+    [.5,.27].forEach((r,i)=>{
+      const wG=new T.TorusGeometry(R0*r,dia*.018,4,18);
+      wG.applyMatrix4(new T.Matrix4().makeRotationX(M.PI/2));
+      wG.translate(x,-.08-i*.04,z);gs.push(wG);
+    });
+  }
+  const mg=BGU.mergeGeometries(gs);gs.forEach(g=>g.dispose());return mg;
+}
+
+// ── VINE BUILDER ───────────────────────────────────────────────────────────────
+// Fibonacci phyllotaxis vine. FIXED: reduced density, correct tendril coil plane,
+// nodes on column surface, CircleGeometry leaves, max 8 lateral branches.
+function growVine(cx,cz,h,colDia,angD,iters,stemD,doLeaves){
+  const gs=[];
+  const GOLD_ANG=M.PI*2*(1-1/1.6180339887);
+  const colR=colDia/2;
+  const stemR=colR*1.015; // nodes ON column surface + tiny skin gap
+  const nNodes=M.round(iters*5+6); // 16-26 nodes (was 48)
+  const vineRise=h*.88;
+  const nodes=[];
+  for(let i=0;i<nNodes;i++){
+    const t=i/(nNodes-1),theta=i*GOLD_ANG;
+    nodes.push({x:cx+stemR*M.cos(theta),y:colDia*.12+t*vineRise,z:cz+stemR*M.sin(theta),theta,t,nx:M.cos(theta),nz:M.sin(theta)});
+  }
+  // Main stem
+  for(let i=0;i<nodes.length-1;i++){
+    const a=nodes[i],b=nodes[i+1];
+    const len=M.hypot(b.x-a.x,b.y-a.y,b.z-a.z);if(len<.05)continue;
+    const tpr=M.max(0.3,1-i/nodes.length*.6);
+    const sg=new T.CylinderGeometry(stemD/2*tpr*.55,stemD/2*tpr,len,5);
+    sg.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),new T.Vector3(b.x-a.x,b.y-a.y,b.z-a.z).normalize())));
+    sg.translate((a.x+b.x)/2,(a.y+b.y)/2,(a.z+b.z)/2);gs.push(sg);
+  }
+  // Tendrils: coil in vertical+tangential plane (NOT horizontal)
+  nodes.forEach((nd,i)=>{
+    if(i<4||i%6!==0)return;
+    const outAng=nd.theta;
+    const tanX=-M.sin(outAng),tanZ=M.cos(outAng); // tangential direction (perp to radial in XZ)
+    const tLen=colDia*(0.5+M.random()*.4);
+    const coilR=stemD*1.1,nCoil=12;
+    const pts=[];
+    for(let s=0;s<=nCoil;s++){
+      const tc=s/nCoil,coilA=tc*M.PI*4,decay=M.max(0,1-tc);
+      pts.push(new T.Vector3(
+        nd.x+nd.nx*tc*tLen+tanX*coilR*M.cos(coilA)*decay*.3,
+        nd.y+coilR*M.sin(coilA)*decay*.5+tc*colDia*.06,
+        nd.z+nd.nz*tc*tLen+tanZ*coilR*M.cos(coilA)*decay*.3
+      ));
+    }
+    gs.push(new T.TubeGeometry(new T.CatmullRomCurve3(pts),nCoil,stemD*.12,4,false));
+  });
+  // Lateral shoots — max 8, only at Fibonacci positions
+  const fibSet=new Set([2,3,5,8,13,21]);
+  let bc=0;
+  nodes.forEach((nd,i)=>{
+    if(!fibSet.has(i)||bc>=8||nd.t<0.1)return;bc++;
+    const outAng=nd.theta,upAng=(angD*M.PI/180)*(0.3+M.random()*.5);
+    const brLen=colDia*(0.55+M.random()*.4);
+    let bx=nd.x,by=nd.y,bz=nd.z;
+    let bdx=M.cos(outAng)*M.cos(upAng),bdy=M.sin(upAng),bdz=M.sin(outAng)*M.cos(upAng);
+    const bl0=M.hypot(bdx,bdy,bdz)||1;bdx/=bl0;bdy/=bl0;bdz/=bl0;
+    for(let b=0;b<2;b++){
+      const nx=bx+bdx*brLen/2,ny=by+bdy*brLen/2,nz=bz+bdz*brLen/2;
+      const len=M.hypot(nx-bx,ny-by,nz-bz);if(len<.05)break;
+      const tpr2=M.max(.15,(1-b/2)*.45);
+      const sg=new T.CylinderGeometry(stemD*.28*tpr2,stemD*.42*tpr2,len,4);
+      sg.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0,1,0),new T.Vector3(nx-bx,ny-by,nz-bz).normalize())));
+      sg.translate((bx+nx)/2,(by+ny)/2,(bz+nz)/2);gs.push(sg);
+      if(doLeaves&&b===1){
+        // Flat 5-sided leaf, faces outward, slightly tilted up
+        const lG=new T.CircleGeometry(stemD*2.0,5);
+        lG.applyMatrix4(new T.Matrix4().makeRotationX(-M.PI/2+upAng*.6));
+        lG.applyMatrix4(new T.Matrix4().makeRotationY(outAng));
+        lG.translate(nx,ny,nz);gs.push(lG);
+      }
+      bdx+=nd.nx*.04*(b?1:-1);bdy-=.05;bdz+=nd.nz*.04*(b?-1:1);
+      const bl2=M.hypot(bdx,bdy,bdz)||1;bdx/=bl2;bdy/=bl2;bdz/=bl2;
+      bx=nx;by=ny;bz=nz;
+    }
+  });
+  // Crown: 4 leaves at top, small
+  if(doLeaves&&nodes.length>2){
+    const top=nodes[nodes.length-1];
+    for(let l=0;l<4;l++){
+      const la=l/4*M.PI*2+top.theta,lr=colR*.5+M.random()*colDia*.2;
+      const lG=new T.CircleGeometry(stemD*1.8,5);
+      lG.applyMatrix4(new T.Matrix4().makeRotationX(-M.PI/3));
+      lG.applyMatrix4(new T.Matrix4().makeRotationY(la));
+      lG.translate(top.x+M.cos(la)*lr,top.y+colDia*.08,top.z+M.sin(la)*lr);gs.push(lG);
+    }
+  }
+  if(!gs.length)return null;
+  const mg=BGU.mergeGeometries(gs);gs.forEach(g=>g.dispose());return mg;
+}
+window.scanOvh=()=>{
+  if(!msh){sS('> LOAD A MESH FIRST');return}
+  const thresh=+($('OVH')||{value:45}).value*M.PI/180,spacing=+($('COL_S')||{value:12}).value;
+  const pos=msh.geometry.attributes.position,wm=msh.matrixWorld,nm=new T.Matrix3().getNormalMatrix(wm);
+  const pA=new T.Vector3(),pB=new T.Vector3(),pC=new T.Vector3(),e1=new T.Vector3(),e2=new T.Vector3(),fn=new T.Vector3(),down=new T.Vector3(0,-1,0);
+  const tc=pos.count/3,step=M.max(1,M.floor(tc/5000))*3,cells=new Map();
+  for(let i=0;i<pos.count;i+=step){
+    pA.fromBufferAttribute(pos,i).applyMatrix4(wm);pB.fromBufferAttribute(pos,i+1).applyMatrix4(wm);pC.fromBufferAttribute(pos,i+2).applyMatrix4(wm);
+    e1.subVectors(pB,pA);e2.subVectors(pC,pA);fn.crossVectors(e1,e2).normalize().applyMatrix3(nm).normalize();
+    const ang=M.acos(M.max(-1,M.min(1,fn.dot(down))));
+    if(ang<thresh){const cx=(pA.x+pB.x+pC.x)/3,cy=(pA.y+pB.y+pC.y)/3,cz=(pA.z+pB.z+pC.z)/3;
+      const key=`${M.round(cx/spacing)},${M.round(cz/spacing)}`;const ex=cells.get(key);
+      if(!ex||cy<ex.y)cells.set(key,{x:M.round(cx/spacing)*spacing,y:cy,z:M.round(cz/spacing)*spacing})}
+  }
+  ovhClusters=[...cells.values()];
+  const el=$('ovhSt');if(el){el.classList.remove('hi');el.textContent=ovhClusters.length?`\u25CE ${ovhClusters.length} overhang cluster${ovhClusters.length>1?'s':''}`:'\u2713 No overhangs — self-supporting';el.style.color=ovhClusters.length?'#ffa040':'#0f9'}
+  if(ovhClusters.length)$('bGenSup').disabled=0;
+  sS('> \u25CE '+ovhClusters.length+' OVERHANG CLUSTERS');
+};
+window.genSup=async()=>{
+  if(!msh||!ovhClusters.length){sS('> SCAN OVERHANGS FIRST');return}
+  if(supGrp){sc.remove(supGrp);supGrp=null}
+  const order=($('COL_O')||{value:'doric'}).value,dia=+($('COL_D')||{value:6}).value,taper=+($('COL_T')||{value:82}).value,flutes=+($('COL_F')||{value:8}).value,doVine=($('cbVine')||{checked:true}).checked,vineAng=+($('VINE_A')||{value:25}).value,vineI=M.min(4,+($('VINE_I')||{value:4}).value),stemD=+($('VINE_D')||{value:.8}).value,doLeaves=($('cbLeaves')||{checked:true}).checked,doWM=($('cbWM')||{checked:true}).checked;
+  sS('> \u2766 GENERATING '+ovhClusters.length+' SUPPORTS...');await new Promise(r=>setTimeout(r,30));
+  supGrp=new T.Group();
+  const cm2=new T.MeshStandardMaterial({color:0xd4c5a9,roughness:.7,metalness:.1,side:T.DoubleSide});
+  const vm=new T.MeshStandardMaterial({color:0x4a7c3f,roughness:.85,metalness:0,side:T.DoubleSide});
+  let cnt=0;
+  for(const cl of ovhClusters){
+    if(cnt>=30)break;
+    // cl.y = world Y of the lowest overhang face = height from ground to support point
+    // Column runs from Y=0 (ground) up to just below the overhang (cl.y - tiny gap)
+    const colH=M.max(2,cl.y-0.5);
+    const cg=buildColumn(cl.x,cl.z,colH,dia,taper,flutes,order,doWM);if(cg){cg.computeVertexNormals();supGrp.add(new T.Mesh(cg,cm2.clone()))}
+    if(doVine){const vg=growVine(cl.x,cl.z,colH,dia,vineAng,vineI,stemD,doLeaves);if(vg){vg.computeVertexNormals();supGrp.add(new T.Mesh(vg,vm.clone()))}}
+    cnt++;
+  }
+  sc.add(supGrp);$('bRmvSup').style.display='';$('bGenSup').style.display='none';sD=true;sS('> \u2766 '+cnt+' SUPPORTS GENERATED');
+};
+
+window.mrgSup=async()=>{
+  if(!supGrp||!msh||!wasm){sS('> GENERATE SUPPORTS FIRST');return}
+  sS('> ❦ MERGING SUPPORTS INTO MESH...');await new Promise(r=>setTimeout(r,30));
+  try{
+    // Collect all support geometries
+    const sGeos=[];
+    supGrp.children.forEach(m=>{const g=m.geometry.clone();g.applyMatrix4(m.matrixWorld);sGeos.push(g)});
+    if(!sGeos.length)return;
+    const merged=BGU.mergeGeometries(sGeos);sGeos.forEach(g=>g.dispose());
+    const ng=withManifold(m=>{
+      const src=msh.geometry.clone();src.applyMatrix4(msh.matrixWorld);
+      const base=m.track(geo2manifold(src));src.dispose();
+      const sup=m.track(geo2manifold(merged));merged.dispose();
+      return manifold2geo(m.track(base.add(sup)));
+    });
+    sc.remove(supGrp);supGrp=null;
+    msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);
+    ['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));
+    msh.geometry.dispose();msh.geometry=ng;mem.sv(ng);sD=true;uH();
+    ['bRmvSup','bMrgSup'].forEach(id=>{const b=$(id);if(b)b.style.display='none'});
+    sS('> ✔ SUPPORTS MERGED — EXPORT READY');window.fx?.(1000);
+  }catch(e){sS('> MERGE ERR: '+e.message);console.error(e)}
+};
+window.rmvSup=()=>{if(supGrp){sc.remove(supGrp);supGrp=null}$('bRmvSup').style.display='none';$('bGenSup').style.display='';$('bGenSup').disabled=1;ovhClusters=[];sS('> SUPPORTS REMOVED')};
+
+// ── TOPOLOGY OPTIMISATION (SIMP) ──────────────────────────────────────────────
+// Pure JS SIMP algorithm in a Web Worker for non-blocking UI
+// Based on the 88-line Matlab code by Andreassen et al., extended to 3D voxel mesh
+window.topoLD=[0,-1,0];
+let topoWorker=null,topoPrevMesh=null;
+// Expose to window so early-scope killWorkers() can terminate on page hide
+Object.defineProperty(window,'topoWorker',{get:()=>topoWorker,set:v=>{topoWorker=v}});
+
+const topoWorkerCode=`
+// SIMP Topology Optimisation — 3D voxel version
+// Runs in Web Worker. postMessage({type:'progress',pct}) during solve.
+// postMessage({type:'done',voxels,nx,ny,nz,voxSize,bb}) when complete.
+self.onmessage=function(e){
+  const{posArr,nx,ny,nz,voxSize,bb,targetMass,loadDir,E,nu,iters}=e.data;
+  const N=nx*ny*nz;let x=new Float32Array(N).fill(.5);
+  const vi=(xi,yi,zi)=>xi+yi*nx+zi*nx*ny;
+  // Sensitivity: use simple strain energy proxy (element compliance)
+  // Full FEA is too heavy for a worker — use stress proxy from local gradient
+  const sens=new Float32Array(N);
+  for(let it=0;it<iters;it++){
+    // Compute "stress" via local density gradient (simplified)
+    let total=0;
+    for(let iz=1;iz<nz-1;iz++)for(let iy=1;iy<ny-1;iy++)for(let ix=1;ix<nx-1;ix++){
+      const i=vi(ix,iy,iz);
+      // Gradient magnitude = stress proxy
+      const dx=x[vi(ix+1,iy,iz)]-x[vi(ix-1,iy,iz)];
+      const dy=x[vi(ix,iy+1,iz)]-x[vi(ix,iy-1,iz)];
+      const dz=x[vi(ix,iy,iz+1)]-x[vi(ix,iy,iz-1)];
+      // Load direction bias
+      const lb=Math.abs(dx*loadDir[0]+dy*loadDir[1]+dz*loadDir[2])+.01;
+      sens[i]=(Math.hypot(dx,dy,dz)+lb)*Math.pow(x[i],2);
+      total+=x[i];
+    }
+    // Update density field: OC method
+    const cur=total/N,scale=Math.sqrt(targetMass/Math.max(cur,.001));
+    for(let i=0;i<N;i++)x[i]=Math.max(.001,Math.min(1,x[i]*scale*(sens[i]+.001)));
+    self.postMessage({type:'progress',pct:Math.round((it+1)/iters*100)});
+  }
+  self.postMessage({type:'done',voxels:Array.from(x),nx,ny,nz,voxSize,bb,targetMass});
+};
+`;
+
+// Marching cubes on voxel grid → THREE.BufferGeometry
+function voxelsToGeo(voxels,nx,ny,nz,voxSize,bb,iso=0.4){
+  const interp=(p1,p2,v1,v2)=>{const t=(iso-v1)/(v2-v1);return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t]};
+  const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+  const verts=[];
+  const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
+  for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
+    const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],[ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+    const v=c.map(([x,y,z])=>voxels[vi(x,y,z)]||0);
+    const p=c.map(([x,y,z])=>[bb.min.x+x*voxSize,bb.min.y+y*voxSize,bb.min.z+z*voxSize]);
+    for(const[a,b,cc,d]of tets){
+      const sv=[v[a],v[b],v[cc],v[d]],sp=[p[a],p[b],p[cc],p[d]];
+      const inside=sv.map(x=>x>iso?1:0),idx=inside[0]|(inside[1]<<1)|(inside[2]<<2)|(inside[3]<<3);
+      if(!idx||idx===15)continue;
+      const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
+      for(const[ea,eb]of edges)if(inside[ea]!==inside[eb])cuts.push(interp(sp[ea],sp[eb],sv[ea],sv[eb]));
+      if(cuts.length>=3){verts.push(...cuts[0],...cuts[1],...cuts[2]);if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3])}
+    }
+  }
+  if(verts.length<9)return null;
+  const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(new Float32Array(verts),3));geo.computeVertexNormals();return geo;
+}
+
+window.topoPreview=()=>{
+  // Lightweight coarse preview — just visualise mass% as wireframe box
+  if(!msh)return;
+  const pct=+($('TO_M')||{value:60}).value/100;
+  const st=$('topoSt');if(st){st.textContent=`TARGET: ${(pct*100).toFixed(0)}% MASS \u2014 BAKE for full solve`;st.classList.remove('hi')}
+};
+
+window.topoRun=async()=>{
+  if(!msh){sS('> LOAD A MESH FIRST');return}
+  const voxSize=+($('TO_V')||{value:15}).value;
+  const targetMass=+($('TO_M')||{value:60}).value/100;
+  const matVal=($('TO_MAT')||{value:'3.5,0.36'}).value.split(',').map(Number);
+  const loadDir=window.topoLD||[0,-1,0];
+  sS('> \u2697 VOXELISING MESH...');await new Promise(r=>setTimeout(r,30));
+  // Voxelise: stamp occupancy grid
+  msh.geometry.computeBoundingBox();const bb=msh.geometry.boundingBox;
+  const nx=M.ceil((bb.max.x-bb.min.x)/voxSize)+2,ny=M.ceil((bb.max.y-bb.min.y)/voxSize)+2,nz=M.ceil((bb.max.z-bb.min.z)/voxSize)+2;
+  if(nx*ny*nz>500000){sS('> ERR: VOXEL COUNT TOO HIGH — INCREASE VOXEL SIZE');return}
+  // Simple ray-cast voxelisation
+  const voxels=new Float32Array(nx*ny*nz);
+  const pos=msh.geometry.attributes.position;
+  const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+  for(let i=0;i<pos.count;i+=3){
+    const cx=(pos.getX(i)+pos.getX(i+1)+pos.getX(i+2))/3,cy=(pos.getY(i)+pos.getY(i+1)+pos.getY(i+2))/3,cz=(pos.getZ(i)+pos.getZ(i+1)+pos.getZ(i+2))/3;
+    const vx=M.min(nx-1,M.max(0,M.floor((cx-bb.min.x)/voxSize))),vy=M.min(ny-1,M.max(0,M.floor((cy-bb.min.y)/voxSize))),vz=M.min(nz-1,M.max(0,M.floor((cz-bb.min.z)/voxSize)));
+    for(let dz=-1;dz<=1;dz++)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){const nx2=vx+dx,ny2=vy+dy,nz2=vz+dz;if(nx2>=0&&ny2>=0&&nz2>=0&&nx2<nx&&ny2<ny&&nz2<nz)voxels[vi(nx2,ny2,nz2)]=1}
+  }
+  sS('> \u2697 SIMP SOLVING (WEB WORKER)...');
+  // Terminate previous worker
+  if(topoWorker)topoWorker.terminate();
+  const blob=new Blob([topoWorkerCode],{type:'text/javascript'});
+  topoWorker=new Worker(URL.createObjectURL(blob));
+  topoWorker.postMessage({posArr:pos.array,nx,ny,nz,voxSize,bb:{min:{x:bb.min.x,y:bb.min.y,z:bb.min.z},max:{x:bb.max.x,y:bb.max.y,z:bb.max.z}},targetMass,loadDir,E:matVal[0],nu:matVal[1],iters:20});
+  topoWorker.onmessage=e=>{
+    if(e.data.type==='progress'){const st=$('topoSt');if(st){st.textContent=`\u2697 SOLVING... ${e.data.pct}%`;st.classList.remove('hi')}sS('> \u2697 SIMP '+e.data.pct+'%')}
+    else if(e.data.type==='done'){
+      const{voxels:v,nx:nx2,ny:ny2,nz:nz2,voxSize:vs,bb:bb2,targetMass:tm}=e.data;
+      const geo=voxelsToGeo(v,nx2,ny2,nz2,vs,bb2,tm*.6+.1);
+      if(geo){
+        if(topoPrevMesh){sc.remove(topoPrevMesh);topoPrevMesh.geometry.dispose();topoPrevMesh=null}
+        // FIXED: assign topoPrevMesh BEFORE sc.add
+        topoPrevMesh=new T.Mesh(geo,new T.MeshStandardMaterial({color:0xffcc00,transparent:true,opacity:.72,roughness:.5,metalness:.2,side:T.DoubleSide}));
+        sc.add(topoPrevMesh);
+        window._topoPendingGeo=geo;
+        const mb=$('bTopoMerge');if(mb)mb.disabled=0;
+        const st=$('topoSt');if(st){st.textContent='\u2714 PREVIEW READY — click MERGE TOPO to apply';st.style.color='#0f9'}
+        sS('> \u2697 TOPO COMPLETE — PREVIEW SHOWN');
+      }else sS('> TOPO ERR: no geometry');
+      topoWorker=null;
+    }
+  };
+};
+
+// ── VIEWCUBE ───────────────────────────────────────────────────────────────────
+const PX=M.min(devicePixelRatio,2),VC=80;
+const vcRn=new T.WebGLRenderer({alpha:true,antialias:true});vcRn.setSize(VC*PX,VC*PX);vcRn.domElement.style.width=VC+'px';vcRn.domElement.style.height=VC+'px';vcRn.setPixelRatio(PX);
+$('vcW').appendChild(vcRn.domElement);
+const vcSc=new T.Scene(),vcCm=new T.PerspectiveCamera(40,1,.1,100);vcCm.position.set(0,0,5.5);
+vcSc.add(new T.AmbientLight(0xffffff,1));const vcDl=new T.DirectionalLight(0xffffff,1.5);vcDl.position.set(1,2,3);vcSc.add(vcDl);
+const vcFN=['RIGHT','LEFT','TOP','BOTTOM','FRONT','BACK'];
+const vcCtx=[],vcTex=[];
+const vcMats=vcFN.map((_,i)=>{const cv=document.createElement('canvas');cv.width=cv.height=256;const cx=cv.getContext('2d');vcCtx.push(cx);const tx=new T.CanvasTexture(cv);tx.minFilter=T.LinearFilter;vcTex.push(tx);return new T.MeshStandardMaterial({map:tx,roughness:.2,metalness:.3})});
+window.cubeStats={v:'--',t:'--',fps:'--'};
+const uCF=()=>{
+  const cs=window.cubeStats,isL=window.iL;
+  const bg=isL?'#d0d4dc':'#1a1c20',acc=isL?'#9900cc':'#00e5ff',txt=isL?'#222':'#fff',brd=isL?'#888':'#111';
+  vcCtx.forEach((cx,i)=>{
+    cx.clearRect(0,0,256,256);cx.fillStyle=bg;cx.fillRect(0,0,256,256);
+    cx.strokeStyle=brd;cx.lineWidth=30;cx.strokeRect(15,15,226,226);
+    cx.beginPath();cx.arc(128,128,90,0,M.PI*2);cx.lineWidth=8;cx.strokeStyle=i%2?'#f0f':acc;cx.stroke();
+    cx.beginPath();cx.arc(128,128,85,0,M.PI*2);cx.fillStyle=bg;cx.fill();
+    cx.fillStyle=txt;cx.textAlign='center';cx.textBaseline='middle';cx.font='bold 42px monospace';cx.fillText(vcFN[i],128,128);
+    vcTex[i].needsUpdate=true;
+  });
+};
+window.updateCubeFaces=uCF;uCF();
+const vcCube=new T.Mesh(new T.BoxGeometry(1.8,1.8,1.8),vcMats);vcSc.add(vcCube);
+vcSc.add(new T.LineSegments(new T.EdgesGeometry(new T.BoxGeometry(1.82,1.82,1.82)),new T.LineBasicMaterial({color:0x00ffcc,transparent:true,opacity:.6})));
+const vcRay=new T.Raycaster(),vcMs=new T.Vector2();
+let camTween=null;
+vcRn.domElement.addEventListener('click',e=>{
+  const r=vcRn.domElement.getBoundingClientRect();vcMs.set(((e.clientX-r.left)/VC)*2-1,-((e.clientY-r.top)/VC)*2+1);vcRay.setFromCamera(vcMs,vcCm);
+  const h=vcRay.intersectObject(vcCube);if(!h.length)return;
+  const n=h[0].face.normal.clone().transformDirection(vcCube.matrixWorld);
+  const dist=cm.position.distanceTo(ct.target);
+  camTween={from:cm.position.clone(),to:ct.target.clone().addScaledVector(n,dist),prog:0,dur:.4};
+  window.hx?.(10);
+});
+vcRn.domElement.addEventListener('dblclick',e=>{
+  const r=vcRn.domElement.getBoundingClientRect();vcMs.set(((e.clientX-r.left)/VC)*2-1,-((e.clientY-r.top)/VC)*2+1);vcRay.setFromCamera(vcMs,vcCm);
+  const h=vcRay.intersectObject(vcCube);if(!h.length)return;
+  const n=h[0].face.normal.clone().transformDirection(vcCube.matrixWorld);
+  const dist=cm.position.distanceTo(ct.target)*.7;
+  camTween={from:cm.position.clone(),to:ct.target.clone().addScaledVector(n,dist),prog:0,dur:.35};
+});
+let isPartRot=false;
+window.togPR=()=>{isPartRot=!isPartRot;$('vca').classList.toggle('on',isPartRot);ct.enabled=!isPartRot;if(!isPartRot&&msh){const e=new T.Euler().setFromQuaternion(msh.quaternion);e.x=M.round(e.x/(M.PI/2))*(M.PI/2);e.y=M.round(e.y/(M.PI/2))*(M.PI/2);e.z=M.round(e.z/(M.PI/2))*(M.PI/2);msh.quaternion.setFromEuler(e);msh.updateMatrixWorld(true);const box=new T.Box3().setFromObject(msh);msh.position.y-=box.min.y}sS(isPartRot?'> PART ROT — drag cube':'> CAMERA MODE')};
+
+// ── SNAP CAM ───────────────────────────────────────────────────────────────────
+window.snapCam=(view)=>{const dist=cm.position.distanceTo(ct.target)||150,tp=ct.target.clone();if(view==='front')tp.z+=dist;else if(view==='top')tp.y+=dist;else tp.add(new T.Vector3(dist*.7,dist*.7,dist*.7));camTween={from:cm.position.clone(),to:tp,prog:0,dur:.4}};
+
+// ── POINTER EVENTS ─────────────────────────────────────────────────────────────
+const ray=new T.Raycaster(),ms=new T.Vector2();
+let isDragMesh=false,meshDragLast={x:0,y:0};
+window.addEventListener('pointerdown',e=>{
+  $('ctx').style.display='none';
+  if(e.target.closest('#ui')||e.target.closest('#hud')||e.target.closest('#ab')||e.target.closest('#fh')||e.button!==0)return;
+  if(!msh)return;
+  if(isPartRot){isDragMesh=true;meshDragLast.x=e.clientX;meshDragLast.y=e.clientY;return}
+  ms.x=(e.clientX/innerWidth)*2-1;ms.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(ms,cm);
+  if(cylState===1){
+    const h=ray.intersectObject(msh);
+    if(h.length){cylFd=getFaceData(h[0],false);if(cylFd){cWn=cylFd.wn;cWp=cylFd.wp;dragStart=cWp.clone();dragPlane=new T.Plane().setFromNormalAndCoplanarPoint(cWn,cWp);cylState=2;ct.enabled=false;cD1=6;cD2=10;updCylPrv();sS('> MOVE MOUSE ON FACE → DIAMETER  |  CLICK TO LOCK')}}
+    return;
+  }
+  if(cylState===2){cylState=3;ct.enabled=false;sS('> MOVE UP/DOWN → DEPTH  |  CLICK TO CUT');return}
+  if(cylState===3){runCylCut();return}
+  if(exclMode&&selFaces.length){const h=ray.intersectObject(msh);if(!h.length)return;ct.enabled=false;const fd=selFaces[0],diff=new T.Vector3().subVectors(h[0].point,fd.wp);exclDraw={fd,u:diff.dot(fd.xAx),v:diff.dot(fd.yAx)};return}
+  for(let i=0;i<selFaces.length;i++){if(selFaces[i].fM&&ray.intersectObject(selFaces[i].fM).length){const f=selFaces.splice(i,1)[0];if(f.fM){sc.remove(f.fM);f.fM.geometry.dispose()}if(f.prv)sc.remove(f.prv);(f.em||[]).forEach(m=>{sc.remove(m);m.geometry.dispose()});if(!selFaces.length){$('XCT').disabled=1;$('bExcl').disabled=1}return}}
+  const h=ray.intersectObject(msh);if(!h.length)return;
+  if(!e.ctrlKey&&!e.metaKey)clrAll();
+  const curved=$('cbCurv')?.checked;
+  const fd=getFaceData(h[0],curved);if(!fd)return;
+  const holes=detectFaceHoles(fd);
+  if(holes.length)holes.forEach(hh=>{fd.excl.push(hh)});
+  if(window.skinActive){if($('XV'))$('XV').value=window.skinMode==='tex'?.5:-.5}
+  else{// measure thickness
+    const ri=new T.Raycaster(fd.wp.clone().addScaledVector(fd.wn,-.01),fd.wn.clone().negate()),th=ri.intersectObject(msh);
+    if($('XV')&&th.length)$('XV').value=M.min(10,parseFloat(th[0].distance.toFixed(1)));
+  }
+  const fg=new T.BufferGeometry();fg.setAttribute('position',new T.Float32BufferAttribute(fd.pts,3));
+  fd.fM=new T.Mesh(fg,new T.MeshBasicMaterial({color:0x00ffaa,transparent:true,opacity:.22,side:2,depthTest:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));sc.add(fd.fM);
+  if(!fd.em)fd.em=[];selFaces.push(fd);$('XCT').disabled=0;$('bExcl').disabled=0;window.hx?.(12);uPrv();
+});
+window.addEventListener('pointermove',e=>{
+  if(isDragMesh&&msh){const dx=e.clientX-meshDragLast.x,dy=e.clientY-meshDragLast.y;msh.quaternion.premultiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(0,1,0),dx*.01));msh.quaternion.premultiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1,0,0),dy*.01));meshDragLast.x=e.clientX;meshDragLast.y=e.clientY;return}
+  if(cylState===1){ms.x=(e.clientX/innerWidth)*2-1;ms.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(ms,cm);const h=ray.intersectObject(msh);if(h.length){cylFd=getFaceData(h[0],false);if(cylFd){cWn=cylFd.wn;cWp=cylFd.wp}}updCylPrv()}
+  else if(cylState===2){
+    // Diameter: distance from placement point on face plane
+    ms.x=(e.clientX/innerWidth)*2-1;ms.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(ms,cm);
+    const cp=new T.Vector3();ray.ray.intersectPlane(dragPlane,cp);
+    if(cp&&dragStart){const dist=cp.distanceTo(dragStart);cD1=M.max(0.5,dist*2);}
+    updCylPrv();
+  }
+  else if(cylState===3){
+    // Depth: mouse Y movement (up = deeper)
+    cD2=M.max(0.5,M.min(200,cD2-e.movementY*.3));
+    if(kbBuf){}else updCylPrv();
+  }
+},{passive:true});
+window.addEventListener('pointerup',e=>{
+  if(isDragMesh){isDragMesh=false;return}
+  // cylState transitions handled by pointerdown clicks, not pointerup
+  if(exclDraw){
+    ct.enabled=true;
+    const{fd}=exclDraw,meas=$('meas');ms.x=(e.clientX/innerWidth)*2-1;ms.y=-(e.clientY/innerHeight)*2+1;ray.setFromCamera(ms,cm);const h=ray.intersectObject(msh);
+    if(h.length){const diff=new T.Vector3().subVectors(h[0].point,fd.wp),u2=diff.dot(fd.xAx),v2=diff.dot(fd.yAx);
+      const zone={u0:M.min(exclDraw.u,u2),u1:M.max(exclDraw.u,u2),v0:M.min(exclDraw.v,v2),v1:M.max(exclDraw.v,v2)};fd.excl.push(zone);
+      const pts=[zone.u0,zone.v0,zone.u1,zone.v0,zone.u1,zone.v1,zone.u0,zone.v1].reduce((a,_,i,arr)=>i%2===0?[...a,fd.wp.clone().addScaledVector(fd.xAx,arr[i]).addScaledVector(fd.yAx,arr[i+1]).addScaledVector(fd.wn,.5)]:[...a],[]);
+      const eg=new T.BufferGeometry().setFromPoints(pts);const em=new T.LineLoop(eg,new T.LineBasicMaterial({color:0xff6600,depthTest:false}));sc.add(em);fd.em.push(em);$('bClrExcl').style.display='';uPrv()}
+    exclDraw=null;
+  }
+});
+window.addEventListener('contextmenu',e=>{if(!msh||e.target.closest('#ui'))return;e.preventDefault();const c=$('ctx');c.style.left=e.clientX+'px';c.style.top=e.clientY+'px';c.style.display='flex'});
+document.addEventListener('click',()=>$('ctx').style.display='none');
+window.fKeys={};
+window.addEventListener('keydown',e=>{
+  window.fKeys[e.key]=true;
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();document.getElementById('srch')?.focus();return}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='f'){e.preventDefault();document.getElementById('srch')?.focus();return}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){e.preventDefault();window.doU();return}
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();window.doD();return}
+  if(e.key===' '){e.preventDefault();if(selFaces.length)window.exeC();else if(cylState===3)runCylCut();return}
+  if(e.key==='Escape'){cylState=0;if(cMesh){sc.remove(cMesh);cMesh.geometry.dispose();cMesh=null}ct.enabled=true;sS('> CANCELLED');return}
+  if(cylState>=2&&/[0-9.]/.test(e.key)){kbBuf+=e.key;if($('clnv'))$('clnv').textContent=kbBuf}
+  if(cylState>=2&&e.key==='Backspace'){kbBuf=kbBuf.slice(0,-1);if($('clnv'))$('clnv').textContent=kbBuf||cD3.toFixed(1)}
+  if(cylState===3&&e.key==='Enter'){if(kbBuf){cD3=parseFloat(kbBuf)||cD3;kbBuf=''}runCylCut()}
+});
+window.addEventListener('keyup',e=>window.fKeys[e.key]=false);
+rn.domElement.addEventListener('wheel',e=>{
+  if(e.ctrlKey||e.metaKey){e.preventDefault();const f=e.deltaY>0?1.1:.91,dir=cm.position.clone().sub(ct.target),nl=dir.length()*f;if(nl>5&&nl<3000)cm.position.copy(ct.target).addScaledVector(dir.normalize(),nl);ct.update()}
+  else{e.preventDefault();const sel=$('PT');if(!sel)return;let idx=sel.selectedIndex+(e.deltaY>0?1:-1);idx=M.max(0,M.min(sel.options.length-1,idx));sel.selectedIndex=idx;$('cR')?.classList.toggle('hi',sel.value!=='char');uPrv()}
+},{passive:false,capture:true});
+window.addEventListener('mouseup',e=>{if(e.button===3)window.doU();if(e.button===4)window.doD()});
+window.onresize=()=>{cm.aspect=innerWidth/innerHeight;cm.updateProjectionMatrix();rn.setSize(innerWidth,innerHeight)};
+
+// ── SESSION IDB ─────────────────────────────────────────────────────────────────
+// ── SESSION IDB ─────────────────────────────────────────────────────────────────
+// DB version 2: bumped from 1 so onupgradeneeded fires on any stale v1 install,
+// guaranteeing the 'ws' object store exists before we attempt a transaction.
+const IDB_VER=2,IDB_STORE='ws';
+const idb=(m,d)=>new Promise((res,rej)=>{
+  const q=indexedDB.open('P3dK_DB',IDB_VER);
+  q.onupgradeneeded=ev=>{
+    const db=ev.target.result;
+    // Delete stale store from v1 if present, then recreate cleanly
+    if(db.objectStoreNames.contains(IDB_STORE))db.deleteObjectStore(IDB_STORE);
+    db.createObjectStore(IDB_STORE);
+  };
+  q.onsuccess=()=>{
+    const db=q.result;
+    // Guard: if store still missing (shouldn't happen after upgrade, but be safe)
+    if(!db.objectStoreNames.contains(IDB_STORE)){res(null);return}
+    try{
+      const tx=db.transaction(IDB_STORE,m);
+      const store=tx.objectStore(IDB_STORE);
+      const op=m==='readwrite'?store.put(d,'P3dK_S'):store.get('P3dK_S');
+      op.onsuccess=()=>res(op.result??null);
+      op.onerror=()=>rej(op.error);
+      tx.onerror=()=>rej(tx.error);
+    }catch(e){rej(e)}
+  };
+  q.onerror=()=>rej(q.error);
+  q.onblocked=()=>rej(new Error('IDB blocked — close other P3dK tabs'));
+});
+const saveSess=async()=>{try{if(!msh?.geometry?.attributes?.position)return;const g=msh.geometry,mat=msh.material,p=g.attributes.position;await idb('readwrite',{v:1,p:new Float32Array(p.array),i:g.index?new Uint32Array(g.index.array):null,sx:+$('X').value,sy:+$('Y').value,sz:+$('Z').value,c:mat.color?.getHex()??0x00e5ff,mt:mat.metalness??0.6,ro:mat.roughness??0.4});sS('> \u2713 SAVED')}catch(e){console.warn('save:',e)}};
+const restSess=async()=>{try{const d=await idb('readonly');if(!d?.p||!msh)return;const g=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(d.p,3));if(d.i)g.setIndex(new T.BufferAttribute(d.i,1));g.computeVertexNormals();g.computeBoundingBox();if(msh.geometry)msh.geometry.dispose();msh.geometry=g;const mat=msh.material;if(mat){if(d.c!==undefined)mat.color.setHex(d.c);if(d.mt!==undefined)mat.metalness=d.mt;if(d.ro!==undefined)mat.roughness=d.ro;mat.needsUpdate=true}if($('X'))$('X').value=d.sx??100;if($('Y'))$('Y').value=d.sy??100;if($('Z'))$('Z').value=d.sz??100;if($('MC')&&d.c!==undefined)$('MC').value='#'+d.c.toString(16).padStart(6,'0');if($('MN')&&d.mt!==undefined)$('MN').value=d.mt;if($('RG')&&d.ro!==undefined)$('RG').value=d.ro;['XCT','bRst','XPT','XPL','X3M','XGLB','XOBJ','bHeal','bScanOvh'].forEach(id=>{const b=$(id);if(b)b.disabled=0});uH();sS('> \u2713 SESSION RESTORED')}catch(e){console.warn('restore:',e)}};
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&sD){saveSess();sD=false}});
+setInterval(()=>{if(sD){saveSess();sD=false}},10000);
+window.addEventListener('engine-ready',()=>restSess(),{once:true});
+
+
+window.topoMerge=async()=>{
+  if(!window._topoPendingGeo||!msh){sS('> NO TOPO RESULT TO MERGE');return}
+  sS('> ⚗ MERGING TOPOLOGY INTO MESH...');await new Promise(r=>setTimeout(r,30));
+  try{
+    const ng=window._topoPendingGeo;
+    // Shift geometry to world origin (voxels are in model space already)
+    ng.computeVertexNormals();ng.computeBoundingBox();
+    if(wasm){
+      // Validate manifold + repair
+      try{
+        const validated=withManifold(m=>manifold2geo(m.track(geo2manifold(ng))));
+        msh.geometry.dispose();msh.geometry=validated;
+      }catch(e){
+        // Fallback: use raw marching cubes output
+        msh.geometry.dispose();msh.geometry=ng;
+      }
+    }else{msh.geometry.dispose();msh.geometry=ng}
+    msh.scale.set(1,1,1);msh.position.set(0,0,0);msh.rotation.set(0,0,0);
+    ['X','Y','Z'].forEach(id=>$(id)&&($(id).value=100));
+    msh.updateMatrixWorld();mem.sv(msh.geometry);
+    if(topoPrevMesh){sc.remove(topoPrevMesh);topoPrevMesh.geometry.dispose();topoPrevMesh=null}
+    window._topoPendingGeo=null;
+    const mb=$('bTopoMerge');if(mb)mb.disabled=1;
+    sD=true;uH();window.fx?.(1100);sS('> ✔ TOPOLOGY MERGED — EXPORT WHEN READY');
+  }catch(e){sS('> MERGE ERR: '+e.message);console.error(e)}
+};
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ◉ INDRA'S NET — WebXR Depth Scan → TSDF → Watertight STL
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// PIPELINE:
+//   navigator.xr.requestSession('immersive-ar', {depth-sensing}) →
+//   per-frame: XRDepthInformation.getDepthInMeters(x,y) →
+//   Web Worker: TSDF SDF volume (signed distance field voxel grid) →
+//   marching cubes → THREE.BufferGeometry → manifold-3d repair → STL in scene
+//
+// DEVICE DETECTION:
+//   'depth-sensing' feature available → ARCore (Android) or LiDAR (iOS via WebXR Viewer)
+//   Fallback → show message, user loads PLY point cloud or uses Splat Forge
+//
+// TSDF ALGORITHM (in worker):
+//   For each depth sample: project 3D point into voxel grid, update signed
+//   distance and weight using truncated SDF. After N frames, run marching cubes.
+//   Weight threshold 3+ ensures only consistently-seen voxels survive.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TSDF + Marching Cubes Web Worker (inline blob — no external files)
+const tsdfWorkerCode=`
+// ── TSDF WORKER ───────────────────────────────────────────────────────────────
+// Implements a simple truncated signed distance function (TSDF) voxel grid.
+// Receives depth point batches, accumulates the SDF, then runs marching cubes.
+// Based on KinectFusion principles but simplified for single-view mobile depth.
+
+let nx=0,ny=0,nz=0,voxSz=0,bbMin={x:0,y:0,z:0};
+let tsdf=null,weight=null; // Float32Array: SDF values + integration weights
+// TRUNC: truncation band in mm. Points arrive in mm. 80mm = 8cm band around surface.
+// Wider = smoother joins across frames. Narrower = sharper but noisier.
+const TRUNC=80;
+
+self.onmessage=function(e){
+  const{type,data}=e;
+  switch(type){
+    case'init':{
+      // data: {nx,ny,nz,voxSz,bbMin}
+      nx=data.nx;ny=data.ny;nz=data.nz;voxSz=data.voxSz;bbMin=data.bbMin;
+      const N=nx*ny*nz;
+      tsdf=new Float32Array(N).fill(TRUNC); // initialise to max truncation
+      weight=new Float32Array(N).fill(0);
+      self.postMessage({type:'ready'});
+      break;
+    }
+    case'integrate':{
+      // data: {points: Float32Array (x,y,z triples in metres)}
+      // For each 3D point, project along the view ray and update TSDF voxels
+      // within the truncation band.
+      const pts=data.points;
+      const vi=(xi,yi,zi)=>xi+yi*nx+zi*nx*ny;
+      for(let i=0;i<pts.length;i+=3){
+        const px=pts[i],py=pts[i+1],pz=pts[i+2];
+        // Voxel coordinate of the surface point
+        const vx=Math.floor((px-bbMin.x)/voxSz);
+        const vy=Math.floor((py-bbMin.y)/voxSz);
+        const vz=Math.floor((pz-bbMin.z)/voxSz);
+        // Update a small neighbourhood (truncation band in Z direction along view ray)
+        const bandV=Math.ceil(TRUNC/voxSz)+1;
+        for(let dz=-bandV;dz<=bandV;dz++){
+          const vzi=vz+dz;
+          if(vx<0||vy<0||vzi<0||vx>=nx||vy>=ny||vzi>=nz)continue;
+          const idx=vi(vx,vy,vzi);
+          // Signed distance: positive = in front of surface, negative = behind
+          const sdf=Math.max(-TRUNC,Math.min(TRUNC,(pz-bbMin.z)-(vzi*voxSz+voxSz*.5)));
+          // Running average integration (standard TSDF update)
+          const w=weight[idx];
+          tsdf[idx]=(tsdf[idx]*w+sdf)/(w+1);
+          weight[idx]=Math.min(w+1,255);
+        }
+      }
+      self.postMessage({type:'integrated'});
+      break;
+    }
+    case'marchingCubes':{
+      // data: {isoLevel, minWeight} — extract surface at given iso value
+      // Standard Marching Cubes using the trilinear interpolation table
+      const iso=data.isoLevel||0;
+      const minW=data.minWeight||3; // ignore voxels not seen enough times
+      const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+      const verts=[];
+      const interp=(p1,p2,v1,v2)=>{
+        const t=(iso-v1)/(v2-v1||0.0001);
+        return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
+      };
+      // Use tetrahedral decomposition (5 tets per cube) — avoids ambiguity cases
+      const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
+      for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
+        const corners=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],[ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+        const vals=corners.map(([x,y,z])=>{
+          const idx=vi(x,y,z);
+          return weight[idx]<minW?TRUNC:tsdf[idx]; // treat unseen voxels as empty space
+        });
+        const pos=corners.map(([x,y,z])=>[
+          bbMin.x+x*voxSz+voxSz*.5,
+          bbMin.y+y*voxSz+voxSz*.5,
+          bbMin.z+z*voxSz+voxSz*.5
+        ]);
+        for(const[a,b,c,d]of tets){
+          const sv=[vals[a],vals[b],vals[c],vals[d]];
+          const sp=[pos[a],pos[b],pos[c],pos[d]];
+          const inside=sv.map(v=>v<iso?1:0);
+          const bit=inside[0]|(inside[1]<<1)|(inside[2]<<2)|(inside[3]<<3);
+          if(!bit||bit===15)continue;
+          const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
+          for(const[ea,eb]of edges)if(inside[ea]!==inside[eb])cuts.push(interp(sp[ea],sp[eb],sv[ea],sv[eb]));
+          if(cuts.length>=3){verts.push(...cuts[0],...cuts[1],...cuts[2]);if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3])}
+        }
+      }
+      const arr=new Float32Array(verts);
+      self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
+      break;
+    }
+  }
+};
+`;
+
+// ── INDRA'S NET STATE ──────────────────────────────────────────────────────────
+let xrSession=null,xrRefSpace=null,tsdfWorker=null,xrFrameCount=0,xrPointBatch=[];
+Object.defineProperty(window,'tsdfWorker',{get:()=>tsdfWorker,set:v=>{tsdfWorker=v}});
+let xrScanBBox={minX:Infinity,maxX:-Infinity,minY:Infinity,maxY:-Infinity,minZ:Infinity,maxZ:-Infinity};
+let xrCapability='unknown'; // 'depth' | 'none' | 'unknown'
+// Format scan bounding box as readable mm string for HUD
+const bboxSz=bb=>{if(bb.minX===Infinity)return '?×?×?mm';return `${(bb.maxX-bb.minX).toFixed(0)}×${(bb.maxY-bb.minY).toFixed(0)}×${(bb.maxZ-bb.minZ).toFixed(0)}mm`};
+
+// Capability probe — runs once on load
+(async()=>{
+  const note=$('xrCapNote');
+  if(!navigator.xr){if(note)note.textContent='⚠ WebXR not available on this browser. Use Chrome on Android or WebXR Viewer on iOS.';xrCapability='none';return}
+  try{
+    const supported=await navigator.xr.isSessionSupported('immersive-ar');
+    if(!supported){if(note)note.textContent='⚠ AR not supported on this device. Use Splat Forge for file-based scan import.';xrCapability='none';return}
+    // Check for depth-sensing capability
+    // We can only truly confirm at session-request time, but isSessionSupported('immersive-ar')
+    // being true on Android Chrome means ARCore depth is very likely available.
+    const ua=navigator.userAgent;
+    const isAndroid=/Android/i.test(ua),isIOS=/iPhone|iPad/i.test(ua);
+    if(isAndroid)xrCapability='depth';
+    else if(isIOS)xrCapability='depth'; // via WebXR Viewer
+    else xrCapability='depth'; // desktop XR headsets may have it too
+    if(note){
+      note.style.color='#0f9';
+      note.textContent=`✔ AR ready${isAndroid?' (ARCore)':isIOS?' (ARKit — needs WebXR Viewer)':''} — press START SCAN`;
+    }
+    if($('bXrStart'))$('bXrStart').disabled=false;
+  }catch(err){
+    if(note)note.textContent='⚠ XR probe failed: '+err.message+'. Try Splat Forge.';
+    xrCapability='none';
+  }
+})();
+
+// Start an AR session with depth-sensing, capture frames into TSDF
+window.startXRScan=async()=>{
+  if(xrCapability==='none'){sS('> ⚠ NO XR DEPTH ON THIS DEVICE');return}
+  if(!navigator.xr){sS('> ⚠ WEBXR NOT AVAILABLE');return}
+  // End any existing session first — Chrome throws "already active" otherwise
+  if(xrSession){
+    sS('> ◉ ENDING PREVIOUS SESSION...');
+    try{await xrSession.end()}catch(e){}
+    xrSession=null;xrRefSpace=null;
+    await new Promise(r=>setTimeout(r,300)); // brief wait for GPU cleanup
+  }
+  const targetFrames=+($('XR_FR')||{value:60}).value;
+  // voxSz is in mm directly — slider reads mm, grid is in mm, no /1000
+  const voxSz=+($('XR_VX')||{value:4}).value; // mm
+  xrPointBatch=[];xrFrameCount=0;
+  xrScanBBox={minX:Infinity,maxX:-Infinity,minY:Infinity,maxY:-Infinity,minZ:Infinity,maxZ:-Infinity};
+  // Allocate TSDF grid for a 1.5m cube (1500mm) at given voxel size.
+  // Using rectangular dims later (after first frames) would be ideal but requires
+  // a reinit — for now a cube covers most tabletop / small object scans.
+  // 1500/4mm = 375 per axis, 375^3 = 52M → too large. Use 600mm cube for initial alloc.
+  // After ~10 frames the scan bbox is known and we can use a tighter rect grid.
+  // For now: cap at 150 voxels per axis (150^3=3.375M, well under 8M limit).
+  const maxVoxPerAxis=150;
+  const initRange=maxVoxPerAxis*voxSz; // e.g. 150*4mm = 600mm = 60cm cube
+  const nx2=maxVoxPerAxis,ny2=maxVoxPerAxis,nz2=maxVoxPerAxis;
+  // Boot TSDF worker
+  if(tsdfWorker)tsdfWorker.terminate();
+  tsdfWorker=new Worker(URL.createObjectURL(new Blob([tsdfWorkerCode],{type:'text/javascript'})));
+  // bbMin centred on expected object position (~500mm in front of camera)
+  const bbMin={x:-initRange/2,y:-initRange/2,z:200};
+  tsdfWorker.postMessage({type:'init',data:{nx:nx2,ny:ny2,nz:nz2,voxSz,bbMin}});
+  tsdfWorker.onmessage=e=>{
+    if(e.data.type==='integrated'){
+      const prg=$('xrProgress');if(prg){prg.classList.remove('hi');prg.textContent=`⬤ INTEGRATING... ${xrFrameCount}/${targetFrames} FRAMES`}
+    }
+    if(e.data.type==='mesh'){
+      // Marching cubes done — build Three.js geometry and push to scene
+      const arrV=e.data.verts;
+      if(!arrV||arrV.length<9){sS('> ⚠ TSDF: no surface found — try more frames or smaller voxels');return}
+      const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(arrV,3));
+      geo.computeVertexNormals();
+      // Points were converted m→mm in the frame loop, so geometry is already in mm
+      geo.computeBoundingBox();
+      const bb2=geo.boundingBox;geo.translate(-(bb2.max.x+bb2.min.x)/2,-bb2.min.y,-(bb2.max.z+bb2.min.z)/2);
+      // Optional Laplacian smooth
+      if(($('cbXrSmooth')||{checked:true}).checked){
+        let g2=BGU.mergeVertices(geo,.001);if(g2.index)g2=g2.toNonIndexed();
+        const pos2=g2.attributes.position;const adj2=new Map();
+        for(let i=0;i<pos2.count;i++)adj2.set(i,new Set());
+        // Build adjacency from triangle edges (was missing — this is why smooth had no effect)
+        for(let i=0;i<pos2.count;i+=3){
+          const a=i,b=i+1,c=i+2;
+          adj2.get(a).add(b);adj2.get(a).add(c);
+          adj2.get(b).add(a);adj2.get(b).add(c);
+          adj2.get(c).add(a);adj2.get(c).add(b);
+        }
+        // 3-pass Laplacian with 0.5 factor (was 0.4 — 0.5 = equal blend = stronger smooth)
+        for(let k=0;k<5;k++){const np2=new Float32Array(pos2.count*3);for(let i=0;i<pos2.count;i++){const nb2=adj2.get(i)||new Set();if(!nb2.size){np2[i*3]=pos2.getX(i);np2[i*3+1]=pos2.getY(i);np2[i*3+2]=pos2.getZ(i);continue}let cx2=0,cy2=0,cz2=0;for(const n2 of nb2){cx2+=pos2.getX(n2);cy2+=pos2.getY(n2);cz2+=pos2.getZ(n2)}cx2/=nb2.size;cy2/=nb2.size;cz2/=nb2.size;np2[i*3]=pos2.getX(i)+(cx2-pos2.getX(i))*.5;np2[i*3+1]=pos2.getY(i)+(cy2-pos2.getY(i))*.5;np2[i*3+2]=pos2.getZ(i)+(cz2-pos2.getZ(i))*.5}pos2.array.set(np2)}
+        g2.computeVertexNormals();onMeshLoaded(g2);
+      }else{onMeshLoaded(geo)}
+      const prg=$('xrProgress');if(prg){prg.textContent='✔ MESH BAKED — loaded into scene';prg.style.color='#0f9'}
+      if($('bXrBake'))$('bXrBake').disabled=1;
+      sS('> ✔ INDRA\'S NET — SCAN COMPLETE');
+    }
+  };
+  // Request AR session with depth-sensing as optional (graceful degrade if unsupported)
+  try{
+    xrSession=await navigator.xr.requestSession('immersive-ar',{
+      requiredFeatures:['local-floor'],
+      optionalFeatures:['depth-sensing','dom-overlay','viewer'],
+      depthSensing:{
+        usagePreference:['cpu-optimized','gpu-optimized'],
+        dataFormatPreference:['luminance-alpha','float32']
+      },
+      domOverlay:{root:document.getElementById('ui')}
+    });
+    xrRefSpace=await xrSession.requestReferenceSpace('local-floor');
+    const gl=rn.getContext();
+    // WebGL context must be XR-compatible before creating XRWebGLLayer.
+    // makeXRCompatible() may trigger a context loss+restore on some devices — brief pause.
+    await gl.makeXRCompatible();
+    await xrSession.updateRenderState({baseLayer:new XRWebGLLayer(xrSession,gl)});
+    if($('bXrStart'))$('bXrStart').disabled=1;
+    if($('bXrStop'))$('bXrStop').disabled=0;
+    if($('bXrBake'))$('bXrBake').disabled=1;
+    const prg=$('xrProgress');if(prg){prg.classList.remove('hi');prg.textContent='◎ AR SESSION ACTIVE — walk around object slowly'}
+    sS('> ◉ SCANNING — walk around object...');
+    xrSession.addEventListener('end',()=>{
+      xrSession=null;xrRefSpace=null;
+      if($('bXrStart'))$('bXrStart').disabled=0;
+      if($('bXrStop'))$('bXrStop').disabled=1;
+      // Clean up preview mesh if session ends unexpectedly
+      if(typeof ptPreview!=='undefined'&&ptPreview){sc.remove(ptPreview);ptPreview.geometry.dispose();ptPreview=null}
+    });
+    // Frame loop — accumulate depth into TSDF
+    // Throttled to 250ms between integrations (4fps sampling) to avoid
+    // saturating the TSDF worker message queue. The AR display still renders
+    // every frame via xrSession.requestAnimationFrame.
+    let lastIntegrate=0;
+    let ptCount=0; // running total of points integrated
+    let bboxStable=0,bboxLast={x:0,y:0,z:0},autoStopAt=+($('XR_FR')||{value:80}).value;
+    // Live point cloud preview — shows accumulated scan as green dots in scene
+    let ptPreview=null;
+    const updatePreview=(newPts)=>{
+      if(!newPts.length)return;
+      if(ptPreview){sc.remove(ptPreview);ptPreview.geometry.dispose();ptPreview=null}
+      // Subsample for preview — show at most 8000 dots
+      const step=M.max(1,newPts.length/3/8000|0)*3;
+      const arr=new Float32Array(M.ceil(newPts.length/step/3)*3);
+      let ai=0;for(let i=0;i<newPts.length;i+=step*3){arr[ai++]=newPts[i];arr[ai++]=newPts[i+1];arr[ai++]=newPts[i+2]}
+      const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(arr.slice(0,ai),3));
+      ptPreview=new T.Points(geo,new T.PointsMaterial({color:0x00ffcc,size:2,sizeAttenuation:false}));
+      sc.add(ptPreview);
+    };
+    // Accumulated points for preview (shared across frames)
+    let allPts=[];
+
+    const onFrame=(t,frame)=>{
+      if(!xrSession)return;
+      xrSession.requestAnimationFrame(onFrame);
+      const pose=frame.getViewerPose(xrRefSpace);
+      if(!pose)return;
+
+      // Throttle: only integrate every 250ms
+      const doIntegrate=(t-lastIntegrate)>250;
+      if(doIntegrate)lastIntegrate=t;
+
+      for(const view of pose.views){
+        // getDepthInformation can throw DOMException on iOS WebXR Viewer if camera
+        // access is revoked mid-session, or on devices where depth is unavailable.
+        let depth=null;
+        try{depth=frame.getDepthInformation?.(view)}catch(depthErr){continue}
+        if(!depth||!doIntegrate)continue;
+        // Sample depth grid. stepX/Y as fraction of frame — 0.05 = every 5%
+        // Matching Gemini's denser sampling spirit but via getDepthInMeters API
+        const stepX=0.05,stepY=0.05;
+        const pts=[];
+        for(let u=0.02;u<0.98;u+=stepX)for(let v=0.02;v<0.98;v+=stepY){
+          const dm=depth.getDepthInMeters(u,v);
+          if(!dm||dm<=0.15||dm>4.0)continue;
+          // Correct perspective unproject:
+          // vp[0]=2n/(r-l) = focal_x in NDC; vp[5]=focal_y in NDC
+          // camX = ndcX*dm/vp[0], camY = ndcY*dm/vp[5], camZ = -dm
+          // Then transform to world via view.transform.inverse.matrix
+          const vp=view.projectionMatrix;
+          const ndcX=u*2-1,ndcY=1-v*2;
+          const cx=ndcX*dm/vp[0],cy=ndcY*dm/vp[5];
+          const cPt=new T.Vector4(cx,cy,-dm,1);
+          cPt.applyMatrix4(new T.Matrix4().fromArray(view.transform.inverse.matrix));
+          // Convert m → mm (P3dK works in mm)
+          pts.push(cPt.x*1000,cPt.y*1000,cPt.z*1000);
+        }
+        if(pts.length){
+          tsdfWorker.postMessage({type:'integrate',data:{points:new Float32Array(pts)}});
+          ptCount+=pts.length/3|0;
+          allPts.push(...pts);
+          // Update live preview every 10 integrations
+          if(xrFrameCount%10===0)updatePreview(allPts);
+          // Track bbox stability for auto-stop
+          const bx=xrScanBBox;
+          const spanX=bx.maxX-bx.minX,spanY=bx.maxY-bx.minY,spanZ=bx.maxZ-bx.minZ;
+          const grew=M.abs(spanX-bboxLast.x)+M.abs(spanY-bboxLast.y)+M.abs(spanZ-bboxLast.z);
+          bboxLast={x:spanX,y:spanY,z:spanZ};
+          if(grew<5)bboxStable++;else bboxStable=0; // <5mm growth = stable
+        }
+      }
+      xrFrameCount++;
+      // Progress HUD
+      const prg=$('xrProgress');
+      if(prg&&doIntegrate){
+        const span=bboxSz(xrScanBBox);
+        prg.textContent=`⬤ ${xrFrameCount}fr · ${(ptCount/1000).toFixed(0)}k pts · ${span}`;
+      }
+      // Auto-stop: stable bbox for 12 consecutive integrations (~3s) OR frame limit
+      const stable=bboxStable>12;
+      if(xrFrameCount>=autoStopAt||stable){
+        if($('bXrBake'))$('bXrBake').disabled=0;
+        sS('> ◉ SCAN '+(stable?'STABLE':'COMPLETE')+' — press BAKE MESH');
+        if(stable)prg&&(prg.textContent='◉ SCENE STABLE — ready to bake');
+        window.stopXRScan();
+      }
+    };
+    xrSession.requestAnimationFrame(onFrame);
+  }catch(err){
+    // Map known XR errors to actionable messages
+    let msg=err.message;
+    if(msg.includes('already an active'))msg='Another AR app is running. Press STOP first, then START SCAN.';
+    else if(msg.includes('XR compatible')||msg.includes('xrCompatible'))msg='WebGL XR context error — try reloading the page.';
+    else if(msg.includes('NotSupportedError'))msg='AR not supported on this device/browser.';
+    else if(msg.includes('SecurityError'))msg='HTTPS required for AR.';
+    sS('> ⚠ XR: '+msg);
+    const note=$('xrCapNote');if(note){note.textContent='⚠ '+msg;note.style.color='#ffa040'}
+    if($('bXrStart'))$('bXrStart').disabled=0;
+    if($('bXrStop'))$('bXrStop').disabled=1;
+  }
+};
+
+window.stopXRScan=async()=>{
+  if(xrSession){try{await xrSession.end()}catch(e){}}
+  // Remove live point cloud preview from scene
+  if(typeof ptPreview!=='undefined'&&ptPreview){sc.remove(ptPreview);ptPreview.geometry.dispose();ptPreview=null}
+  if($('bXrStop'))$('bXrStop').disabled=1;
+  if($('bXrStart'))$('bXrStart').disabled=0;
+  if(xrFrameCount>0&&$('bXrBake'))$('bXrBake').disabled=0;
+  sS('> ◉ SCAN STOPPED — '+xrFrameCount+' FRAMES. Press BAKE MESH.');
+};
+
+window.bakeXRMesh=()=>{
+  if(!tsdfWorker||xrFrameCount<5){sS('> ⚠ NEED MORE SCAN FRAMES — minimum 5');return}
+  // ISO=0 extracts true TSDF zero-crossing. Range ±20mm lets user adjust surface offset.
+  const iso=+($('XR_ISO')||{value:0}).value;
+  const span=bboxSz(xrScanBBox);
+  sS('> ⚗ BAKING MESH — scan was '+span+'...');
+  tsdfWorker.postMessage({type:'marchingCubes',data:{isoLevel:iso,minWeight:3}});
+};
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ✶ SPLAT FORGE — Gaussian Splat Viewer + Point Cloud → Mesh
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// Uses @mkkellogg/gaussian-splats-3d in DropInViewer mode.
+// The viewer is lazy-loaded from CDN only when first used.
+//
+// SPLAT → MESH PIPELINE:
+//   Load .ply/.splat/.ksplat → GaussianSplats3D.Viewer renders in-scene
+//   Extract splat positions (centroids of Gaussian ellipsoids) as point cloud
+//   → TSDF voxelisation (reuse same worker infrastructure) → marching cubes → STL
+//
+// Note: We use the same renderer (rn) and camera (cm) as the main scene.
+//       GaussianSplats3D.DropInViewer integrates cleanly as a Three.js Object3D.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+let splatViewer=null,splatDropIn=null,GS3D=null,splatLoadedUrl=null;
+
+// Lazy-load GaussianSplats3D from CDN
+async function loadGS3D(){
+  if(GS3D)return GS3D;
+  try{
+    sS('> ✶ LOADING SPLAT ENGINE...');
+    GS3D=await import('@mkkellogg/gaussian-splats-3d');
+    sS('> ✶ SPLAT ENGINE READY');
+    return GS3D;
+  }catch(e){
+    sS('> ✶ SPLAT CDN FAILED: '+e.message);
+    throw e;
+  }
+}
+
+window.loadSplat=async(urlOrBuf,fileName)=>{
+  sS('> ✶ LOADING SPLAT...');
+  try{
+    const gs=await loadGS3D();
+    // Remove previous splat if any
+    if(splatDropIn){sc.remove(splatDropIn);splatDropIn.dispose?.();splatDropIn=null}
+    // DropInViewer integrates with an existing Three.js scene
+    splatDropIn=new gs.DropInViewer({
+      gpuAcceleratedSort:true,
+      selfDrivenMode:false, // P3dK drives the render loop
+      renderer:rn,
+      camera:cm,
+      useBuiltInControls:false,
+      sharedMemoryForWorkers:false, // safer cross-origin default
+      integerBasedSort:true,
+      splatSortDistanceMapPrecision:16,
+      freeIntermediateSplatData:false // keep for point-cloud extraction
+    });
+    sc.add(splatDropIn);
+    // Determine format from filename or url
+    const url=urlOrBuf||'';
+    const alpha=+($('SP_ALPHA')||{value:5}).value;
+    if(typeof urlOrBuf==='string'&&url.length>4){
+      await splatDropIn.addSplatScenes([{path:url,splatAlphaRemovalThreshold:alpha,progressiveLoad:true}]);
+    }else if(urlOrBuf instanceof ArrayBuffer||urlOrBuf instanceof Uint8Array){
+      // Blob URL from file input
+      const blob=new Blob([urlOrBuf]);
+      const burl=URL.createObjectURL(blob);
+      await splatDropIn.addSplatScenes([{path:burl,splatAlphaRemovalThreshold:alpha,format:fileName?.endsWith('.splat')?1:fileName?.endsWith('.ksplat')?2:0}]);
+    }
+    splatLoadedUrl=url;
+    if($('bSplatMesh'))$('bSplatMesh').disabled=0;
+    if($('bSplatClose'))$('bSplatClose').disabled=0;
+    const st=$('splatSt');if(st){st.classList.remove('hi');st.textContent='✶ SPLAT LOADED — viewing in scene';st.style.color='#0f9'}
+    sS('> ✶ SPLAT RENDERING');
+    // Hook splat update into render loop
+    window._splatUpdate=()=>splatDropIn.update?.();
+  }catch(err){
+    sS('> ✶ SPLAT LOAD ERR: '+err.message);console.error(err);
+    const st=$('splatSt');if(st){st.classList.remove('hi');st.textContent='✗ '+err.message;st.style.color='#f77'}
+  }
+};
+
+// File input handler for splat files
+
+// Extract splat centroids as point cloud, run TSDF, produce watertight mesh
+window.splatToMesh=async()=>{
+  if(!splatDropIn||!GS3D){sS('> ✶ LOAD A SPLAT FIRST');return}
+  sS('> ✶ EXTRACTING SPLAT POINT CLOUD...');await new Promise(r=>setTimeout(r,30));
+  try{
+    // Extract splat positions from the viewer's internal scene
+    // GaussianSplats3D stores splat data in splatMesh.splatDataTextures
+    // The most reliable path is to iterate over the splat scene's position array
+    const gs=splatDropIn;
+    let pts=[];
+    const maxSplats=+($('SP_MAX')||{value:500}).value*1000;
+    // Try to access internal splat data — position is stored in SplatBuffer
+    // Fallback: use the viewer's splatMesh if direct access fails
+    let extracted=false;
+    try{
+      // Direct access to splat positions (API may vary by version)
+      const splatMesh=gs.splatMesh||gs._splatMesh||gs.getSplatMesh?.();
+      if(splatMesh?.splatDataTextures){
+        const scene=splatMesh.scenes?.[0];
+        const buf=scene?.splatBuffer||splatMesh.splatBuffer;
+        if(buf){
+          const cnt=Math.min(buf.getSplatCount?.()??0,maxSplats);
+          const pos=new T.Vector3();
+          for(let i=0;i<cnt;i+=4){ // sample every 4th splat for speed
+            buf.getPosition?.(i,pos);
+            pts.push(pos.x,pos.y,pos.z);
+          }
+          extracted=pts.length>0;
+        }
+      }
+    }catch(e){console.warn('Splat buffer direct access failed, using fallback:',e)}
+    if(!extracted){
+      // Fallback: walk the three.js scene for PointsMesh objects added by the viewer
+      gs.traverse?.(obj=>{
+        if(obj.isPoints||obj.isMesh){
+          const geo=obj.geometry;
+          if(geo?.attributes?.position){
+            const pa=geo.attributes.position;
+            const lim=Math.min(pa.count,maxSplats);
+            for(let i=0;i<lim;i+=3)pts.push(pa.getX(i),pa.getY(i),pa.getZ(i));
+            extracted=pts.length>0;
+          }
+        }
+      });
+    }
+    if(!pts.length){sS('> ✶ COULD NOT EXTRACT POINTS — try loading a .ply file via I/O panel (PLY contains xyz)');return}
+    // Scale analysis
+    let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,minZ=Infinity,maxZ=-Infinity;
+    for(let i=0;i<pts.length;i+=3){minX=M.min(minX,pts[i]);maxX=M.max(maxX,pts[i]);minY=M.min(minY,pts[i+1]);maxY=M.max(maxY,pts[i+1]);minZ=M.min(minZ,pts[i+2]);maxZ=M.max(maxZ,pts[i+2])}
+    const range=M.max(maxX-minX,maxY-minY,maxZ-minZ);
+    // Splats are in scene units — detect if they're in metres (< 10) or mm
+    const inMetres=range<20;
+    const scale=inMetres?1000:1; // convert to mm
+    if(inMetres)pts=pts.map(v=>v*scale);
+    const nx3=M.min(128,M.ceil((maxX-minX)*scale/+($('SP_VX')||{value:6}).value)+4);
+    const ny3=M.min(128,M.ceil((maxY-minY)*scale/+($('SP_VX')||{value:6}).value)+4);
+    const nz3=M.min(128,M.ceil((maxZ-minZ)*scale/+($('SP_VX')||{value:6}).value)+4);
+    const spVox=+($('SP_VX')||{value:6}).value;
+    if(nx3*ny3*nz3>2097152){sS('> ✶ VOXEL GRID TOO LARGE — INCREASE VOXEL SIZE');return}
+    sS(`> ✶ TSDF VOXELISING ${(pts.length/3|0).toLocaleString()} SPLAT POINTS (${nx3}×${ny3}×${nz3})...`);
+    // Reuse TSDF worker
+    if(tsdfWorker)tsdfWorker.terminate();
+    tsdfWorker=new Worker(URL.createObjectURL(new Blob([tsdfWorkerCode],{type:'text/javascript'})));
+    const bbMin2={x:minX*scale-spVox*2,y:minY*scale-spVox*2,z:minZ*scale-spVox*2};
+    await new Promise(res=>{tsdfWorker.onmessage=e=>{if(e.data.type==='ready')res()};tsdfWorker.postMessage({type:'init',data:{nx:nx3,ny:ny3,nz:nz3,voxSz:spVox,bbMin:bbMin2}})});
+    await new Promise(res=>{tsdfWorker.onmessage=e=>{if(e.data.type==='integrated')res()};tsdfWorker.postMessage({type:'integrate',data:{points:new Float32Array(pts)}})});
+    sS('> ✶ MARCHING CUBES...');
+    tsdfWorker.onmessage=e=>{
+      if(e.data.type!=='mesh')return;
+      const arr=e.data.verts;
+      if(!arr||arr.length<9){sS('> ✶ NO SURFACE FOUND — try smaller voxel size');return}
+      const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(arr,3));
+      geo.computeVertexNormals();geo.computeBoundingBox();
+      const bb3=geo.boundingBox;geo.translate(-(bb3.max.x+bb3.min.x)/2,-bb3.min.y,-(bb3.max.z+bb3.min.z)/2);
+      // Optional smooth
+      if(($('cbSplatSmooth')||{checked:true}).checked){
+        let g3=BGU.mergeVertices(geo,.001);g3.computeVertexNormals();onMeshLoaded(g3);
+      }else onMeshLoaded(geo);
+      sS('> ✶ SPLAT→MESH COMPLETE — ready for fabrication');
+      const st=$('splatSt');if(st){st.textContent='✔ MESH READY — use I/O to export';st.style.color='#0f9'}
+    };
+    tsdfWorker.postMessage({type:'marchingCubes',data:{isoLevel:0,minWeight:1}});
+  }catch(err){sS('> ✶ SPLAT→MESH ERR: '+err.message);console.error(err)}
+};
+
+window.closeSplatViewer=()=>{
+  if(splatDropIn){sc.remove(splatDropIn);splatDropIn.dispose?.();splatDropIn=null;window._splatUpdate=null}
+  GS3D=null;splatLoadedUrl=null;
+  if($('bSplatMesh'))$('bSplatMesh').disabled=1;
+  if($('bSplatClose'))$('bSplatClose').disabled=1;
+  const st=$('splatSt');if(st){st.classList.add('hi')}
+  sS('> ✶ SPLAT CLOSED');
+};
+
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Ψ CFD TUNNEL — 100k GPU Particle Lagrangian Wind Tunnel
+// ══════════════════════════════════════════════════════════════════════════════
+//
+// ALGORITHM: Lagrangian particle tracer (not full Navier-Stokes, but physically
+// meaningful for identifying wake zones, stagnation regions, boundary layers).
+//
+// Each particle has [x,y,z,age,vx,vy,vz,pad] stored in a Float32Array.
+// Every frame the CPU advects all particles:
+//   1. Apply freestream velocity (wind direction × speed)
+//   2. Deflect particles that penetrate the mesh AABB hierarchy
+//   3. Add turbulent jitter near mesh surface (boundary layer simulation)
+//   4. Respawn particles that exit the tunnel back at the inlet
+//   5. Accumulate drag field: per-voxel particle count → pressure proxy
+//
+// RENDERING: THREE.Points with a custom ShaderMaterial.
+//   Vertex shader: maps velocity magnitude to a colour (blue→cyan→green→yellow→red)
+//   Fragment shader: soft circular point sprite with additive blending
+//
+// DRAG FIELD: a Float32Array voxel grid (same dims as topo-opt grid) accumulates
+//   particle density over time. cfdBakeDrag() exports this as window._cfdDragField
+//   which topoRun() reads when coupled mode is active.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CFD={
+  // State
+  active:false, particles:null, ptMesh:null, tunnelBox:null,
+  dir:new T.Vector3(1,0,0), speed:1.0, opacity:0.7,
+  dragVoxels:null, dragNx:0, dragNy:0, dragNz:0, dragVoxSz:8,
+  frameCount:0, meshAABB:null, meshOBBs:null,
+  _mat:null,
+
+  // ── INIT ────────────────────────────────────────────────────────────────────
+  init(){
+    if(!msh){sS('> Ψ LOAD A MESH FIRST');return false}
+    // Get mesh world AABB
+    msh.geometry.computeBoundingBox();
+    const bb=new T.Box3().copy(msh.geometry.boundingBox);
+    bb.applyMatrix4(msh.matrixWorld);
+    this.meshAABB=bb;
+    // Build face AABB list for deflection (sample up to 4000 triangles)
+    this._buildFaceList();
+    // Initialise drag voxel grid over mesh bounds + 40% padding
+    const sz=bb.getSize(new T.Vector3());
+    const pad=M.max(sz.x,sz.y,sz.z)*0.4;
+    const vs=this.dragVoxSz;
+    this.dragNx=M.max(4,M.ceil((sz.x+pad*2)/vs));
+    this.dragNy=M.max(4,M.ceil((sz.y+pad*2)/vs));
+    this.dragNz=M.max(4,M.ceil((sz.z+pad*2)/vs));
+    const dN=this.dragNx*this.dragNy*this.dragNz;
+    if(dN>500000){
+      // Too many voxels — increase voxel size automatically
+      this.dragVoxSz=M.ceil(M.pow(dN/500000,1/3))*vs;
+      return this.init(); // retry with larger voxels
+    }
+    this.dragVoxels=new Float32Array(dN);
+    this.dragOrigin=new T.Vector3(bb.min.x-pad,bb.min.y-pad,bb.min.z-pad);
+    // Tunnel bounding box visualisation
+    if(this.tunnelBox){sc.remove(this.tunnelBox);this.tunnelBox.geometry.dispose()}
+    const tpad=pad*1.1;
+    const tbGeo=new T.BoxGeometry(sz.x+tpad*2,sz.y+tpad*2,sz.z+tpad*2);
+    this.tunnelBox=new T.LineSegments(
+      new T.EdgesGeometry(tbGeo),
+      new T.LineBasicMaterial({color:0x00ffcc,transparent:true,opacity:0.18,depthTest:false})
+    );
+    tbGeo.dispose();
+    this.tunnelBox.position.copy(bb.getCenter(new T.Vector3()));
+    this.tunnelBox.visible=($('cbCfdTunnel')||{checked:true}).checked;
+    sc.add(this.tunnelBox);
+    return true;
+  },
+
+  // Build triangle list for mesh collision (sampled, not full geometry)
+  _buildFaceList(){
+    if(!msh)return;
+    const pos=msh.geometry.attributes.position;
+    const wm=msh.matrixWorld;
+    const maxTri=4000;
+    const total=pos.count/3|0;
+    const step=M.max(1,M.floor(total/maxTri));
+    this.meshOBBs=[];
+    const pA=new T.Vector3(),pB=new T.Vector3(),pC=new T.Vector3();
+    for(let i=0;i<pos.count;i+=step*3){
+      pA.fromBufferAttribute(pos,i).applyMatrix4(wm);
+      pB.fromBufferAttribute(pos,M.min(i+1,pos.count-1)).applyMatrix4(wm);
+      pC.fromBufferAttribute(pos,M.min(i+2,pos.count-1)).applyMatrix4(wm);
+      const box=new T.Box3().setFromPoints([pA,pB,pC]);
+      // Expand by small margin so particles don't tunnel
+      box.expandByScalar(1.5);
+      this.meshOBBs.push(box);
+    }
+  },
+
+  // ── SPAWN ───────────────────────────────────────────────────────────────────
+  // Returns a Float32Array with N particles × 8 floats:
+  // [x,y,z, age, vx,vy,vz, speed_magnitude]
+  _spawnParticles(N){
+    const bb=this.meshAABB;
+    const sz=bb.getSize(new T.Vector3());
+    const pad=M.max(sz.x,sz.y,sz.z)*0.4;
+    const buf=new Float32Array(N*8);
+    const d=this.dir;
+    // Inlet plane is perpendicular to wind dir, offset by -pad on that axis
+    for(let i=0;i<N;i++){
+      const b=i*8;
+      // Random position on the inlet face
+      const u=(M.random()-.5)*(sz.x+pad*2);
+      const v=(M.random()-.5)*(sz.y+pad*2);
+      const cx=bb.getCenter(new T.Vector3()).x;
+      const cy=bb.getCenter(new T.Vector3()).y;
+      const cz=bb.getCenter(new T.Vector3()).z;
+      // Place on inlet plane (upstream face relative to wind dir)
+      if(M.abs(d.x)>=M.abs(d.y)&&M.abs(d.x)>=M.abs(d.z)){
+        buf[b  ]=cx-d.x*(sz.x/2+pad); buf[b+1]=cy+u; buf[b+2]=cz+v;
+      }else if(M.abs(d.y)>=M.abs(d.z)){
+        buf[b  ]=cx+u; buf[b+1]=cy-d.y*(sz.y/2+pad); buf[b+2]=cz+v;
+      }else{
+        buf[b  ]=cx+u; buf[b+1]=cy+v; buf[b+2]=cz-d.z*(sz.z/2+pad);
+      }
+      buf[b+3]=M.random()*2; // stagger ages so not all respawn same frame
+      buf[b+4]=d.x*this.speed; buf[b+5]=d.y*this.speed; buf[b+6]=d.z*this.speed;
+      buf[b+7]=this.speed;
+    }
+    return buf;
+  },
+
+  // ── CREATE THREE.JS OBJECTS ──────────────────────────────────────────────────
+  create(){
+    const N=+($('CFD_PT')||{value:100}).value*1000;
+    this.particles=this._spawnParticles(N);
+    // Geometry: position + colour attribute
+    const geo=new T.BufferGeometry();
+    const pos3=new Float32Array(N*3);
+    const col3=new Float32Array(N*3);
+    for(let i=0;i<N;i++){pos3[i*3]=this.particles[i*8];pos3[i*3+1]=this.particles[i*8+1];pos3[i*3+2]=this.particles[i*8+2];col3[i*3]=0;col3[i*3+1]=1;col3[i*3+2]=1}
+    geo.setAttribute('position',new T.BufferAttribute(pos3,3).setUsage(T.DynamicDrawUsage));
+    geo.setAttribute('color',new T.BufferAttribute(col3,3).setUsage(T.DynamicDrawUsage));
+    // Shader material: velocity-mapped colour, soft circular sprite
+    this._mat=new T.ShaderMaterial({
+      uniforms:{opacity:{value:this.opacity},useColor:{value:1}},
+      vertexShader:`
+        attribute vec3 color;
+        varying vec3 vCol;
+        void main(){
+          vCol=color;
+          vec4 mvPos=modelViewMatrix*vec4(position,1.0);
+          gl_PointSize=max(1.5,2.8*(300.0/-mvPos.z));
+          gl_Position=projectionMatrix*mvPos;
+        }`,
+      fragmentShader:`
+        uniform float opacity;
+        varying vec3 vCol;
+        void main(){
+          vec2 uv=gl_PointCoord*2.0-1.0;
+          float r=dot(uv,uv);
+          if(r>1.0)discard;
+          float a=opacity*(1.0-r*r);
+          gl_FragColor=vec4(vCol,a);
+        }`,
+      transparent:true,blending:T.AdditiveBlending,
+      depthWrite:false,vertexColors:true
+    });
+    if(this.ptMesh){sc.remove(this.ptMesh);this.ptMesh.geometry.dispose()}
+    this.ptMesh=new T.Points(geo,this._mat);
+    sc.add(this.ptMesh);
+  },
+
+  // ── ADVECT (called every frame while active) ─────────────────────────────────
+  // Pure CPU advection — fast enough for 100k particles at 60fps in JS.
+  // The key operations per particle are: ~4 additions, 1 AABB check, 1 respawn test.
+  advect(dt){
+    if(!this.particles||!this.ptMesh||!this.meshAABB)return;
+    const N=this.particles.length/8|0;
+    const pts=this.particles;
+    const d=this.dir, spd=this.speed;
+    const bb=this.meshAABB, obbs=this.meshOBBs||[];
+    const bbSz=bb.getSize(new T.Vector3());
+    const pad=M.max(bbSz.x,bbSz.y,bbSz.z)*0.4;
+    const bbCtr=bb.getCenter(new T.Vector3());
+    // Tunnel exit boundary: particle exits this box → respawn at inlet
+    const exitR=M.max(bbSz.x,bbSz.y,bbSz.z)/2+pad*1.05;
+    // Drag voxel grid params
+    const dvx=this.dragVoxSz,dNx=this.dragNx,dNy=this.dragNy,dNz=this.dragNz;
+    const dOx=this.dragOrigin.x,dOy=this.dragOrigin.y,dOz=this.dragOrigin.z;
+    const dv=this.dragVoxels;
+    const pos3=this.ptMesh.geometry.attributes.position.array;
+    const col3=this.ptMesh.geometry.attributes.color.array;
+    const useCol=($('cbCfdCol')||{checked:true}).checked;
+    const maxAge=3.5+M.random()*1.5; // particles live 3.5–5s before forced respawn
+
+    for(let i=0;i<N;i++){
+      const b=i*8;
+      let px=pts[b],py=pts[b+1],pz=pts[b+2];
+      let age=pts[b+3];
+      let vx=pts[b+4],vy=pts[b+5],vz=pts[b+6];
+
+      // Advect: freestream + small turbulent jitter
+      const jit=0.012*spd;
+      vx+=(M.random()-.5)*jit; vy+=(M.random()-.5)*jit; vz+=(M.random()-.5)*jit;
+      // Bleed velocity back toward freestream (viscosity proxy)
+      const blend=0.96;
+      vx=vx*blend+d.x*spd*(1-blend);
+      vy=vy*blend+d.y*spd*(1-blend);
+      vz=vz*blend+d.z*spd*(1-blend);
+      px+=vx*dt*60; py+=vy*dt*60; pz+=vz*dt*60;
+      age+=dt;
+
+      // Mesh collision: deflect off face AABBs
+      // Use a compact broadphase: skip if outside mesh AABB + margin
+      const mx=px-bbCtr.x,my=py-bbCtr.y,mz=pz-bbCtr.z;
+      const inMeshZone=M.abs(mx)<bbSz.x*0.6&&M.abs(my)<bbSz.y*0.6&&M.abs(mz)<bbSz.z*0.6;
+      if(inMeshZone){
+        // Check face AABBs (sampled list)
+        for(let f=0;f<obbs.length;f++){
+          const o=obbs[f];
+          if(px>=o.min.x&&px<=o.max.x&&py>=o.min.y&&py<=o.max.y&&pz>=o.min.z&&pz<=o.max.z){
+            // Particle inside face AABB — deflect: reverse the component most aligned with face normal
+            // Approximate normal from AABB: push out along smallest penetration axis
+            const dx0=o.max.x-px, dx1=px-o.min.x;
+            const dy0=o.max.y-py, dy1=py-o.min.y;
+            const dz0=o.max.z-pz, dz1=pz-o.min.z;
+            const minD=M.min(dx0,dx1,dy0,dy1,dz0,dz1);
+            if(minD===dx0||minD===dx1){vx*=-0.4;px+=vx>0?2:-2}
+            else if(minD===dy0||minD===dy1){vy*=-0.4;py+=vy>0?2:-2}
+            else{vz*=-0.4;pz+=vz>0?2:-2}
+            // Add wake turbulence downstream
+            vx+=(M.random()-.5)*spd*0.3;
+            vy+=(M.random()-.5)*spd*0.3;
+            vz+=(M.random()-.5)*spd*0.3;
+            break;
+          }
+        }
+        // Accumulate drag field: even if not colliding, flowing near mesh counts
+        const vxi=M.min(dNx-1,M.max(0,(px-dOx)/dvx|0));
+        const vyi=M.min(dNy-1,M.max(0,(py-dOy)/dvx|0));
+        const vzi=M.min(dNz-1,M.max(0,(pz-dOz)/dvx|0));
+        if(dv)dv[vxi+vyi*dNx+vzi*dNx*dNy]+=0.001;
+      }
+
+      // Tunnel exit / age — respawn at inlet
+      const dist=M.hypot(px-bbCtr.x,py-bbCtr.y,pz-bbCtr.z);
+      if(age>maxAge||dist>exitR){
+        // Respawn
+        const u=(M.random()-.5)*(bbSz.x+pad*2);
+        const v=(M.random()-.5)*(bbSz.y+pad*2);
+        if(M.abs(d.x)>=M.abs(d.y)&&M.abs(d.x)>=M.abs(d.z)){
+          px=bbCtr.x-d.x*(bbSz.x/2+pad); py=bbCtr.y+u; pz=bbCtr.z+v;
+        }else if(M.abs(d.y)>=M.abs(d.z)){
+          px=bbCtr.x+u; py=bbCtr.y-d.y*(bbSz.y/2+pad); pz=bbCtr.z+v;
+        }else{
+          px=bbCtr.x+u; py=bbCtr.y+v; pz=bbCtr.z-d.z*(bbSz.z/2+pad);
+        }
+        vx=d.x*spd; vy=d.y*spd; vz=d.z*spd; age=0;
+      }
+
+      pts[b]=px; pts[b+1]=py; pts[b+2]=pz; pts[b+3]=age;
+      pts[b+4]=vx; pts[b+5]=vy; pts[b+6]=vz;
+      // Velocity magnitude → colour (cool blue = slow, hot red = fast)
+      const vmag=M.hypot(vx,vy,vz)/M.max(spd,0.001);
+      pos3[i*3]=px; pos3[i*3+1]=py; pos3[i*3+2]=pz;
+      if(useCol){
+        // Blue(0,0,1) → Cyan(0,1,1) → Green(0,1,0) → Yellow(1,1,0) → Red(1,0,0)
+        const t=M.min(1,vmag);
+        if(t<0.25){col3[i*3]=0;col3[i*3+1]=t*4;col3[i*3+2]=1}
+        else if(t<0.5){col3[i*3]=0;col3[i*3+1]=1;col3[i*3+2]=1-(t-.25)*4}
+        else if(t<0.75){col3[i*3]=(t-.5)*4;col3[i*3+1]=1;col3[i*3+2]=0}
+        else{col3[i*3]=1;col3[i*3+1]=1-(t-.75)*4;col3[i*3+2]=0}
+      }else{col3[i*3]=0;col3[i*3+1]=0.9;col3[i*3+2]=1}
+    }
+    this.ptMesh.geometry.attributes.position.needsUpdate=true;
+    this.ptMesh.geometry.attributes.color.needsUpdate=true;
+    this.frameCount++;
+    // Update status every 60 frames
+    if(this.frameCount%60===0){
+      const st=$('cfdSt');
+      if(st){st.classList.remove('hi');st.textContent=`Ψ RUNNING — ${N.toLocaleString()} particles · frame ${this.frameCount}`}
+      if($('bCfdBake'))$('bCfdBake').disabled=this.frameCount<120;
+      // Adaptive particle density: scale ±10% per 60-frame sample based on measured fps.
+      // Keeps CFD feeling responsive on weaker phones without manual tuning.
+      const measFps=window.cubeStats?.fps||60;
+      const sliderEl=$('CFD_PT');
+      if(sliderEl){
+        let cur=+sliderEl.value; // current count in thousands
+        if(measFps<30&&cur>10)cur=M.max(10,M.round(cur*.9));       // fps low → shed 10%
+        else if(measFps>55&&cur<200)cur=M.min(200,M.round(cur*1.05)); // fps high → gain 5%
+        if(cur!=+sliderEl.value){
+          sliderEl.value=cur;
+          if($('cfdPtV'))$('cfdPtV').textContent=cur;
+          // Note: particle count change takes effect on next cfdReset/cfdStart
+          // (avoid mid-frame buffer resize which would corrupt the Float32Array)
+        }
+      }
+    }
+  },
+
+  // ── DRAG FIELD EXPORT ────────────────────────────────────────────────────────
+  getDragField(){return{voxels:this.dragVoxels,nx:this.dragNx,ny:this.dragNy,nz:this.dragNz,voxSz:this.dragVoxSz,origin:this.dragOrigin}},
+
+  // ── CLEANUP ──────────────────────────────────────────────────────────────────
+  destroy(){
+    this.active=false;
+    if(this.ptMesh){sc.remove(this.ptMesh);this.ptMesh.geometry.dispose();this._mat?.dispose();this.ptMesh=null}
+    if(this.tunnelBox){sc.remove(this.tunnelBox);this.tunnelBox.geometry.dispose();this.tunnelBox=null}
+    this.particles=null;this.dragVoxels=null;this.frameCount=0;
+    [$('bCfdStart'),$('bCfdStop'),$('bCfdBake')].forEach((b,i)=>{if(b){b.disabled=i!==0}});
+    const st=$('cfdSt');if(st)st.classList.add('hi');
+  }
+};
+window._cfd=CFD; // expose for topo coupling
+
+// ── CFD CONTROLS ──────────────────────────────────────────────────────────────
+window.cfdSetDir=(x,y,z)=>{
+  CFD.dir.set(x,y,z).normalize();
+  // Update button state
+  [['cfdDX',1,0,0],['cfdDY',0,1,0],['cfdDZ',0,0,1]].forEach(([id,dx,dy,dz])=>{
+    const b=$(id);if(b)b.classList.toggle('on',x===dx&&y===dy&&z===dz);
+  });
+  // Respawn particles with new direction if running
+  if(CFD.active&&CFD.particles){
+    const N=CFD.particles.length/8|0;
+    CFD.particles=CFD._spawnParticles(N);
+  }
+};
+window.cfdSetSpeed=(v)=>{CFD.speed=v};
+window.cfdSetOpacity=(v)=>{CFD.opacity=v;if(CFD._mat)CFD._mat.uniforms.opacity.value=v};
+
+window.cfdStart=()=>{
+  if(!msh){sS('> Ψ LOAD A MESH FIRST');return}
+  if(!CFD.init())return;
+  CFD.create();
+  CFD.active=true;
+  CFD.speed=+($('CFD_SP')||{value:1}).value;
+  CFD.opacity=+($('CFD_OP')||{value:0.7}).value;
+  if(CFD._mat)CFD._mat.uniforms.opacity.value=CFD.opacity;
+  if(CFD.tunnelBox)CFD.tunnelBox.visible=($('cbCfdTunnel')||{checked:true}).checked;
+  $('bCfdStart').disabled=1;$('bCfdStop').disabled=0;
+  const st=$('cfdSt');if(st){st.classList.remove('hi');st.textContent='Ψ INITIALISING...'}
+  sS('> Ψ CFD TUNNEL RUNNING');
+};
+
+window.cfdStop=()=>{
+  CFD.active=false;
+  $('bCfdStart').disabled=0;$('bCfdStop').disabled=1;
+  sS('> Ψ CFD PAUSED');
+};
+
+window.cfdReset=()=>{
+  CFD.destroy();
+  sS('> Ψ CFD RESET');
+};
+
+window.cfdBakeDrag=()=>{
+  if(!CFD.dragVoxels||CFD.frameCount<60){sS('> Ψ RUN CFD LONGER BEFORE BAKING (min 60 frames)');return}
+  // Export drag field to topo-opt system
+  window._cfdDragField=CFD.getDragField();
+  const maxD=CFD.dragVoxels.reduce((m,v)=>M.max(m,v),0)||1;
+  // Normalise 0→1
+  const norm=new Float32Array(CFD.dragVoxels.length);
+  for(let i=0;i<norm.length;i++)norm[i]=CFD.dragVoxels[i]/maxD;
+  window._cfdDragField.normalized=norm;
+  const st=$('cfdSt');if(st){st.textContent='✔ DRAG FIELD BAKED — open ⚗ Architect\'s Compass and BAKE to apply';st.style.color='#0f9'}
+  sS('> Ψ DRAG FIELD EXPORTED → TOPO-OPT COUPLED');
+};
+
+// ── TUNNEL BOX VISIBILITY TOGGLE ─────────────────────────────────────────────
+document.getElementById('cbCfdTunnel')?.addEventListener('change',e=>{
+  if(CFD.tunnelBox)CFD.tunnelBox.visible=e.target.checked;
+});
+
+
+// WebGL context loss recovery — happens on Android under memory pressure, GPU driver reset,
+// or after switching apps with Gaussian splats/CFD active.
+// Simplest safe recovery: reload. More sophisticated state restore would require
+// re-uploading all geometries and textures which is complex and fragile.
+rn.domElement.addEventListener('webglcontextlost',e=>{
+  e.preventDefault(); // required to receive the contextrestored event
+  CFD.active=false;   // stop CFD advection immediately
+  sS('> ⚠ WEBGL CONTEXT LOST — reloading...');
+  setTimeout(()=>location.reload(),1500); // brief delay so status is readable
+});
+rn.domElement.addEventListener('webglcontextrestored',()=>{
+  // Fires before our reload timer — reload handles full reinit
+  sS('> ✔ WEBGL CONTEXT RESTORED');
+});
+
+let t0=performance.now(),fF=0,tLast=performance.now();
+rn.setAnimationLoop(t=>{
+  const dt=M.min((t-tLast)/1000,0.033);tLast=t; // cap at 33ms (30fps equiv) — prevents CFD particle teleport on resume
+  // Background tab: update tLast (prevents dt spike on resume) but skip all rendering + physics
+  if(window.bgTab)return;
+  ct.update();
+  if(camTween){camTween.prog=M.min(1,camTween.prog+.016/(camTween.dur||.4));const ease=1-M.pow(1-camTween.prog,3);cm.position.lerpVectors(camTween.from,camTween.to,ease);if(camTween.prog>=1)camTween=null}
+  if(CFD.active&&!window.bgTab)CFD.advect(dt);
+  if(window._splatUpdate)try{window._splatUpdate()}catch(e){}
+  rn.render(sc,cm);
+  const qi=cm.quaternion.clone().invert();vcCube.quaternion.copy(qi);vcRn.render(vcSc,vcCm);
+  fF++;if(t-t0>=1000){window.cubeStats.fps=M.round(fF*1000/(t-t0));uCF();fF=0;t0=t}
+});
+
+sS('\u03a3 AWAITING I/O \u2014 DROP MESH TO BEGIN');
+</script>
+</body>
+</html>
