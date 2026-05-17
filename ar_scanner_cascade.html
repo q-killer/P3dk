@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>WebXR Depth Scanner</title>
+    <style>
+        body, html {
+            margin: 0;
+            overflow: hidden;
+            background-color: transparent !important;
+            color: #fff;
+            font-family: sans-serif;
+        }
+        #bg-fallback {
+            position: fixed; inset: 0; background: #111; z-index: -1;
+        }
+        #ar-ui-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: flex-end; padding: 20px; box-sizing: border-box; z-index: 100;
+        }
+        .panel {
+            background: rgba(0, 0, 0, 0.85); border: 2px solid #0f9;
+            border-radius: 12px; padding: 20px; pointer-events: auto; backdrop-filter: blur(10px);
+        }
+        h1 { margin: 0 0 10px 0; font-size: 1.2rem; color: #0f9; }
+        p, #status { font-size: 0.9rem; margin-bottom: 5px; color: #fff; line-height: 1.4; }
+        #debug-log { 
+            font-family: monospace; font-size: 0.75rem; color: #0cf; 
+            margin-bottom: 15px; min-height: 4em; background: rgba(0,0,0,0.5);
+            padding: 10px; border-radius: 6px; white-space: pre-wrap;
+        }
+        button {
+            width: 100%; padding: 15px; margin-bottom: 10px;
+            font-size: 1.1rem; font-weight: bold; border: none;
+            border-radius: 8px; cursor: pointer; transition: opacity 0.2s;
+        }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        #btn-start { background: #0f9; color: #000; }
+        #btn-stop { background: #f77; color: #fff; display: none; }
+        #btn-export { background: #0cf; color: #000; display: none; }
+    </style>
+</head>
+<body>
+    <div id="bg-fallback"></div>
+
+    <div id="ar-ui-overlay">
+        <div class="panel">
+            <h1>P3dK WebXR Scanner</h1>
+            <div id="status">Checking AR capabilities...</div>
+            <div id="debug-log">System initializing...</div>
+            
+            <button id="btn-start" disabled>Start AR Scan</button>
+            <button id="btn-stop">Stop Scan</button>
+            <button id="btn-export">Export .PLY</button>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+
+        const statusEl = document.getElementById('status');
+        const debugEl = document.getElementById('debug-log');
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const btnExport = document.getElementById('btn-export');
+        const overlayEl = document.getElementById('ar-ui-overlay');
+        const bgFallback = document.getElementById('bg-fallback');
+
+        let logLines = [];
+        function log(msg) {
+            logLines.push(`> ${msg}`);
+            if(logLines.length > 5) logLines.shift(); 
+            debugEl.textContent = logLines.join('\n');
+            console.log(msg);
+        }
+
+        let xrSession = null;
+        let pointsArray = [];
+        let colorsArray = [];
+        let pointCloudObject = null;
+        let lastCaptureTime = 0;
+        const CAPTURE_INTERVAL_MS = 250; 
+        const DEPTH_SAMPLE_STEP = 4; 
+
+        // --- Three.js Setup ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+        
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0); 
+        renderer.xr.enabled = true; 
+        document.body.appendChild(renderer.domElement);
+
+        const pointsGeo = new THREE.BufferGeometry();
+        pointsGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
+        pointsGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
+        const pointsMat = new THREE.PointsMaterial({ size: 0.02, vertexColors: true, sizeAttenuation: true });
+        pointCloudObject = new THREE.Points(pointsGeo, pointsMat);
+        scene.add(pointCloudObject);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // --- AR Capability Check ---
+        async function checkXR() {
+            if (!navigator.xr) {
+                statusEl.textContent = "WebXR missing. Check Browser/HTTPS.";
+                return;
+            }
+            try {
+                const supported = await navigator.xr.isSessionSupported('immersive-ar');
+                if (supported) {
+                    statusEl.textContent = "✔ ARCore Ready.";
+                    log("Awaiting start...");
+                    btnStart.disabled = false;
+                } else {
+                    statusEl.textContent = "✘ immersive-ar not supported.";
+                }
+            } catch (err) {
+                log(`XR Check Error: ${err.message}`);
+            }
+        }
+        checkXR();
+
+        // --- Start AR Session ---
+        btnStart.addEventListener('click', async () => {
+            statusEl.textContent = "Launching AR...";
+            logLines = []; 
+            
+            try {
+                const sessionInit = {
+                    requiredFeatures: ['local'],
+                    optionalFeatures: ['depth-sensing', 'dom-overlay'],
+                    domOverlay: { root: overlayEl },
+                    depthSensing: {
+                        usagePreference: ['cpu-optimized', 'gpu-optimized'], 
+                        dataFormatPreference: ['luminance-alpha', 'float32']
+                    }
+                };
+
+                xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+                
+                const granted = xrSession.grantedFeatures || [];
+                log(`Granted: ${granted.join(', ')}`);
+                
+                if (!granted.includes('depth-sensing')) {
+                    log("⚠ WARNING: Chrome refused Depth API. Check chrome://flags.");
+                }
+
+                bgFallback.style.display = 'none';
+                btnStart.style.display = 'none';
+                btnStop.style.display = 'block';
+                btnExport.style.display = 'none';
+                statusEl.textContent = "AR Active. Move phone to scan.";
+                
+                pointsArray = [];
+                colorsArray = [];
+
+                renderer.xr.setReferenceSpaceType('local');
+                await renderer.xr.setSession(xrSession);
+                xrSession.addEventListener('end', onSessionEnd);
+
+            } catch (e) {
+                statusEl.textContent = "AR Launch Failed.";
+                log(`Fatal: ${e.message}`);
+            }
+        });
+
+        btnStop.addEventListener('click', () => {
+            if (xrSession) xrSession.end(); 
+        });
+
+        function onSessionEnd() {
+            xrSession = null;
+            bgFallback.style.display = 'block'; 
+            btnStart.style.display = 'block';
+            btnStop.style.display = 'none';
+            statusEl.textContent = `Scan complete! ${Math.floor(pointsArray.length / 3)} points.`;
+            log("Session ended.");
+            if (pointsArray.length > 0) btnExport.style.display = 'block';
+        }
+
+        // --- Core Scan Loop ---
+        renderer.setAnimationLoop((timestamp, frame) => {
+            if (frame && xrSession) {
+                const refSpace = renderer.xr.getReferenceSpace();
+                const viewerPose = frame.getViewerPose(refSpace);
+
+                if (viewerPose) {
+                    const view = viewerPose.views[0];
+                    const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
+                    
+                    try {
+                        const depthInfo = frame.getDepthInformation(view);
+                        if (depthInfo) {
+                            if (timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
+                                lastCaptureTime = timestamp;
+                                extractDepthPoints(view, depthInfo, camMatrix);
+                                updatePointCloudGeometry();
+                            }
+                        } else {
+                            if(timestamp % 1000 < 50) log("Waiting for depth buffer...");
+                        }
+                    } catch (e) {
+                        if(timestamp % 1000 < 50) log(`Depth Read Error: ${e.message}`);
+                    }
+                }
+            }
+            renderer.render(scene, camera);
+        });
+
+        function extractDepthPoints(view, depthInfo, camMatrix) {
+            const width = depthInfo.width;
+            const height = depthInfo.height;
+            const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
+
+            for (let y = 0; y < height; y += DEPTH_SAMPLE_STEP) {
+                for (let x = 0; x < width; x += DEPTH_SAMPLE_STEP) {
+                    
+                    // FIXED: WebXR demands Normalized Coordinates (0.0 to 1.0)
+                    const normX = x / width;
+                    const normY = y / height;
+                    
+                    const depthInMeters = depthInfo.getDepthInMeters(normX, normY);
+                    
+                    if (depthInMeters < 0.2 || depthInMeters > 4.0) continue;
+
+                    const ndcX = normX * 2 - 1;
+                    const ndcY = -(normY * 2 - 1);
+
+                    const ptCam = new THREE.Vector3(ndcX, ndcY, -1);
+                    ptCam.applyMatrix4(invProj);
+                    ptCam.multiplyScalar(depthInMeters / Math.abs(ptCam.z)); 
+                    ptCam.applyMatrix4(camMatrix);
+                    
+                    pointsArray.push(ptCam.x, ptCam.y, ptCam.z);
+                    
+                    const normalizedDepth = (depthInMeters - 0.2) / 3.8;
+                    colorsArray.push(1.0 - normalizedDepth, 0.5, normalizedDepth);
+                }
+            }
+            statusEl.textContent = `Scanning... Points: ${Math.floor(pointsArray.length / 3)}`;
+        }
+
+        function updatePointCloudGeometry() {
+            if (pointsArray.length === 0) return;
+            pointCloudObject.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pointsArray), 3));
+            pointCloudObject.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(colorsArray), 3));
+            pointCloudObject.geometry.attributes.position.needsUpdate = true;
+            pointCloudObject.geometry.attributes.color.needsUpdate = true;
+        }
+
+        // --- Export to PLY ---
+        btnExport.addEventListener('click', () => {
+            const numPts = pointsArray.length / 3;
+            if (numPts === 0) return;
+
+            statusEl.textContent = "Generating PLY file...";
+            
+            let plyOut = `ply\nformat ascii 1.0\nelement vertex ${numPts}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n`;
+            
+            for (let i = 0; i < numPts; i++) {
+                const x = pointsArray[i*3], y = pointsArray[i*3+1], z = pointsArray[i*3+2];
+                const r = Math.round(colorsArray[i*3] * 255), g = Math.round(colorsArray[i*3+1] * 255), b = Math.round(colorsArray[i*3+2] * 255);
+                plyOut += `${x.toFixed(5)} ${y.toFixed(5)} ${z.toFixed(5)} ${r} ${g} ${b}\n`;
+            }
+            
+            const blob = new Blob([plyOut], {type: 'text/plain'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `S21_Depth_Scan_${Date.now()}.ply`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            statusEl.textContent = "Export complete!";
+        });
+    </script>
+</body>
+</html>
