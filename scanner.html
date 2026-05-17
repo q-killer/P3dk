@@ -1,10 +1,9 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>WebXR Depth Scanner Cascade</title>
+    <title>WebXR Depth Scanner</title>
     <style>
         body, html {
             margin: 0;
@@ -14,32 +13,16 @@
             font-family: sans-serif;
         }
         #bg-fallback {
-            position: fixed;
-            inset: 0;
-            background: #111;
-            z-index: -1;
+            position: fixed; inset: 0; background: #111; z-index: -1;
         }
         #ar-ui-overlay {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            padding: 20px;
-            box-sizing: border-box;
-            z-index: 100;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none; display: flex; flex-direction: column;
+            justify-content: flex-end; padding: 20px; box-sizing: border-box; z-index: 100;
         }
         .panel {
-            background: rgba(0, 0, 0, 0.85);
-            border: 2px solid #0f9;
-            border-radius: 12px;
-            padding: 20px;
-            pointer-events: auto;
-            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.85); border: 2px solid #0f9;
+            border-radius: 12px; padding: 20px; pointer-events: auto; backdrop-filter: blur(10px);
         }
         h1 { margin: 0 0 10px 0; font-size: 1.2rem; color: #0f9; }
         p, #status { font-size: 0.9rem; margin-bottom: 5px; color: #fff; line-height: 1.4; }
@@ -47,11 +30,6 @@
             font-family: monospace; font-size: 0.75rem; color: #0cf; 
             margin-bottom: 15px; min-height: 4em; background: rgba(0,0,0,0.5);
             padding: 10px; border-radius: 6px; white-space: pre-wrap;
-        }
-        
-        .warning {
-            color: #f77; font-weight: bold; border: 1px solid #f77;
-            padding: 10px; border-radius: 6px; margin-bottom: 15px; background: rgba(255,0,0,0.1);
         }
         button {
             width: 100%; padding: 15px; margin-bottom: 10px;
@@ -69,12 +47,7 @@
 
     <div id="ar-ui-overlay">
         <div class="panel">
-            <h1>WebXR Depth Diagnostic</h1>
-            
-            <div id="warning-msg" class="warning" style="display:none;">
-                ⚠ DO NOT RUN IN IFRAME.<br>Save this file and open natively in Chrome Android.
-            </div>
-
+            <h1>P3dK WebXR Scanner</h1>
             <div id="status">Checking AR capabilities...</div>
             <div id="debug-log">System initializing...</div>
             
@@ -84,7 +57,6 @@
         </div>
     </div>
 
-    <!-- Import Three.js from CDN -->
     <script type="importmap">
         {
             "imports": {
@@ -103,16 +75,11 @@
         const btnExport = document.getElementById('btn-export');
         const overlayEl = document.getElementById('ar-ui-overlay');
         const bgFallback = document.getElementById('bg-fallback');
-        const warningEl = document.getElementById('warning-msg');
-
-        if (window.self !== window.top) {
-            warningEl.style.display = 'block';
-        }
 
         let logLines = [];
         function log(msg) {
             logLines.push(`> ${msg}`);
-            if(logLines.length > 6) logLines.shift(); 
+            if(logLines.length > 5) logLines.shift(); 
             debugEl.textContent = logLines.join('\n');
             console.log(msg);
         }
@@ -121,12 +88,11 @@
         let pointsArray = [];
         let colorsArray = [];
         let pointCloudObject = null;
-        let debugCube = null;
         let lastCaptureTime = 0;
         const CAPTURE_INTERVAL_MS = 250; 
         const DEPTH_SAMPLE_STEP = 4; 
 
-        // --- 1. Three.js Setup ---
+        // --- Three.js Setup ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
         
@@ -137,8 +103,6 @@
         renderer.xr.enabled = true; 
         document.body.appendChild(renderer.domElement);
 
-        scene.add(new THREE.AmbientLight(0xffffff, 1.0));
-
         const pointsGeo = new THREE.BufferGeometry();
         pointsGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(0), 3));
         pointsGeo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(0), 3));
@@ -146,29 +110,16 @@
         pointCloudObject = new THREE.Points(pointsGeo, pointsMat);
         scene.add(pointCloudObject);
 
-        const cubeGeo = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-        const cubeMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
-        debugCube = new THREE.Mesh(cubeGeo, cubeMat);
-        debugCube.position.set(0, 0, -1); 
-        scene.add(debugCube);
-
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // --- 2. WebXR Capability Check ---
+        // --- AR Capability Check ---
         async function checkXR() {
-            if (window.location.protocol === 'file:') {
-                statusEl.textContent = "⚠ BLOCKED: CANNOT RUN FROM LOCAL FILE";
-                log("Fatal: Chrome blocks WebXR on file:/// URLs. You MUST host this on an HTTPS server (like tiiny.host or GitHub pages).");
-                btnStart.disabled = true;
-                return;
-            }
-
             if (!navigator.xr) {
-                statusEl.textContent = "WebXR missing. Check HTTPS & Browser.";
+                statusEl.textContent = "WebXR missing. Check Browser/HTTPS.";
                 return;
             }
             try {
@@ -181,73 +132,56 @@
                     statusEl.textContent = "✘ immersive-ar not supported.";
                 }
             } catch (err) {
-                statusEl.textContent = "XR Error.";
-                log(err.message);
+                log(`XR Check Error: ${err.message}`);
             }
         }
         checkXR();
 
-        // --- 3. The AR Config Cascade ---
+        // --- Start AR Session (The Polite Configuration) ---
         btnStart.addEventListener('click', async () => {
-            statusEl.textContent = "Negotiating ARCore config...";
+            statusEl.textContent = "Launching AR...";
             logLines = []; 
             
-            const baseInit = {
-                requiredFeatures: ['local'],
-                optionalFeatures: ['dom-overlay'],
-                domOverlay: { root: overlayEl }
-            };
+            try {
+                // We STRICTLY request 'local' (matches Google test).
+                // We OPTIONALLY request depth and overlay so Chrome doesn't panic and block us.
+                const sessionInit = {
+                    requiredFeatures: ['local'],
+                    optionalFeatures: ['depth-sensing', 'dom-overlay'],
+                    domOverlay: { root: overlayEl },
+                    depthSensing: {
+                        usagePreference: ['cpu-optimized', 'gpu-optimized'], 
+                        dataFormatPreference: ['luminance-alpha', 'float32']
+                    }
+                };
 
-            const testConfigs = [
-                { name: 'Strict Float32', prefs: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['float32'] } },
-                { name: 'Strict Luminance', prefs: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha'] } },
-                { name: 'Flexible CPU', prefs: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha', 'float32'] } }
-            ];
-
-            for (let i = 0; i < testConfigs.length; i++) {
-                try {
-                    log(`Attempt ${i+1}: ${testConfigs[i].name}...`);
-                    xrSession = await navigator.xr.requestSession('immersive-ar', {
-                        ...baseInit,
-                        requiredFeatures: ['local', 'depth-sensing'],
-                        depthSensing: testConfigs[i].prefs
-                    });
-                    log(`✔ Success with ${testConfigs[i].name}!`);
-                    break; 
-                } catch (e) {
-                    log(`✘ Failed: ${e.message}`);
+                xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
+                
+                // Check what features Chrome actually granted us!
+                const granted = xrSession.grantedFeatures || [];
+                log(`Granted: ${granted.join(', ')}`);
+                
+                if (!granted.includes('depth-sensing')) {
+                    log("⚠ WARNING: Chrome refused to grant Depth API. Scanning will not work. Check chrome://flags.");
                 }
+
+                bgFallback.style.display = 'none';
+                btnStart.style.display = 'none';
+                btnStop.style.display = 'block';
+                btnExport.style.display = 'none';
+                statusEl.textContent = "AR Active. Move phone to scan.";
+                
+                pointsArray = [];
+                colorsArray = [];
+
+                renderer.xr.setReferenceSpaceType('local');
+                await renderer.xr.setSession(xrSession);
+                xrSession.addEventListener('end', onSessionEnd);
+
+            } catch (e) {
+                statusEl.textContent = "AR Launch Failed.";
+                log(`Fatal: ${e.message}`);
             }
-
-            if (!xrSession) {
-                log("Depth API rejected. Testing Base AR...");
-                try {
-                    // Stripped absolutely all configs for the ultimate fallback test
-                    xrSession = await navigator.xr.requestSession('immersive-ar', baseInit);
-                    statusEl.textContent = "⚠ Base AR works, but Depth is BLOCKED.";
-                    log("Try going to chrome://flags and enabling #webxr-depth-api");
-                    setTimeout(() => xrSession.end(), 3000);
-                    return;
-                } catch(e) {
-                    statusEl.textContent = "AR completely blocked by Chrome.";
-                    log(`Fatal Base AR: ${e.message}`);
-                    log("Ensure chrome://flags #webxr-incubations is enabled.");
-                    return;
-                }
-            }
-
-            bgFallback.style.display = 'none';
-            btnStart.style.display = 'none';
-            btnStop.style.display = 'block';
-            btnExport.style.display = 'none';
-            statusEl.textContent = "AR Active. Move phone to track room.";
-            
-            pointsArray = [];
-            colorsArray = [];
-
-            renderer.xr.setReferenceSpaceType('local');
-            await renderer.xr.setSession(xrSession);
-            xrSession.addEventListener('end', onSessionEnd);
         });
 
         btnStop.addEventListener('click', () => {
@@ -259,18 +193,13 @@
             bgFallback.style.display = 'block'; 
             btnStart.style.display = 'block';
             btnStop.style.display = 'none';
-            statusEl.textContent = `Scan complete! Collected ${Math.floor(pointsArray.length / 3)} points.`;
+            statusEl.textContent = `Scan complete! ${Math.floor(pointsArray.length / 3)} points.`;
             log("Session ended.");
             if (pointsArray.length > 0) btnExport.style.display = 'block';
         }
 
-        // --- 5. The Core Loop ---
+        // --- Core Scan Loop ---
         renderer.setAnimationLoop((timestamp, frame) => {
-            if (debugCube) {
-                debugCube.rotation.x += 0.02;
-                debugCube.rotation.y += 0.02;
-            }
-
             if (frame && xrSession) {
                 const refSpace = renderer.xr.getReferenceSpace();
                 const viewerPose = frame.getViewerPose(refSpace);
@@ -278,11 +207,9 @@
                 if (viewerPose) {
                     const view = viewerPose.views[0];
                     const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
-                    debugCube.position.set(0, 0, -1).applyMatrix4(camMatrix);
                     
                     try {
                         const depthInfo = frame.getDepthInformation(view);
-                        
                         if (depthInfo) {
                             if (timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
                                 lastCaptureTime = timestamp;
@@ -290,7 +217,7 @@
                                 updatePointCloudGeometry();
                             }
                         } else {
-                            if(timestamp % 1000 < 50) log("Sensor warming up...");
+                            if(timestamp % 1000 < 50) log("Waiting for depth buffer...");
                         }
                     } catch (e) {
                         if(timestamp % 1000 < 50) log(`Depth Read Error: ${e.message}`);
@@ -325,7 +252,6 @@
                     colorsArray.push(1.0 - normalizedDepth, 0.5, normalizedDepth);
                 }
             }
-
             statusEl.textContent = `Scanning... Points: ${Math.floor(pointsArray.length / 3)}`;
         }
 
@@ -337,13 +263,12 @@
             pointCloudObject.geometry.attributes.color.needsUpdate = true;
         }
 
-        // --- 6. Export to PLY ---
+        // --- Export to PLY ---
         btnExport.addEventListener('click', () => {
             const numPts = pointsArray.length / 3;
             if (numPts === 0) return;
 
             statusEl.textContent = "Generating PLY file...";
-            log("Packaging data...");
             
             let plyOut = `ply\nformat ascii 1.0\nelement vertex ${numPts}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n`;
             
@@ -365,11 +290,7 @@
             URL.revokeObjectURL(url);
             
             statusEl.textContent = "Export complete!";
-            log("PLY downloaded successfully.");
         });
-
     </script>
 </body>
 </html>
-
-```
