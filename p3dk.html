@@ -459,7 +459,7 @@ const stub=f=>()=>w.sS('> \u03a3 '+f.toUpperCase()+' â€” ENGINE LOADING...'
       <input type=range id=XR_FR min=20 max=200 step=10 value=80 oninput="window.uS(this,'xrFrV')">
       <div class=r><span class=lb>&#x03B1; ISO LEVEL</span><span class=vl id=xrIsoV>0.00</span></div>
       <input type=range id=XR_ISO min=-20 max=20 step=1 value=0 oninput="window.uS(this,'xrIsoV')">
-      <label class=cr><input type=checkbox id=cbXrSmooth checked> &#x26AC; SMOOTH OUTPUT (3-pass)</label>
+      <label class=cr><input type=checkbox id=cbXrSmooth checked> &#x26AC; SMOOTH OUTPUT (5-pass)</label>
       <div class=dv></div>
       <div id=xrProgress class="nt hi" style="color:#fc0"></div>
       <div class=g2>
@@ -580,7 +580,7 @@ window.getMat=()=>new T.MeshStandardMaterial({color:new T.Color($('MC')?$('MC').
 // â”€â”€ SCENE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const sc=new T.Scene(),cm=new T.PerspectiveCamera(45,innerWidth/innerHeight,.1,5000);
 cm.position.set(0,80,250);
-const rn=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,alpha:true});
+const rn=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true,alpha:true,xrCompatible:true});
 rn.setSize(innerWidth,innerHeight);rn.setPixelRatio(M.min(devicePixelRatio,2));
 rn.setClearColor(0,0);
 rn.domElement.style.cssText='position:fixed;top:0;left:0;z-index:0;touch-action:none';
@@ -2149,6 +2149,13 @@ const bboxSz=bb=>{if(bb.minX===Infinity)return '?Ã—?Ã—?mm';return `${(bb.m
 window.startXRScan=async()=>{
   if(xrCapability==='none'){sS('> âš  NO XR DEPTH ON THIS DEVICE');return}
   if(!navigator.xr){sS('> âš  WEBXR NOT AVAILABLE');return}
+  // End any existing session first â€” Chrome throws "already active" otherwise
+  if(xrSession){
+    sS('> â—‰ ENDING PREVIOUS SESSION...');
+    try{await xrSession.end()}catch(e){}
+    xrSession=null;xrRefSpace=null;
+    await new Promise(r=>setTimeout(r,300)); // brief wait for GPU cleanup
+  }
   const targetFrames=+($('XR_FR')||{value:60}).value;
   // voxSz is in mm directly â€” slider reads mm, grid is in mm, no /1000
   const voxSz=+($('XR_VX')||{value:4}).value; // mm
@@ -2216,6 +2223,9 @@ window.startXRScan=async()=>{
     });
     xrRefSpace=await xrSession.requestReferenceSpace('local-floor');
     const gl=rn.getContext();
+    // WebGL context must be XR-compatible before creating XRWebGLLayer.
+    // makeXRCompatible() may trigger a context loss+restore on some devices â€” brief pause.
+    await gl.makeXRCompatible();
     await xrSession.updateRenderState({baseLayer:new XRWebGLLayer(xrSession,gl)});
     if($('bXrStart'))$('bXrStart').disabled=1;
     if($('bXrStop'))$('bXrStop').disabled=0;
@@ -2226,6 +2236,8 @@ window.startXRScan=async()=>{
       xrSession=null;xrRefSpace=null;
       if($('bXrStart'))$('bXrStart').disabled=0;
       if($('bXrStop'))$('bXrStop').disabled=1;
+      // Clean up preview mesh if session ends unexpectedly
+      if(typeof ptPreview!=='undefined'&&ptPreview){sc.remove(ptPreview);ptPreview.geometry.dispose();ptPreview=null}
     });
     // Frame loop â€” accumulate depth into TSDF
     // Throttled to 250ms between integrations (4fps sampling) to avoid
@@ -2317,8 +2329,14 @@ window.startXRScan=async()=>{
     };
     xrSession.requestAnimationFrame(onFrame);
   }catch(err){
-    sS('> âš  XR SESSION FAILED: '+err.message);
-    const note=$('xrCapNote');if(note){note.textContent='âš  '+err.message+'. Try Splat Forge for file-based workflow.';note.style.color='#ffa040'}
+    // Map known XR errors to actionable messages
+    let msg=err.message;
+    if(msg.includes('already an active'))msg='Another AR app is running. Press STOP first, then START SCAN.';
+    else if(msg.includes('XR compatible')||msg.includes('xrCompatible'))msg='WebGL XR context error â€” try reloading the page.';
+    else if(msg.includes('NotSupportedError'))msg='AR not supported on this device/browser.';
+    else if(msg.includes('SecurityError'))msg='HTTPS required for AR.';
+    sS('> âš  XR: '+msg);
+    const note=$('xrCapNote');if(note){note.textContent='âš  '+msg;note.style.color='#ffa040'}
     if($('bXrStart'))$('bXrStart').disabled=0;
     if($('bXrStop'))$('bXrStop').disabled=1;
   }
