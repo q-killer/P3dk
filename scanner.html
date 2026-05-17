@@ -12,9 +12,7 @@
             color: #fff;
             font-family: sans-serif;
         }
-        #bg-fallback {
-            position: fixed; inset: 0; background: #111; z-index: -1;
-        }
+        #bg-fallback { position: fixed; inset: 0; background: #111; z-index: -1; }
         #ar-ui-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             pointer-events: none; display: flex; flex-direction: column;
@@ -31,12 +29,10 @@
             margin-bottom: 15px; min-height: 4em; background: rgba(0,0,0,0.5);
             padding: 10px; border-radius: 6px; white-space: pre-wrap;
         }
-        
         .r { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
         .lb { font-size: 0.8rem; font-weight: bold; color: #ccc; }
         .vl { font-size: 0.8rem; font-weight: bold; color: #0f9; }
         input[type=range] { width: 100%; margin-bottom: 10px; accent-color: #0f9; }
-
         button {
             width: 100%; padding: 15px; margin-bottom: 10px;
             font-size: 1.1rem; font-weight: bold; border: none;
@@ -70,21 +66,17 @@
         </div>
     </div>
 
-    <!-- Import Three.js, Marching Cubes, and Exporters -->
+    <!-- Core Three.js Import Map -->
     <script type="importmap">
         {
             "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"
             }
         }
     </script>
 
     <script type="module">
         import * as THREE from 'three';
-        import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
-        import { STLExporter } from 'three/addons/exporters/STLExporter.js';
-        import * as BGU from 'three/addons/utils/BufferGeometryUtils.js';
 
         const statusEl = document.getElementById('status');
         const debugEl = document.getElementById('debug-log');
@@ -117,6 +109,32 @@
         const CAPTURE_INTERVAL_MS = 250; 
         const DEPTH_SAMPLE_STEP = 4; 
 
+        // --- Dynamic Dependency Loader (Fixes the UI Freeze) ---
+        let MarchingCubes, STLExporter, BGU, wasm;
+        (async () => {
+            try {
+                log("Loading Mesher Addons...");
+                const mc = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/objects/MarchingCubes.js');
+                MarchingCubes = mc.MarchingCubes;
+                const stl = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/exporters/STLExporter.js');
+                STLExporter = stl.STLExporter;
+                BGU = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js');
+                log("✔ Mesher Addons Ready.");
+            } catch(e) {
+                log(`⚠ Addon Error: ${e.message}`);
+            }
+
+            try {
+                const cdn = 'https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/';
+                const mod = await import(cdn + 'manifold.js');
+                wasm = await mod.default({locateFile: f => cdn + f});
+                wasm.setup();
+                log("✔ Manifold WASM Ready.");
+            } catch(e) {
+                log(`⚠ Manifold Error: ${e.message}`);
+            }
+        })();
+
         // --- Three.js Setup ---
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
@@ -146,20 +164,6 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         });
 
-        // --- Manifold WASM Boot ---
-        let wasm = null;
-        (async () => {
-            const cdn = 'https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/';
-            try {
-                const mod = await import(cdn + 'manifold.js');
-                wasm = await mod.default({locateFile: f => cdn + f});
-                wasm.setup();
-                log("Manifold Engine Ready.");
-            } catch(e) {
-                log("Manifold load failed.");
-            }
-        })();
-
         // --- AR Capability Check ---
         async function checkXR() {
             if (window.location.protocol === 'file:') {
@@ -175,7 +179,6 @@
                 const supported = await navigator.xr.isSessionSupported('immersive-ar');
                 if (supported) {
                     statusEl.textContent = "✔ ARCore Ready.";
-                    log("Awaiting start...");
                     btnStart.disabled = false;
                 } else {
                     statusEl.textContent = "✘ immersive-ar not supported.";
@@ -204,6 +207,10 @@
 
                 xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
                 
+                const granted = xrSession.grantedFeatures || [];
+                log(`Granted: ${granted.join(', ')}`);
+                if(xrSession.depthDataFormat) log(`Format: ${xrSession.depthDataFormat}`);
+
                 bgFallback.style.display = 'none';
                 btnStart.style.display = 'none';
                 btnStop.style.display = 'block';
@@ -245,9 +252,9 @@
             log("Session ended. Ready to Bake.");
             
             if (pointsArray.length > 0) {
-                btnBake.style.display = 'block';
+                if (MarchingCubes) btnBake.style.display = 'block';
                 btnExport.style.display = 'block';
-                meshControls.style.display = 'block';
+                if (MarchingCubes) meshControls.style.display = 'block';
                 
                 // Jump the camera back so we can see the mesh
                 camera.position.set(0, 0, 1.5);
@@ -270,7 +277,7 @@
                         if (depthInfo) {
                             if (timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
                                 lastCaptureTime = timestamp;
-                                extractDepthPoints(view, depthInfo, camMatrix);
+                                extractDepthRawMemory(view, depthInfo, camMatrix);
                                 updatePointCloudGeometry();
                             }
                         }
@@ -280,21 +287,43 @@
             renderer.render(scene, camera);
         });
 
-        function extractDepthPoints(view, depthInfo, camMatrix) {
+        // --- DIRECT BINARY MEMORY EXTRACTION (Bypasses S21 Ultra Crash) ---
+        function extractDepthRawMemory(view, depthInfo, camMatrix) {
             const width = depthInfo.width;
             const height = depthInfo.height;
+            const scale = depthInfo.rawValueToMeters;
+            
             const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
+            const depthToView = new THREE.Matrix4().fromArray(depthInfo.normDepthBufferFromNormView.matrix).invert();
+
+            let rawData;
+            // Handle S21 Ultra native luminance-alpha packed format
+            if (xrSession.depthDataFormat === 'luminance-alpha') {
+                rawData = new Uint16Array(depthInfo.data);
+            } else {
+                rawData = new Float32Array(depthInfo.data);
+            }
 
             for (let y = 0; y < height; y += DEPTH_SAMPLE_STEP) {
                 for (let x = 0; x < width; x += DEPTH_SAMPLE_STEP) {
-                    const normX = x / width;
-                    const normY = y / height;
-                    const depthInMeters = depthInfo.getDepthInMeters(normX, normY);
+                    
+                    const index = x + (y * width);
+                    const depthInMeters = rawData[index] * scale;
                     
                     if (depthInMeters < 0.2 || depthInMeters > 3.0) continue;
 
-                    const ndcX = normX * 2 - 1;
-                    const ndcY = -(normY * 2 - 1);
+                    const normDepthX = (x + 0.5) / width;
+                    const normDepthY = (y + 0.5) / height;
+
+                    const ptView = new THREE.Vector3(normDepthX, normDepthY, 0).applyMatrix4(depthToView);
+                    const normViewX = ptView.x;
+                    const normViewY = ptView.y;
+
+                    // Safely bounds check
+                    if (normViewX < 0 || normViewX > 1 || normViewY < 0 || normViewY > 1) continue;
+
+                    const ndcX = normViewX * 2 - 1;
+                    const ndcY = -(normViewY * 2 - 1);
 
                     const ptCam = new THREE.Vector3(ndcX, ndcY, -1);
                     ptCam.applyMatrix4(invProj);
@@ -320,13 +349,13 @@
 
         // --- Point Cloud to Mesh (Marching Cubes) ---
         btnBake.addEventListener('click', async () => {
-            if(pointsArray.length === 0) return;
+            if(pointsArray.length === 0 || !MarchingCubes) return;
             
             btnBake.disabled = true;
             statusEl.textContent = "Baking mesh... (This may take a second)";
-            log("Initializing Marching Cubes Volumetric Grid...");
+            log("Initializing Marching Cubes...");
 
-            // Let UI update before heavy computation
+            // Let UI update before heavy computation blocks the thread
             await new Promise(r => setTimeout(r, 50)); 
 
             try {
@@ -343,7 +372,7 @@
                 minX -= pad; maxX += pad; minY -= pad; maxY += pad; minZ -= pad; maxZ += pad;
                 const maxDim = Math.max(maxX-minX, maxY-minY, maxZ-minZ);
                 
-                // Setup Marching Cubes grid
+                // High resolution volumetric grid
                 const res = 64;
                 const material = new THREE.MeshStandardMaterial({ 
                     color: 0x00ffcc, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide 
@@ -351,27 +380,26 @@
                 const effect = new MarchingCubes(res, material, false, false, 500000);
                 
                 const userDensity = parseFloat(sliderBlob.value);
-                const strength = userDensity; 
                 const subtract = 12.0;
 
-                log("Injecting geometry points...");
+                log("Injecting points into voxel grid...");
                 for (let i = 0; i < pointsArray.length; i += 3) {
                     const px = (pointsArray[i] - minX) / maxDim;
                     const py = (pointsArray[i+1] - minY) / maxDim;
                     const pz = (pointsArray[i+2] - minZ) / maxDim;
-                    effect.addBall(px, py, pz, strength, subtract, null);
+                    effect.addBall(px, py, pz, userDensity, subtract, null);
                 }
                 
                 effect.update();
                 let geo = effect.geometry.clone();
                 
-                // Scale back to world coordinates
+                // Scale back to physical real-world coordinates
                 geo.applyMatrix4(new THREE.Matrix4().makeScale(maxDim/2, maxDim/2, maxDim/2));
                 geo.applyMatrix4(new THREE.Matrix4().makeTranslation(minX + maxDim/2, minY + maxDim/2, minZ + maxDim/2));
 
                 // Optional WASM Topology Cleanup
-                if (wasm) {
-                    log("Running Manifold Watertightness Verification...");
+                if (wasm && BGU) {
+                    log("Running Manifold Cleanup...");
                     try {
                         const a = geo.attributes.position.array;
                         for(let i=0; i<a.length; i++) a[i] = Math.round(a[i]*1000)/1000;
@@ -396,7 +424,7 @@
                         manifoldObj.delete();
                         log("Manifold verification passed!");
                     } catch(err) {
-                        log("Skipped manifold optimization (non-fatal).");
+                        log("Skipped manifold cleanup (non-fatal).");
                     }
                 }
 
@@ -405,37 +433,74 @@
                     generatedMesh.geometry.dispose();
                 }
 
-                // Push to Scene
                 generatedMesh = new THREE.Mesh(geo, material);
                 scene.add(generatedMesh);
-                
                 pointCloudObject.visible = false;
                 
-                // Recenter camera nicely to view object
                 const center = new THREE.Vector3(minX + maxDim/2, minY + maxDim/2, minZ + maxDim/2);
                 camera.position.set(center.x, center.y + maxDim*0.5, center.z + maxDim*1.5);
                 camera.lookAt(center);
 
-                // Morph export button into an STL Exporter
                 btnBake.style.display = 'none';
                 meshControls.style.display = 'none';
                 
-                btnExport.textContent = '↓ Download Watertight .STL';
-                btnExport.style.background = '#00ffcc';
-                btnExport.style.color = '#000';
+                if (STLExporter) {
+                    btnExport.textContent = '↓ Download Watertight .STL';
+                    btnExport.style.background = '#00ffcc';
+                    btnExport.style.color = '#000';
+                    
+                    btnExport.onclick = () => {
+                        log("Converting to STL...");
+                        const stlString = new STLExporter().parse(generatedMesh, { binary: true });
+                        const blob = new Blob([stlString], { type: 'application/octet-stream' });
+                        const a = document.createElement('a');
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `Scanned_Mesh_${Date.now()}.stl`;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        log("STL Exported Successfully.");
+                    };
+                }
                 
-                // Swap export logic
-                btnExport.onclick = () => {
-                    log("Converting to STL...");
-                    const stlString = new STLExporter().parse(generatedMesh, { binary: true });
-                    const blob = new Blob([stlString], { type: 'application/octet-stream' });
-                    const a = document.createElement('a');
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `Scanned_Mesh_${Date.now()}.stl`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    log("STL Exported Successfully.");
-                };
+                statusEl.textContent = "Mesh successful! Ready to export.";
                 
-                statusEl.textContent = "Mesh succes
+            } catch (e) {
+                statusEl.textContent = "Mesh generation failed.";
+                log(`Error: ${e.message}`);
+            } finally {
+                btnBake.disabled = false;
+            }
+        });
+
+        // --- Export Raw PLY (Fallback action) ---
+        btnExport.onclick = () => {
+            const numPts = pointsArray.length / 3;
+            if (numPts === 0) return;
+
+            statusEl.textContent = "Generating PLY file...";
+            
+            let plyOut = `ply\nformat ascii 1.0\nelement vertex ${numPts}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n`;
+            
+            for (let i = 0; i < numPts; i++) {
+                const x = pointsArray[i*3], y = pointsArray[i*3+1], z = pointsArray[i*3+2];
+                const r = Math.round(colorsArray[i*3] * 255), g = Math.round(colorsArray[i*3+1] * 255), b = Math.round(colorsArray[i*3+2] * 255);
+                plyOut += `${x.toFixed(5)} ${y.toFixed(5)} ${z.toFixed(5)} ${r} ${g} ${b}\n`;
+            }
+            
+            const blob = new Blob([plyOut], {type: 'application/octet-stream'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `S21_Depth_Scan_${Date.now()}.ply`;
+            
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            statusEl.textContent = "Raw Export complete!";
+        };
+    </script>
+</body>
+</html>
