@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<!-- P3dK V7.0 — PANTHEON WORKBENCH
+  Single file. Code-golfed. CDN-only dependencies.
+  FEATURES: Load STL/OBJ/PLY/3MF/GLB | manifold CSG | 12 patterns | face select
+            hole detect | skin-deep | twist/slice/hollow | kinetic hole/boss
+            Support Foundry (columns+Fibonacci vines) | Topology Opt (SIMP) | Elongate
+            Occam Cleaver (both halves + alignment pins + zip export)
+            ◉ INDRA'S NET — WebXR depth scan → TSDF → watertight STL
+            ✶ SPLAT FORGE — Gaussian splat viewer (.ply/.splat/.ksplat) + mesh conversion
+            ViewCube | undo/redo | IDB session | day/night theme
+  SCAN PIPELINE: WebXR AR (ARCore/LiDAR depth-sensing) → ring buffer → Web Worker TSDF
+    → marching cubes → manifold-3d repair → watertight STL in scene
+  SPLAT PIPELINE: @mkkellogg/gaussian-splats-3d (lazy CDN import) → DropInViewer
+    → load .ply/.splat/.ksplat → extract point cloud → TSDF → STL
+  DEVICE SUPPORT: Android Chrome+ARCore depth | iOS WebXR Viewer | Desktop: file upload
+  ARCHITECTURE.md: github.com/p3dk — read before modifying -->
+<html id=R style="margin:0;overflow:hidden;background:var(--bg);color:var(--fg);font-family:'Courier New',monospace">
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1">
+<title>P3dK // PANTHEON V7</title>
+<link rel=icon type=image/svg+xml href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0NCA0NCI+PHJlY3Qgd2lkdGg9IjQ0IiBoZWlnaHQ9IjQ0IiBmaWxsPSIjMDEwMDEwIiByeD0iNiIvPjxjaXJjbGUgY3g9IjIyIiBjeT0iMjIiIHI9IjE4IiBmaWxsPSJub25lIiBzdHJva2U9IiNmMGYiIHN0cm9rZS13aWR0aD0iMS40IiBzdHJva2UtZGFzaGFycmF5PSI3IDMiLz48ZWxsaXBzZSBjeD0iMjIiIGN5PSIyMiIgcng9IjExIiByeT0iMTgiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzBmZiIgc3Ryb2tlLXdpZHRoPSIxLjEiLz48Y2lyY2xlIGN4PSIyMiIgY3k9IjIyIiByPSIzIiBmaWxsPSIjZjBmIi8+PHRleHQgeD0iMjIiIHk9IjI3IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmaWxsPSIjZmZmIiBmb250LWZhbWlseT0ibW9ub3NwYWNlIiBmb250LXNpemU9IjkiIGZvbnQtd2VpZ2h0PSJib2xkIj5QM2RLPC90ZXh0Pjwvc3ZnPg==">
+<style>
+:root{--bg:#050508;--fg:#0ff;--ac:#f0f;--dm:#557;--p:rgba(5,5,8,.85);--bl:rgba(0,255,255,.15);--bh:rgba(0,255,255,.4);--bb:rgba(20,30,50,.4);--w:#ffa040}
+.lm{--bg:#e6e9ed;--fg:#000;--ac:#ff003c;--dm:#667;--p:rgba(230,233,237,.9);--bl:rgba(255,0,60,.15);--bh:rgba(255,0,60,.5);--bb:rgba(200,205,215,.4)}
+.lm body::before{opacity:0}.lm body::after{opacity:.05}
+.lm .ph,.lm .lb,.lm .vl,.lm .nt,.lm .btn,.lm #sts,.lm select,.lm input[type=number]{color:var(--fg)}
+.lm .btn{background:var(--bb);border-color:var(--bh)}.lm .btn:hover{background:var(--bh);color:#fff}
+.lm select,.lm input[type=number]{background:var(--bb);border-color:var(--bh)}
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:500;background:linear-gradient(rgba(18,16,16,0) 50%,var(--bl) 50%),linear-gradient(90deg,rgba(255,0,0,.02),rgba(0,255,0,.01),rgba(0,0,255,.02));background-size:100% 4px,5px 100%;opacity:.22}
+body::before{content:"";position:fixed;inset:0;pointer-events:none;z-index:499;background:radial-gradient(ellipse at center,transparent 60%,rgba(0,0,0,.6)100%)}
+.gl{animation:g 4s infinite}@keyframes g{0%,93%,100%{text-shadow:2px 0 #f0f,-2px 0 var(--fg)}94%{text-shadow:-4px 0 #f0f,4px 0 var(--fg);transform:translate(2px,-1px)}96%{text-shadow:-2px 0 #f0f,2px 0 var(--fg)}}
+*{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent}
+#ui{position:fixed;top:0;left:0;width:280px;height:100vh;background:var(--p);border-right:1px solid var(--bh);z-index:10;display:flex;flex-direction:column;backdrop-filter:blur(12px);overflow-y:auto;overflow-x:hidden;transition:transform .3s;scrollbar-width:thin;scrollbar-color:var(--bh) transparent}
+#ui.col{transform:translateX(-100%)}
+#tog{position:fixed;top:14px;left:288px;z-index:11;background:var(--bl);border:1px solid var(--bh);color:var(--fg);padding:7px 9px;cursor:pointer;font:bold 12px 'Courier New';transition:all .3s}
+#tog.col{left:14px;background:rgba(0,0,0,.8)}
+#fh{position:fixed;bottom:14px;left:288px;z-index:11;display:flex;gap:5px;transition:left .3s}
+#fh button{background:var(--p);border:1px solid var(--bh);color:var(--fg);padding:8px 14px;cursor:pointer;font:bold 14px monospace;backdrop-filter:blur(5px)}
+#hdr{padding:8px 12px 6px;flex-shrink:0;border-bottom:1px solid var(--bl);background:linear-gradient(180deg,var(--bl) 0%,transparent 100%);display:flex;align-items:center;justify-content:space-between;gap:6px}
+#hdrT{cursor:pointer;flex:1}#hdrT h1{margin:0;font-size:13px;letter-spacing:2px;font-style:italic;color:var(--fg)}
+.sub{font-size:8px;color:var(--ac);letter-spacing:2px;font-weight:bold;margin-top:2px}
+.ib{background:var(--bb);border:1px solid var(--bh);color:var(--fg);cursor:pointer;padding:4px 7px;font:13px monospace;transition:background .15s}.ib:hover{background:var(--bl)}
+.pnl{border-bottom:1px solid var(--bl)}
+.ph{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;cursor:pointer;font:900 10px/1 'Courier New';letter-spacing:2px;color:var(--dm);transition:color .15s,background .15s}
+.ph:hover{color:var(--fg);background:var(--bl)}
+.ph .tg{font-size:7px;color:var(--bh);font-weight:normal;letter-spacing:0;margin-left:auto;margin-right:6px}
+.ar{display:inline-block;transition:transform .22s;transform:rotate(90deg);flex-shrink:0;color:var(--ac)}
+.cl .ar{transform:rotate(0deg)}
+.pb{padding:9px 12px;display:flex;flex-direction:column;gap:7px}
+.hi{display:none!important}
+.r{display:flex;justify-content:space-between;align-items:center;gap:4px}
+.lb{font-size:9px;color:var(--dm);letter-spacing:1px;flex-shrink:0;font-weight:bold}
+.vl{font-size:10px;color:var(--ac);font-weight:bold;min-width:30px;text-align:right}
+.nt{font-size:8px;color:rgba(100,200,255,.7);padding:4px 6px;border:1px dashed rgba(0,200,255,.3);line-height:1.5}
+input[type=number]{width:46px;background:var(--bg);color:var(--ac);border:1px solid var(--bh);padding:3px;font:bold 10px monospace;outline:none;text-align:center}
+input[type=range]{accent-color:#f0f;width:100%;cursor:pointer}
+input[type=text]{background:var(--bg);color:var(--ac);border:1px solid var(--bh);padding:4px;font:14px monospace;outline:none;width:100%;text-align:center}
+input[type=color]{width:34px;height:20px;padding:0;background:var(--bg);border:1px solid var(--bh);cursor:pointer}
+input[type=checkbox]{accent-color:var(--ac);cursor:pointer;width:12px;height:12px}
+select{width:100%;background:var(--bg);color:var(--dm);border:1px solid var(--bh);padding:3px;font:bold 9px 'Courier New';outline:none;cursor:pointer}
+.dv{border:none;border-top:1px dashed rgba(0,220,255,.3);margin:2px 0}
+.btn{background:var(--bb);color:var(--ac);border:1px solid var(--bh);padding:6px;width:100%;cursor:pointer;font:bold 9px 'Courier New';letter-spacing:1px;transition:all .12s;text-shadow:0 0 5px var(--bh)}
+.btn:hover:not(:disabled){background:var(--bl);border-color:var(--fg);box-shadow:0 0 12px var(--bh);color:#fff}
+.btn:disabled{border-color:#223;color:#446;cursor:not-allowed;text-shadow:none}
+.m{color:#ff66ff;border-color:rgba(255,0,255,.55)}.m:hover:not(:disabled){background:rgba(255,0,255,.18);border-color:#f0f}
+.g{color:#0f9;border-color:rgba(0,255,153,.5)}.g:hover:not(:disabled){background:rgba(0,255,153,.18)}
+.r2{color:#f77;border-color:rgba(255,80,80,.5)}.r2:hover:not(:disabled){background:rgba(255,80,80,.18)}
+.y{color:#fc0;border-color:rgba(255,200,0,.5)}.y:hover:not(:disabled){background:rgba(255,200,0,.18)}
+.on{background:var(--bh)!important;border-color:var(--fg)!important;color:#fff!important}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.fw{position:relative;overflow:hidden}.fw input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.cr{display:flex;align-items:center;gap:5px;font-size:9px;color:var(--dm);cursor:pointer;padding:1px 0}.cr:hover{color:var(--fg)}
+.db{padding:6px 2px;border:1px solid;font-size:9px;font-weight:bold;text-align:center;cursor:grab;background:var(--bb)}.db:active{cursor:grabbing}
+#sts{font-size:9px;color:#00ff88;text-align:center;padding:6px 10px;font-weight:bold;letter-spacing:1px;border:1px solid rgba(0,255,136,.4);background:rgba(0,255,136,.06);animation:blk 2.2s infinite;margin:8px 10px}
+@keyframes blk{0%,100%{opacity:1}60%{opacity:.5}}
+#hud{position:fixed;top:14px;right:14px;z-index:200;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+#hudI{background:transparent;padding:4px 8px;font-size:9px;font-weight:bold;color:var(--dm);letter-spacing:1px;line-height:1.8;text-align:right}#hudI span{color:var(--fg)}
+#vc{position:relative;width:80px;height:80px;pointer-events:auto}
+#vcW{position:absolute;top:0;left:0;width:100%;height:100%}
+#vcW canvas{cursor:grab;display:block;border-radius:4px}#vcW canvas:active{cursor:grabbing}
+#vca{position:absolute;bottom:3px;right:3px;z-index:5;font-size:13px;width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:var(--p);border:1px solid var(--bh);border-radius:50%;cursor:pointer;color:var(--dm);transition:all .2s;pointer-events:auto}
+#vca.on{color:#f0f;border-color:#f0f;box-shadow:0 0 10px rgba(255,0,255,.4)}
+#hnt{position:fixed;bottom:14px;right:14px;z-index:10;background:var(--p);border:1px solid var(--bl);padding:4px 8px;font-size:8px;color:var(--ac);font-weight:bold;letter-spacing:1px;line-height:2;text-align:right}
+#meas{position:fixed;pointer-events:none;color:#0f9;font-size:9px;font-weight:bold;z-index:100;padding:4px 7px;background:var(--p);border:1px solid #0f9;line-height:1.6;white-space:nowrap}
+#ctx{position:fixed;background:var(--p);border:1px solid var(--bh);padding:5px;display:none;z-index:2000;flex-direction:column;gap:4px}
+.cb{background:transparent;border:1px solid var(--bl);color:var(--dm);font:bold 9px 'Courier New';text-align:left;padding:6px 10px;cursor:pointer}.cb:hover{background:var(--bl);color:var(--fg)}
+#ab{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
+#abC{position:absolute;inset:0}
+.abx{position:relative;z-index:2;width:90%;max-width:400px;max-height:85vh;overflow-y:auto;background:var(--p);border:1px solid var(--bh);padding:18px;backdrop-filter:blur(8px)}
+.abx h1{color:#f0f;margin:0 0 4px;font-size:14px;letter-spacing:3px}
+.abx p{color:var(--dm);line-height:1.6;font-size:9px;margin:3px 0}
+@media(max-width:768px) and (pointer:coarse){#ui{top:auto;bottom:0;left:0;width:100%;max-height:55vh;border-right:none;border-top:1px solid var(--bh);border-radius:14px 14px 0 0;padding-bottom:env(safe-area-inset-bottom)}#ui.col{transform:translateY(100%)}#tog{top:auto;left:14px;bottom:calc(55vh + 10px)}#tog.col{bottom:max(12px,env(safe-area-inset-bottom))}#fh{bottom:calc(55vh + 10px);left:52px;transition:bottom .3s,left .3s}#fh.col{bottom:max(12px,env(safe-area-inset-bottom));left:52px}#hud{top:8px;right:8px}}
+/* lowfx: applied when tab is backgrounded or on low-power devices.
+   Kills the CRT scanlines, vignette, and backdrop blurs — saves meaningful GPU/compositor cost. */
+.lowfx body::after,.lowfx body::before{display:none}
+.lowfx #ui,.lowfx .abx,.lowfx #fh button{backdrop-filter:none!important}
+</style>
+<script>
+// ── EARLY SCOPE MANAGER ── runs before module, stubs all onclick targets ──────
+(function(){
+const w=window,d=document;
+
+// Shorthand helpers
+w.sS=m=>{const e=d.getElementById('sts');if(e)e.textContent=m};
+w.uS=(e,v)=>{const el=d.getElementById(v);if(el)el.textContent=parseFloat(e.value).toFixed(e.step<1?2:0)};
+
+// Mobile breakpoint — used by togUI and future responsive logic
+const _mob=matchMedia('(max-width:768px) and (pointer:coarse)');
+
+// Micro-synth + haptics — procedural Web Audio API, zero external assets.
+// Creates a new AudioContext per call and force-closes after 150ms to avoid
+// hitting browser limits on concurrent audio contexts (Chrome allows ~6).
+// try/catch handles pre-gesture policy (autoplay blocked before first interaction).
+w.fx=(f=600)=>{
+  navigator.vibrate?.(15); // 15ms haptic tick — silent on desktop
+  try{
+    const A=new(w.AudioContext||w.webkitAudioContext)();
+    const O=A.createOscillator(),G=A.createGain();
+    O.frequency.value=f;O.type='sine';
+    O.connect(G);G.connect(A.destination);
+    G.gain.setValueAtTime(0.05,A.currentTime);
+    G.gain.exponentialRampToValueAtTime(1e-4,A.currentTime+0.1);
+    O.start();
+    setTimeout(()=>A.close(),150); // force-close to release audio thread
+  }catch(e){}
+};
+// hx: haptic-only, no sound. ms=duration in ms. Pattern array for double/triple pulses.
+// Used for high-frequency events (sliders) where audio would be annoying.
+w.hx=(ms=8)=>navigator.vibrate?.(ms);
+
+w.togUI=()=>{
+  const u=d.getElementById('ui'),t=d.getElementById('tog'),h=d.getElementById('fh');
+  if(!u||!t)return;
+  const c=!u.classList.contains('col');
+  u.classList.toggle('col');t.classList.toggle('col');
+  h?.classList.toggle('col'); // sync #fh collapse — drives mobile bottom transition
+  t.textContent=c?'>>':'<<';
+  w.fx?.(c?400:600); // 400Hz=collapse, 600Hz=expand
+  if(h&&!_mob.matches)h.style.left=c?'14px':((u.offsetWidth||280)+8)+'px';
+};
+w.tP=h=>{if(h?.nextElementSibling){h.nextElementSibling.classList.toggle('hi');h.classList.toggle('cl');w.fx?.(h.classList.contains('cl')?500:700)}};
+// Global slider haptic — single listener covers all 30+ range inputs, zero per-slider code.
+// Light 8ms tick on every value change, throttled to once per 50ms to avoid vibration blur.
+let _hxLast=0;
+d.addEventListener('input',e=>{if(e.target.type==='range'){const n=Date.now();if(n-_hxLast>50){w.hx?.(8);_hxLast=n}}});
+w.togA=()=>d.getElementById('ab')?.classList.toggle('hi');
+
+// Theme — runs immediately for correct first paint, no flash
+w.iL=false;w.tMO=false;
+w.apT=l=>{w.iL=l;d.getElementById('R')?.classList.toggle('lm',l);const b=d.getElementById('thT');if(b)b.textContent=l?'🌙':'🌓';w.uCF?.();w.updGrid?.()};
+w.aT=()=>{if(w.tMO)return;const h=new Date().getHours();w.apT(h>=7&&h<20)};
+w.togT=()=>{w.tMO=true;w.apT(!w.iL)};
+w.aT();
+
+// Re-check theme every minute (auto day/night) unless user has manually toggled
+setInterval(()=>{if(!w.tMO&&!w.bgTab)w.aT()},60000);
+
+// Background tab flag — kill expensive effects when hidden, restore on focus
+w.bgTab=false;
+d.addEventListener('visibilitychange',()=>{
+  w.bgTab=d.hidden;
+  d.body.classList.toggle('lowfx',d.hidden);
+});
+
+// Global state init — prevents undefined errors during WASM boot
+w.msh=null;w.selFaces=[];w.gHoles=[];w.exclMode=false;
+w.isPartRot=false;w.isDragMesh=false;w.meshDragLast={x:0,y:0};w.camTween=null;
+w.cylState=0;w.cMode='';w.cWn=null;w.cWp=null;w.cMesh=null;w.cylFd=null;
+w.cD1=6;w.cD2=10;w.cD3=10;w.kbBuf='';
+w.scLnk=true;w.isSnap=false;w.skinActive=false;w.skinMode='tex';
+w.srcFN='model';w.sD=false;w.cubeStats={v:'--',t:'--',mf:'--',fps:'--'};
+w.elongateMode='stretch'; // 'stretch' or 'compress'
+
+// Cleanup helpers — called on page hide and by module on reset
+// camStop: stops live camera stream if active
+w.camStop=()=>{if(w.camStream){w.camStream.getTracks().forEach(t=>t.stop());w.camStream=null}};
+// killWorkers: terminates any running Web Workers
+// Names match actual module vars exposed to window
+w.killWorkers=()=>{
+  w.tsdfWorker?.terminate?.();w.tsdfWorker=null;
+  w.topoWorker?.terminate?.();w.topoWorker=null;
+};
+
+// Cleanup on navigation/tab close — pagehide is more reliable than beforeunload
+addEventListener('pagehide',()=>{w.camStop();w.killWorkers()});
+
+// Safe stubs — replaced by module definitions once engine loads.
+// Using a factory so each stub reports its own name in the status bar.
+const stub=f=>()=>w.sS('> \u03a3 '+f.toUpperCase()+' — ENGINE LOADING...');
+[
+  'rstM','healMesh','doX','tog','syM','hollowMesh','applyTwist','prvSlice','applySlice',
+  'applyRounding','togSkin','togExcl','clrExcl','exeC','startDrag','togLock',
+  'togSnap','doU','doD','togPR','upS','uPrv','prvTwist','snapCam',
+  'scanOvh','genSup','rmvSup','topoRun','topoPreview','elongateDo','topoMerge','mrgSup',
+  'startXRScan','stopXRScan','bakeXRMesh','loadSplat','splatToMesh','closeSplatViewer',
+  'togCam','setCamAlpha','updGrid',
+  'cfdStart','cfdStop','cfdReset','cfdBakeDrag'
+].forEach(f=>w[f]=stub(f));
+})();
+</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/","@mkkellogg/gaussian-splats-3d":"https://cdn.jsdelivr.net/npm/@mkkellogg/gaussian-splats-3d@0.4.7/build/gaussian-splats-3d.module.js"}}</script>
+</head>
+<body style="margin:0;overflow:hidden;background:var(--bg)">
+<div id=fh>
+  <button onclick="window.doU()" id=bU disabled title="Undo">&#8617;</button>
+  <button onclick="window.doD()" id=bRd disabled title="Redo">&#8618;</button>
+</div>
+<div id=tog onclick="window.togUI()">&lt;</div>
+<div id=ui>
+  <div id=hdr>
+    <div id=hdrT onclick="window.togA()">
+      <div style="display:flex;align-items:center;gap:6px">
+        <svg width=24 height=24 viewBox="0 0 44 44" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <circle cx=22 cy=22 r=18 fill=none stroke="var(--ac)" stroke-width=1.4 stroke-dasharray="7 3"><animateTransform attributeName=transform type=rotate from="0 22 22" to="360 22 22" dur=3s repeatCount=indefinite/></circle>
+          <ellipse cx=22 cy=22 rx=11 ry=18 fill=none stroke="var(--fg)" stroke-width=1.1><animateTransform attributeName=transform type=rotate from="0 22 22" to="-360 22 22" dur=5s repeatCount=indefinite/></ellipse>
+          <circle cx=22 cy=22 r=3 fill="var(--ac)" opacity=.8/>
+        </svg>
+        <div><h1 class=gl>P3dK</h1><div class=sub>V7 &middot; PANTHEON</div></div>
+      </div>
+    </div>
+    <button class=ib id=thT onclick="event.stopPropagation();window.togT()" title="Theme">🌓</button>
+  </div>
+  <div class=pnl style="padding:6px 12px">
+    <input type=text id=srch placeholder="[ SEARCH PANELS ]" oninput="window.srh(this.value)" style="width:100%;background:transparent;border:none;border-bottom:1px solid var(--bh);color:var(--fg);font:bold 11px monospace;outline:none;padding:4px 0">
+  </div>
+  <div class=pnl id=pSys>
+    <div class="ph cl" onclick="window.tP(this)"><span>&#x3A3; I/O</span><span class=tg>MESH &bull; SPLAT &bull; URL</span><span class=ar>&#9658;</span></div>
+    <div class="pb hi">
+      <div class=fw><button class="btn m" style="width:100%">[ &#x21E9; OPEN FILE ]</button><input type=file id=F accept=".stl,.obj,.ply,.3mf,.glb,.gltf,.splat,.ksplat"></div>
+      <div class=r style="margin-top:3px"><input type=text id=loadURL placeholder="https://..." style="flex:1;font-size:8px"><button class=btn onclick="window.loadURL(document.getElementById('loadURL').value)" style="margin-left:3px;white-space:nowrap">[ &#x21D2; GO ]</button></div>
+      <div class=nt style="color:rgba(0,255,200,.4);margin-top:2px">&#x21E9; drag any file onto the 3D view</div>
+      <div class=g2 style="margin-top:3px"><button class=btn id=bRst onclick="window.rstM()" disabled>[ &#8635; RESTORE ]</button><button class="btn r2" id=bHeal onclick="window.healMesh()" disabled>[ &#8853; HEAL ]</button></div>
+      <div id=mWarn class="nt hi" style="color:var(--w)">&#9651; LARGE MESH &mdash; decimated</div>
+      <div class=dv></div>
+      <div class=r><span class=lb>&#916;x</span><input type=number id=X value=100 oninput="window.upS(this.value,'x')"><span class=lb>&#916;y</span><input type=number id=Y value=100 oninput="window.upS(this.value,'y')"><span class=lb>&#916;z</span><input type=number id=Z value=100 oninput="window.upS(this.value,'z')"><button class=ib id=bLk onclick="window.togLock()" style="border:none;font-size:11px" title="Link">&#x1F512;</button></div>
+      <div class=dv></div>
+      <div class=g3><button class="btn m" id=XPT onclick="window.doX('stl')" disabled>&#8659;STL</button><button class="btn y" id=XPL onclick="window.doX('ply')" disabled>&#8659;PLY</button><button class="btn g" id=X3M onclick="window.doX('3mf')" disabled>&#8659;3MF</button><button
