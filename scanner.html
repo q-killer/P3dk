@@ -3,14 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>WebXR Depth Scanner Local Mesher</title>
+    <title>P3dK WebXR Alpha</title>
     <style>
         body, html {
-            margin: 0;
-            overflow: hidden;
-            background-color: transparent !important;
-            color: #fff;
-            font-family: sans-serif;
+            margin: 0; overflow: hidden; background-color: transparent !important;
+            color: #fff; font-family: sans-serif;
         }
         #bg-fallback { position: fixed; inset: 0; background: #111; z-index: -1; }
         #ar-ui-overlay {
@@ -50,7 +47,7 @@
 
     <div id="ar-ui-overlay">
         <div class="panel">
-            <h1>P3dK Local Mesher</h1>
+            <h1>P3dK Scanner Alpha</h1>
             <div id="status">Checking AR capabilities...</div>
             <div id="debug-log">System initializing...</div>
             
@@ -106,11 +103,14 @@
         let pointCloudObject = null;
         let generatedMesh = null;
         let lastCaptureTime = 0;
+        
+        // --- Tuning Parameters ---
         const CAPTURE_INTERVAL_MS = 250; 
-        const DEPTH_SAMPLE_STEP = 4; 
+        const DEPTH_SAMPLE_STEP = 4; // Reads every 4th pixel from the hardware buffer
 
-        // --- Dynamic Dependency Loader (Fixes the UI Freeze) ---
-        let MarchingCubes, STLExporter, BGU, wasm;
+        // --- Dynamic Dependency Loader ---
+        // Keeps the UI responsive while downloading meshing scripts
+        let MarchingCubes, STLExporter;
         (async () => {
             try {
                 log("Loading Mesher Addons...");
@@ -118,20 +118,9 @@
                 MarchingCubes = mc.MarchingCubes;
                 const stl = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/exporters/STLExporter.js');
                 STLExporter = stl.STLExporter;
-                BGU = await import('https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js');
                 log("✔ Mesher Addons Ready.");
             } catch(e) {
                 log(`⚠ Addon Error: ${e.message}`);
-            }
-
-            try {
-                const cdn = 'https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/';
-                const mod = await import(cdn + 'manifold.js');
-                wasm = await mod.default({locateFile: f => cdn + f});
-                wasm.setup();
-                log("✔ Manifold WASM Ready.");
-            } catch(e) {
-                log(`⚠ Manifold Error: ${e.message}`);
             }
         })();
 
@@ -166,15 +155,7 @@
 
         // --- AR Capability Check ---
         async function checkXR() {
-            if (window.location.protocol === 'file:') {
-                statusEl.textContent = "⚠ BLOCKED: CANNOT RUN FROM LOCAL FILE";
-                log("Host on HTTPS required.");
-                return;
-            }
-            if (!navigator.xr) {
-                statusEl.textContent = "WebXR missing.";
-                return;
-            }
+            if (!navigator.xr) return statusEl.textContent = "WebXR missing.";
             try {
                 const supported = await navigator.xr.isSessionSupported('immersive-ar');
                 if (supported) {
@@ -183,9 +164,7 @@
                 } else {
                     statusEl.textContent = "✘ immersive-ar not supported.";
                 }
-            } catch (err) {
-                log(`XR Check Error: ${err.message}`);
-            }
+            } catch (err) { log(`XR Check Error: ${err.message}`); }
         }
         checkXR();
 
@@ -193,8 +172,8 @@
         btnStart.addEventListener('click', async () => {
             statusEl.textContent = "Launching AR...";
             logLines = []; 
-            
             try {
+                // The Polite Config: Hardware will not panic and reject session
                 const sessionInit = {
                     requiredFeatures: ['local'],
                     optionalFeatures: ['depth-sensing', 'dom-overlay'],
@@ -206,11 +185,6 @@
                 };
 
                 xrSession = await navigator.xr.requestSession('immersive-ar', sessionInit);
-                
-                const granted = xrSession.grantedFeatures || [];
-                log(`Granted: ${granted.join(', ')}`);
-                if(xrSession.depthDataFormat) log(`Format: ${xrSession.depthDataFormat}`);
-
                 bgFallback.style.display = 'none';
                 btnStart.style.display = 'none';
                 btnStop.style.display = 'block';
@@ -231,16 +205,13 @@
                 renderer.xr.setReferenceSpaceType('local');
                 await renderer.xr.setSession(xrSession);
                 xrSession.addEventListener('end', onSessionEnd);
-
             } catch (e) {
                 statusEl.textContent = "AR Launch Failed.";
                 log(`Fatal: ${e.message}`);
             }
         });
 
-        btnStop.addEventListener('click', () => {
-            if (xrSession) xrSession.end(); 
-        });
+        btnStop.addEventListener('click', () => { if (xrSession) xrSession.end(); });
 
         function onSessionEnd() {
             xrSession = null;
@@ -248,15 +219,13 @@
             btnStart.style.display = 'block';
             btnStart.textContent = "Scan Again";
             btnStop.style.display = 'none';
-            statusEl.textContent = `Scan complete! ${Math.floor(pointsArray.length / 3)} points.`;
-            log("Session ended. Ready to Bake.");
+            statusEl.textContent = `Scan complete! Captured ${Math.floor(pointsArray.length / 3)} points.`;
+            log("Session ended. Ready to process.");
             
             if (pointsArray.length > 0) {
                 if (MarchingCubes) btnBake.style.display = 'block';
                 btnExport.style.display = 'block';
                 if (MarchingCubes) meshControls.style.display = 'block';
-                
-                // Jump the camera back so we can see the mesh
                 camera.position.set(0, 0, 1.5);
                 camera.lookAt(0, 0, 0);
             }
@@ -274,12 +243,10 @@
                     
                     try {
                         const depthInfo = frame.getDepthInformation(view);
-                        if (depthInfo) {
-                            if (timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
-                                lastCaptureTime = timestamp;
-                                extractDepthRawMemory(view, depthInfo, camMatrix);
-                                updatePointCloudGeometry();
-                            }
+                        if (depthInfo && timestamp - lastCaptureTime > CAPTURE_INTERVAL_MS) {
+                            lastCaptureTime = timestamp;
+                            extractDepthRawMemory(view, depthInfo, camMatrix);
+                            updatePointCloudGeometry();
                         }
                     } catch (e) { }
                 }
@@ -287,7 +254,9 @@
             renderer.render(scene, camera);
         });
 
-        // --- DIRECT BINARY MEMORY EXTRACTION (Bypasses S21 Ultra Crash) ---
+        // --- DIRECT BINARY MEMORY EXTRACTION ---
+        // DO NOT DELETE: Bypasses Samsung S21 Ultra's native aspect ratio bounds crash
+        // by mapping unprojected arrays directly to physical view space.
         function extractDepthRawMemory(view, depthInfo, camMatrix) {
             const width = depthInfo.width;
             const height = depthInfo.height;
@@ -297,7 +266,6 @@
             const depthToView = new THREE.Matrix4().fromArray(depthInfo.normDepthBufferFromNormView.matrix).invert();
 
             let rawData;
-            // Handle S21 Ultra native luminance-alpha packed format
             if (xrSession.depthDataFormat === 'luminance-alpha') {
                 rawData = new Uint16Array(depthInfo.data);
             } else {
@@ -306,7 +274,6 @@
 
             for (let y = 0; y < height; y += DEPTH_SAMPLE_STEP) {
                 for (let x = 0; x < width; x += DEPTH_SAMPLE_STEP) {
-                    
                     const index = x + (y * width);
                     const depthInMeters = rawData[index] * scale;
                     
@@ -316,14 +283,10 @@
                     const normDepthY = (y + 0.5) / height;
 
                     const ptView = new THREE.Vector3(normDepthX, normDepthY, 0).applyMatrix4(depthToView);
-                    const normViewX = ptView.x;
-                    const normViewY = ptView.y;
+                    if (ptView.x < 0 || ptView.x > 1 || ptView.y < 0 || ptView.y > 1) continue;
 
-                    // Safely bounds check
-                    if (normViewX < 0 || normViewX > 1 || normViewY < 0 || normViewY > 1) continue;
-
-                    const ndcX = normViewX * 2 - 1;
-                    const ndcY = -(normViewY * 2 - 1);
+                    const ndcX = ptView.x * 2 - 1;
+                    const ndcY = -(ptView.y * 2 - 1);
 
                     const ptCam = new THREE.Vector3(ndcX, ndcY, -1);
                     ptCam.applyMatrix4(invProj);
@@ -331,7 +294,6 @@
                     ptCam.applyMatrix4(camMatrix);
                     
                     pointsArray.push(ptCam.x, ptCam.y, ptCam.z);
-                    
                     const normalizedDepth = (depthInMeters - 0.2) / 2.8;
                     colorsArray.push(1.0 - normalizedDepth, 0.5, normalizedDepth);
                 }
@@ -347,33 +309,114 @@
             pointCloudObject.geometry.attributes.color.needsUpdate = true;
         }
 
+        // =========================================================================
+        // NATIVE JAVASCRIPT PCL PIPELINE
+        // DO NOT DELETE: Replaces heavy C++ WASM library with localized math
+        // to guarantee offline stability and prevent Chrome array buffer panics.
+        // =========================================================================
+        function cleanPointCloud(points, colors) {
+            log("Running VoxelGrid Downsampling...");
+            const voxelSize = 0.02; // 2cm physical grid
+            const grid = new Map();
+            
+            // Phase 1: PassThrough and Voxelization
+            for(let i=0; i<points.length; i+=3) {
+                const z = points[i+2];
+                if (Math.abs(z) > 2.5) continue; // Hard boundary cutoff
+
+                const vx = Math.floor(points[i] / voxelSize);
+                const vy = Math.floor(points[i+1] / voxelSize);
+                const vz = Math.floor(z / voxelSize);
+                const key = `${vx},${vy},${vz}`;
+                
+                if(!grid.has(key)) grid.set(key, { pts: [], cols: [] });
+                grid.get(key).pts.push({x: points[i], y: points[i+1], z});
+                grid.get(key).cols.push({r: colors[i], g: colors[i+1], b: colors[i+2]});
+            }
+
+            const vPts = [], vCols = [];
+            grid.forEach(cell => {
+                let cx=0, cy=0, cz=0, cr=0, cg=0, cb=0;
+                const len = cell.pts.length;
+                cell.pts.forEach(p => { cx+=p.x; cy+=p.y; cz+=p.z; });
+                cell.cols.forEach(c => { cr+=c.r; cg+=c.g; cb+=c.b; });
+                vPts.push(cx/len, cy/len, cz/len);
+                vCols.push(cr/len, cg/len, cb/len);
+            });
+            log(`Voxelization: reduced to ${vPts.length/3} structural points.`);
+
+            // Phase 2: Statistical Outlier Removal (SOR)
+            log("Running Statistical Outlier Removal (SOR)...");
+            const distances = new Float32Array(vPts.length/3);
+            const sorNeighbors = 15;
+            
+            for(let i=0; i<vPts.length; i+=3) {
+                let dists = [];
+                for(let j=0; j<vPts.length; j+=3) {
+                    if(i===j) continue;
+                    const dx = vPts[i] - vPts[j];
+                    const dy = vPts[i+1] - vPts[j+1];
+                    const dz = vPts[i+2] - vPts[j+2];
+                    dists.push(dx*dx + dy*dy + dz*dz); // Squared dist for speed
+                }
+                dists.sort((a,b) => a-b);
+                let kDist = 0;
+                const k = Math.min(sorNeighbors, dists.length);
+                for(let n=0; n<k; n++) kDist += Math.sqrt(dists[n]);
+                distances[i/3] = kDist / k;
+            }
+
+            // Calculate Mean & Standard Deviation
+            let mean = 0, variance = 0;
+            for(let i=0; i<distances.length; i++) mean += distances[i];
+            mean /= distances.length;
+            for(let i=0; i<distances.length; i++) variance += Math.pow(distances[i] - mean, 2);
+            
+            const stdDev = Math.sqrt(variance / distances.length);
+            const threshold = mean + (1.0 * stdDev); // Cull anything beyond 1 sigma
+
+            const finalPts = [], finalCols = [];
+            for(let i=0; i<distances.length; i++) {
+                if(distances[i] <= threshold) {
+                    finalPts.push(vPts[i*3], vPts[i*3+1], vPts[i*3+2]);
+                    finalCols.push(vCols[i*3], vCols[i*3+1], vCols[i*3+2]);
+                }
+            }
+            
+            log(`SOR cleaned ${(vPts.length - finalPts.length)/3} ghost artifacts.`);
+            return { pts: finalPts, cols: finalCols };
+        }
+
         // --- Point Cloud to Mesh (Marching Cubes) ---
         btnBake.addEventListener('click', async () => {
             if(pointsArray.length === 0 || !MarchingCubes) return;
             
             btnBake.disabled = true;
-            statusEl.textContent = "Baking mesh... (This may take a second)";
-            log("Initializing Marching Cubes...");
-
-            // Let UI update before heavy computation blocks the thread
+            statusEl.textContent = "Processing pristine mesh...";
+            
+            // Allow UI to update before locking main thread
             await new Promise(r => setTimeout(r, 50)); 
 
             try {
-                let minX = Infinity, minY = Infinity, minZ = Infinity;
-                let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-                for (let i = 0; i < pointsArray.length; i += 3) {
-                    const x = pointsArray[i], y = pointsArray[i+1], z = pointsArray[i+2];
-                    if (x < minX) minX = x; if (x > maxX) maxX = x;
-                    if (y < minY) minY = y; if (y > maxY) maxY = y;
-                    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+                // 1. Run Native PCL Cleaning Pipeline
+                const cleanedData = cleanPointCloud(pointsArray, colorsArray);
+                const cPts = cleanedData.pts;
+
+                // 2. Setup Bounding Box for Grid
+                let minX=Infinity, minY=Infinity, minZ=Infinity;
+                let maxX=-Infinity, maxY=-Infinity, maxZ=-Infinity;
+                for (let i=0; i<cPts.length; i+=3) {
+                    if (cPts[i] < minX) minX = cPts[i]; if (cPts[i] > maxX) maxX = cPts[i];
+                    if (cPts[i+1] < minY) minY = cPts[i+1]; if (cPts[i+1] > maxY) maxY = cPts[i+1];
+                    if (cPts[i+2] < minZ) minZ = cPts[i+2]; if (cPts[i+2] > maxZ) maxZ = cPts[i+2];
                 }
                 
                 const pad = Math.max(maxX-minX, maxY-minY, maxZ-minZ) * 0.15;
-                minX -= pad; maxX += pad; minY -= pad; maxY += pad; minZ -= pad; maxZ += pad;
+                minX-=pad; maxX+=pad; minY-=pad; maxY+=pad; minZ-=pad; maxZ+=pad;
                 const maxDim = Math.max(maxX-minX, maxY-minY, maxZ-minZ);
                 
-                // High resolution volumetric grid
-                const res = 64;
+                // 3. High resolution volumetric grid
+                const res = 80; // Bumped up resolution for tighter geometry tracking
                 const material = new THREE.MeshStandardMaterial({ 
                     color: 0x00ffcc, metalness: 0.3, roughness: 0.4, side: THREE.DoubleSide 
                 });
@@ -382,51 +425,18 @@
                 const userDensity = parseFloat(sliderBlob.value);
                 const subtract = 12.0;
 
-                log("Injecting points into voxel grid...");
-                for (let i = 0; i < pointsArray.length; i += 3) {
-                    const px = (pointsArray[i] - minX) / maxDim;
-                    const py = (pointsArray[i+1] - minY) / maxDim;
-                    const pz = (pointsArray[i+2] - minZ) / maxDim;
+                log("Wrapping surface isosurface...");
+                for (let i=0; i<cPts.length; i+=3) {
+                    const px = (cPts[i] - minX) / maxDim;
+                    const py = (cPts[i+1] - minY) / maxDim;
+                    const pz = (cPts[i+2] - minZ) / maxDim;
                     effect.addBall(px, py, pz, userDensity, subtract, null);
                 }
                 
                 effect.update();
                 let geo = effect.geometry.clone();
-                
-                // Scale back to physical real-world coordinates
                 geo.applyMatrix4(new THREE.Matrix4().makeScale(maxDim/2, maxDim/2, maxDim/2));
                 geo.applyMatrix4(new THREE.Matrix4().makeTranslation(minX + maxDim/2, minY + maxDim/2, minZ + maxDim/2));
-
-                // Optional WASM Topology Cleanup
-                if (wasm && BGU) {
-                    log("Running Manifold Cleanup...");
-                    try {
-                        const a = geo.attributes.position.array;
-                        for(let i=0; i<a.length; i++) a[i] = Math.round(a[i]*1000)/1000;
-                        geo = BGU.mergeVertices(geo, 0.0005);
-                        
-                        const vp = new Float32Array(geo.attributes.position.count*3);
-                        for(let i=0; i<geo.attributes.position.count; i++) {
-                            vp[i*3] = geo.attributes.position.getX(i);
-                            vp[i*3+1] = geo.attributes.position.getY(i);
-                            vp[i*3+2] = geo.attributes.position.getZ(i);
-                        }
-                        const mMesh = new wasm.Mesh({numProp:3, vertProperties:vp, triVerts:new Uint32Array(geo.index.array)});
-                        mMesh.merge();
-                        const manifoldObj = wasm.Manifold.ofMesh(mMesh);
-                        
-                        const outMesh = manifoldObj.getMesh();
-                        const outGeo = new THREE.BufferGeometry();
-                        outGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(outMesh.vertProperties), 3));
-                        outGeo.setIndex(new THREE.BufferAttribute(new Uint32Array(outMesh.triVerts), 1));
-                        geo = outGeo.toNonIndexed();
-                        geo.computeVertexNormals();
-                        manifoldObj.delete();
-                        log("Manifold verification passed!");
-                    } catch(err) {
-                        log("Skipped manifold cleanup (non-fatal).");
-                    }
-                }
 
                 if (generatedMesh) {
                     scene.remove(generatedMesh);
@@ -435,7 +445,12 @@
 
                 generatedMesh = new THREE.Mesh(geo, material);
                 scene.add(generatedMesh);
-                pointCloudObject.visible = false;
+                
+                // Keep the cleaned point cloud visible for context, just drop opacity
+                pointCloudObject.geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(cPts), 3));
+                pointCloudObject.geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(cleanedData.cols), 3));
+                pointCloudObject.material.opacity = 0.3;
+                pointCloudObject.material.transparent = true;
                 
                 const center = new THREE.Vector3(minX + maxDim/2, minY + maxDim/2, minZ + maxDim/2);
                 camera.position.set(center.x, center.y + maxDim*0.5, center.z + maxDim*1.5);
@@ -455,15 +470,14 @@
                         const blob = new Blob([stlString], { type: 'application/octet-stream' });
                         const a = document.createElement('a');
                         a.href = URL.createObjectURL(blob);
-                        a.download = `Scanned_Mesh_${Date.now()}.stl`;
+                        a.download = `P3dK_Clean_Mesh_${Date.now()}.stl`;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
                         log("STL Exported Successfully.");
                     };
                 }
-                
-                statusEl.textContent = "Mesh successful! Ready to export.";
+                statusEl.textContent = "Alpha Mesh successful! Ready to export.";
                 
             } catch (e) {
                 statusEl.textContent = "Mesh generation failed.";
@@ -473,15 +487,13 @@
             }
         });
 
-        // --- Export Raw PLY (Fallback action) ---
+        // --- Export Raw PLY ---
         btnExport.onclick = () => {
             const numPts = pointsArray.length / 3;
             if (numPts === 0) return;
-
             statusEl.textContent = "Generating PLY file...";
             
             let plyOut = `ply\nformat ascii 1.0\nelement vertex ${numPts}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n`;
-            
             for (let i = 0; i < numPts; i++) {
                 const x = pointsArray[i*3], y = pointsArray[i*3+1], z = pointsArray[i*3+2];
                 const r = Math.round(colorsArray[i*3] * 255), g = Math.round(colorsArray[i*3+1] * 255), b = Math.round(colorsArray[i*3+2] * 255);
@@ -493,12 +505,10 @@
             const a = document.createElement('a');
             a.href = url;
             a.download = `S21_Depth_Scan_${Date.now()}.ply`;
-            
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            
             statusEl.textContent = "Raw Export complete!";
         };
     </script>
