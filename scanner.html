@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<!-- P3dK SCANNER — Standalone WebXR Depth Scanner
+  Zero external dependencies. Own WebGL2 context (xrCompatible:true from creation).
+  No makeXRCompatible() = no context loss crash.
+  TSDF + Marching Cubes in Web Worker blob.
+  Exports STL or sends mesh to parent P3dK via BroadcastChannel.
+-->
+<html style="margin:0;overflow:hidden;background:#020008">
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>P3dK SCANNER</title>
+<style>
+:root{--bg:#020008;--fg:#0ff;--ac:#f0f;--dm:#c8e0ff;--p:rgba(2,4,20,.95);--bh:rgba(0,255,255,.5);--g:#0f9;--w:#ffa040}
+*{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;font-family:'Courier New',monospace}
+body{margin:0;overflow:hidden;background:var(--bg);color:var(--fg)}
+/* CRT overlay */
+body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:500;
+  background:linear-gradient(rgba(18,16,16,0) 50%,rgba(0,255,255,.04) 50%),
+             linear-gradient(90deg,rgba(255,0,0,.01),rgba(0,255,0,.008),rgba(0,0,255,.01));
+  background-size:100% 3px,4px 100%;opacity:.3}
+
+/* Canvas fills viewport */
+#cvs{position:fixed;inset:0;width:100%;height:100%}
+
+/* HUD overlay */
+#hud{position:fixed;top:0;left:0;right:0;z-index:10;padding:12px 16px;
+  background:linear-gradient(var(--p),transparent);pointer-events:none}
+#title{font-size:11px;letter-spacing:3px;color:var(--ac);font-weight:bold;font-style:italic}
+#subtitle{font-size:8px;color:var(--dm);letter-spacing:2px;margin-top:2px}
+#status{font-size:9px;color:var(--g);font-weight:bold;letter-spacing:1px;margin-top:6px;
+  min-height:14px;animation:blk 2s infinite}
+@keyframes blk{0%,100%{opacity:1}50%{opacity:.5}}
+#progress{font-size:8px;color:#fc0;margin-top:3px;min-height:12px;letter-spacing:1px}
+#dims{font-size:8px;color:var(--dm);margin-top:2px;letter-spacing:1px}
+
+/* Scan ring indicator */
+#ring{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:80px;height:80px;pointer-events:none;z-index:10;opacity:0;transition:opacity .3s}
+#ring.active{opacity:1}
+#ring svg{width:100%;height:100%}
+
+/* Bottom controls */
+#ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:16px;
+  background:linear-gradient(transparent,var(--p));
+  display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.btn{background:rgba(20,30,50,.6);color:var(--fg);border:1px solid var(--bh);
+  padding:14px;font:bold 10px 'Courier New';letter-spacing:2px;cursor:pointer;
+  transition:all .15s;text-shadow:0 0 8px var(--bh);width:100%;
+  -webkit-tap-highlight-color:transparent}
+.btn:active{background:var(--bh);color:#000}
+.btn:disabled{border-color:#223;color:#334;text-shadow:none;cursor:not-allowed}
+.btn.g{color:var(--g);border-color:rgba(0,255,153,.5)}
+.btn.g:active{background:rgba(0,255,153,.4)}
+.btn.r{color:#f77;border-color:rgba(255,80,80,.5)}
+.btn.r:active{background:rgba(255,80,80,.3)}
+.btn.m{color:var(--ac);border-color:rgba(255,0,255,.5)}
+.btn.m:active{background:rgba(255,0,255,.3)}
+.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+
+/* Settings panel */
+#settings{background:rgba(2,4,20,.9);border:1px solid rgba(0,255,255,.2);
+  padding:10px;margin-bottom:4px;display:none}
+#settings.open{display:block}
+.sl-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:8px;color:var(--dm)}
+.sl-row label{width:80px;letter-spacing:1px}
+.sl-row input[type=range]{flex:1;accent-color:#f0f}
+.sl-row .val{width:28px;text-align:right;color:var(--ac);font-weight:bold}
+.sl-row input[type=checkbox]{accent-color:var(--ac)}
+
+/* Phase indicator dots */
+#phases{display:flex;gap:6px;margin-top:6px}
+.phase{width:6px;height:6px;border-radius:50%;background:rgba(0,255,255,.2);transition:background .3s}
+.phase.done{background:var(--g)}
+.phase.active{background:var(--ac);animation:pulse .8s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+/* P3dK send banner */
+#sendBanner{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--p);border:1px solid var(--g);padding:20px;text-align:center;z-index:100}
+#sendBanner h2{color:var(--g);margin:0 0 8px;font-size:12px;letter-spacing:2px}
+#sendBanner p{font-size:8px;color:var(--dm);margin:4px 0}
+</style>
+</head>
+<body>
+<canvas id=cvs></canvas>
+
+<!-- HUD top -->
+<div id=hud>
+  <div id=title>P3dK // SCANNER</div>
+  <div id=subtitle>WEBXR DEPTH CAPTURE · TSDF · STL</div>
+  <div id=phases>
+    <div class=phase id=ph0 title="AR Ready"></div>
+    <div class=phase id=ph1 title="Scanning"></div>
+    <div class=phase id=ph2 title="Processing"></div>
+    <div class=phase id=ph3 title="Complete"></div>
+  </div>
+  <div id=status>◎ INITIALISING...</div>
+  <div id=progress></div>
+  <div id=dims></div>
+  <div id=dist style="font-size:8px;color:rgba(0,255,204,.5);margin-top:2px"></div>
+</div>
+
+<!-- Crosshair ring -->
+<div id=ring>
+  <svg viewBox="0 0 80 80">
+    <circle cx=40 cy=40 r=36 fill=none stroke="rgba(0,255,204,.4)" stroke-width=1 stroke-dasharray="6 3"/>
+    <circle cx=40 cy=40 r=24 fill=none stroke="rgba(0,255,204,.7)" stroke-width=1/>
+    <line x1=40 y1=4 x2=40 y2=20 stroke="rgba(0,255,204,.6)" stroke-width=1/>
+    <line x1=40 y1=60 x2=40 y2=76 stroke="rgba(0,255,204,.6)" stroke-width=1/>
+    <line x1=4 y1=40 x2=20 y2=40 stroke="rgba(0,255,204,.6)" stroke-width=1/>
+    <line x1=60 y1=40 x2=76 y2=40 stroke="rgba(0,255,204,.6)" stroke-width=1/>
+    <circle id=ringDot cx=40 cy=40 r=2 fill="rgba(255,0,255,.8)"/>
+  </svg>
+</div>
+
+<!-- Controls bottom -->
+<div id=ctrl>
+  <div id=settings>
+    <div class=sl-row>
+      <label>VOXEL mm</label>
+      <input type=range id=sVox min=2 max=12 step=1 value=4 oninput="document.getElementById('sVoxV').textContent=this.value">
+      <span class=val id=sVoxV>4</span>
+    </div>
+    <div class=sl-row>
+      <label>FRAMES</label>
+      <input type=range id=sFr min=20 max=150 step=10 value=60 oninput="document.getElementById('sFrV').textContent=this.value">
+      <span class=val id=sFrV>60</span>
+    </div>
+    <div class=sl-row>
+      <label>ISO LEVEL</label>
+      <input type=range id=sIso min=-15 max=15 step=1 value=0 oninput="document.getElementById('sIsoV').textContent=this.value">
+      <span class=val id=sIsoV>0</span>
+    </div>
+    <div class=sl-row>
+      <label>MIN DIST m</label>
+      <input type=range id=sMin min=10 max=50 step=5 value=20 oninput="document.getElementById('sMinV').textContent=(this.value/100).toFixed(2)">
+      <span class=val id=sMinV>0.20</span>
+    </div>
+    <div class=sl-row>
+      <label>MAX DIST m</label>
+      <input type=range id=sMax min=50 max=400 step=25 value=200 oninput="document.getElementById('sMaxV').textContent=(this.value/100).toFixed(2)">
+      <span class=val id=sMaxV>2.00</span>
+    </div>
+    <div class=sl-row>
+      <label><input type=checkbox id=sSmooth checked> SMOOTH</label>
+      <label><input type=checkbox id=sSend> SEND→P3dK</label>
+    </div>
+  </div>
+  <button class="btn g" id=bStart>[ 📷 START SCAN ]</button>
+  <div class=btn-row>
+    <button class="btn r" id=bStop disabled>[ ⏹ STOP ]</button>
+    <button class="btn" id=bSettings onclick="document.getElementById('settings').classList.toggle('open')">[ ⚙ SETTINGS ]</button>
+  </div>
+  <button class="btn m" id=bBake disabled>[ ∴ BAKE MESH → STL ]</button>
+</div>
+
+<div id=sendBanner>
+  <h2>✔ SENT TO P3dK</h2>
+  <p>Mesh loaded into P3dK scene.</p>
+  <p>Switch back to P3dK tab to use it.</p>
+  <button class=btn onclick="document.getElementById('sendBanner').style.display='none'">[ OK ]</button>
+</div>
+
+<!-- Download confirmation -->
+<div id=dlBanner style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--p);border:1px solid var(--g);padding:20px;text-align:center;z-index:100;width:85%">
+  <h2 style="color:var(--g);margin:0 0 8px;font-size:12px;letter-spacing:2px">✔ STL DOWNLOADED</h2>
+  <p style="font-size:8px;color:var(--dm);margin:4px 0">Saved to your Downloads folder:</p>
+  <p id=dlName style="font-size:8px;color:var(--ac);margin:4px 0;word-break:break-all"></p>
+  <p style="font-size:8px;color:var(--dm);margin:8px 0 4px">Open with: Chrome → ⋮ → Downloads<br>Or: Files app → Downloads</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
+    <button class=btn onclick="document.getElementById('dlBanner').style.display='none'">[ OK ]</button>
+    <button class="btn g" onclick="document.getElementById('bBake').click();document.getElementById('dlBanner').style.display='none'">[ ↺ RE-BAKE ]</button>
+  </div>
+</div>
+
+<!-- Tips overlay shown before first scan -->
+<div id=tipsBanner style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  background:var(--p);border:1px solid var(--bh);padding:20px;text-align:center;z-index:100;width:90%">
+  <h2 style="color:var(--ac);margin:0 0 10px;font-size:11px;letter-spacing:2px">SCANNING TIPS</h2>
+  <div style="font-size:8px;color:var(--dm);text-align:left;line-height:2">
+    ◎ Hold phone <b style="color:var(--fg)">30–60cm</b> from object<br>
+    ◎ Move <b style="color:var(--fg)">slowly</b> around it<br>
+    ◎ Scan stops <b style="color:var(--fg)">auto</b> when stable<br>
+    ◎ Objects 10–40cm work best<br>
+    ◎ Good light helps ARCore depth<br>
+    ◎ STL saves to <b style="color:var(--fg)">Downloads</b> folder
+  </div>
+  <button class="btn g" style="margin-top:12px" onclick="document.getElementById('tipsBanner').style.display='none';document.getElementById('bStart').click()">[ START SCAN ]</button>
+  <button class=btn style="margin-top:6px" onclick="document.getElementById('tipsBanner').style.display='none'">[ SKIP ]</button>
+</div>
+
+<script>
+// ── TSDF + MARCHING CUBES WEB WORKER ────────────────────────────────────────
+const WORKER_CODE=`
+let nx=0,ny=0,nz=0,voxSz=0,bbMin={x:0,y:0,z:0},tsdf=null,weight=null;
+const TRUNC=80; // mm — truncation band
+self.onmessage=function(ev){
+  const{type,data}=ev;
+  if(type==='init'){
+    nx=data.nx;ny=data.ny;nz=data.nz;voxSz=data.voxSz;bbMin=data.bbMin;
+    const N=nx*ny*nz;
+    tsdf=new Float32Array(N).fill(TRUNC);
+    weight=new Float32Array(N);
+    self.postMessage({type:'ready'});
+  }
+  else if(type==='integrate'){
+    const pts=data.points;
+    const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+    for(let i=0;i<pts.length;i+=3){
+      const px=pts[i],py=pts[i+1],pz=pts[i+2];
+      const vx=Math.floor((px-bbMin.x)/voxSz)|0;
+      const vy=Math.floor((py-bbMin.y)/voxSz)|0;
+      const vz=Math.floor((pz-bbMin.z)/voxSz)|0;
+      const band=Math.ceil(TRUNC/voxSz)+1;
+      for(let dz=-band;dz<=band;dz++){
+        const vzi=vz+dz;
+        if(vx<0||vy<0||vzi<0||vx>=nx||vy>=ny||vzi>=nz)continue;
+        const idx=vi(vx,vy,vzi);
+        const sdf=Math.max(-TRUNC,Math.min(TRUNC,(pz-bbMin.z)-(vzi*voxSz+voxSz*.5)));
+        const w=weight[idx];
+        tsdf[idx]=(tsdf[idx]*w+sdf)/(w+1);
+        weight[idx]=Math.min(w+1,255);
+      }
+    }
+    self.postMessage({type:'integrated'});
+  }
+  else if(type==='march'){
+    const iso=data.iso||0,minW=data.minW||3;
+    const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+    const verts=[];
+    const interp=(p1,p2,v1,v2)=>{
+      const t=(iso-v1)/((v2-v1)||.0001);
+      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
+    };
+    const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
+    for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
+      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
+               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+      const vals=c.map(([x,y,z])=>{const idx=vi(x,y,z);return weight[idx]<minW?TRUNC:tsdf[idx]});
+      const pos=c.map(([x,y,z])=>[bbMin.x+x*voxSz+voxSz*.5,bbMin.y+y*voxSz+voxSz*.5,bbMin.z+z*voxSz+voxSz*.5]);
+      for(const[a,b,cc,d]of tets){
+        const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
+        const inside=sv.map(v=>v<iso?1:0);
+        const bit=inside[0]|(inside[1]<<1)|(inside[2]<<2)|(inside[3]<<3);
+        if(!bit||bit===15)continue;
+        const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
+        for(const[ea,eb]of edges)if(inside[ea]!==inside[eb])cuts.push(interp(sp[ea],sp[eb],sv[ea],sv[eb]));
+        if(cuts.length>=3){verts.push(...cuts[0],...cuts[1],...cuts[2]);if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3])}
+      }
+    }
+    const arr=new Float32Array(verts);
+    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
+  }
+};`;
+
+// ── STATE ────────────────────────────────────────────────────────────────────
+let xrSession=null,xrRefSpace=null,gl=null,worker=null;
+let frameCount=0,ptCount=0,lastIntegrate=0;
+let bboxStable=0,bboxLast={x:0,y:0,z:0};
+let xrBBox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+let allPts=[]; // accumulated for live preview
+let glProg=null,glPtBuf=null,glPtCount=0; // minimal WebGL point renderer
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const cvs=document.getElementById('cvs');
+const sts=t=>document.getElementById('status').textContent=t;
+const prg=t=>document.getElementById('progress').textContent=t;
+const dim=t=>document.getElementById('dims').textContent=t;
+const phase=(n,state)=>{const el=document.getElementById('ph'+n);if(el){el.className='phase '+(state||'')}}
+
+// ── MINIMAL WEBGL SETUP ──────────────────────────────────────────────────────
+// Create our OWN context with xrCompatible:true from the start.
+// This is the key fix — no makeXRCompatible() call = no context loss crash.
+function initGL(){
+  cvs.width=innerWidth;cvs.height=innerHeight;
+  gl=cvs.getContext('webgl2',{xrCompatible:true,alpha:true,antialias:false});
+  if(!gl)gl=cvs.getContext('webgl',{xrCompatible:true,alpha:true});
+  if(!gl){sts('⚠ WEBGL NOT AVAILABLE');return false}
+  // Simple point shader for live preview
+  const vs=`attribute vec3 pos;uniform mat4 mvp;void main(){gl_Position=mvp*vec4(pos,1.0);gl_PointSize=2.5;}`;
+  const fs=`precision mediump float;void main(){gl_FragColor=vec4(0.0,1.0,0.8,0.7);}`;
+  const compile=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s};
+  glProg=gl.createProgram();
+  gl.attachShader(glProg,compile(gl.VERTEX_SHADER,vs));
+  gl.attachShader(glProg,compile(gl.FRAGMENT_SHADER,fs));
+  gl.linkProgram(glProg);
+  glPtBuf=gl.createBuffer();
+  return true;
+}
+
+// ── AR CAPABILITY CHECK ───────────────────────────────────────────────────────
+(async()=>{
+  if(!initGL()){return}
+  if(!navigator.xr){sts('⚠ WEBXR NOT AVAILABLE — needs Chrome on Android');document.getElementById('bStart').disabled=true;return}
+  try{
+    const ok=await navigator.xr.isSessionSupported('immersive-ar');
+    if(!ok){sts('⚠ AR NOT SUPPORTED — needs ARCore device');document.getElementById('bStart').disabled=true;return}
+    sts('✔ AR READY — tap START SCAN');
+    phase(0,'done');
+    // Show tips on first visit
+    if(!sessionStorage.getItem('p3dk-scanned')){
+      document.getElementById('tipsBanner').style.display='block';
+    }
+  }catch(e){sts('⚠ XR CHECK FAILED: '+e.message);document.getElementById('bStart').disabled=true}
+})();
+
+// ── WORKER INIT ───────────────────────────────────────────────────────────────
+function spawnWorker(voxSz){
+  if(worker)worker.terminate();
+  worker=new Worker(URL.createObjectURL(new Blob([WORKER_CODE],{type:'text/javascript'})));
+  const maxVox=150;
+  const range=maxVox*voxSz; // e.g. 150*4=600mm cube
+  const bbMin={x:-range/2,y:-range/2,z:150}; // centred, z starts 150mm in front
+  worker.postMessage({type:'init',data:{nx:maxVox,ny:maxVox,nz:maxVox,voxSz,bbMin}});
+  return bbMin;
+}
+
+// ── START SCAN ────────────────────────────────────────────────────────────────
+document.getElementById('bStart').onclick=async()=>{
+  // Clean up any previous session
+  if(xrSession){try{await xrSession.end()}catch(e){};xrSession=null;await new Promise(r=>setTimeout(r,300))}
+
+  const voxSz=+document.getElementById('sVox').value;
+  const targetFrames=+document.getElementById('sFr').value;
+  frameCount=0;ptCount=0;lastIntegrate=0;bboxStable=0;
+  xrBBox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+  allPts=[];
+
+  const bbMin=spawnWorker(voxSz);
+  worker.onmessage=ev=>{if(ev.data.type==='ready')sts('◉ SCANNING...')};
+
+  try{
+    xrSession=await navigator.xr.requestSession('immersive-ar',{
+      requiredFeatures:['local-floor'],
+      optionalFeatures:['depth-sensing','dom-overlay'],
+      domOverlay:{root:document.body},
+      depthSensing:{
+        usagePreference:['cpu-optimized','gpu-optimized'],
+        dataFormatPreference:['luminance-alpha','float32']
+      }
+    });
+  }catch(e){
+    sts('⚠ SESSION FAILED: '+e.message.slice(0,50));
+    console.error('XR session error:',e);
+    return;
+  }
+
+  xrRefSpace=await xrSession.requestReferenceSpace('local-floor');
+  // Use our pre-created xrCompatible context — NO makeXRCompatible() needed
+  // alpha:true is essential — lets passthrough camera show through transparent pixels
+  await xrSession.updateRenderState({baseLayer:new XRWebGLLayer(xrSession,gl,{alpha:true,antialias:false})});
+
+  document.getElementById('bStart').disabled=true;
+  document.getElementById('bStop').disabled=false;
+  document.getElementById('bBake').disabled=true;
+  document.getElementById('ring').classList.add('active');
+  document.getElementById('tipsBanner').style.display='none';
+  sessionStorage.setItem('p3dk-scanned','1');
+  phase(0,'done');phase(1,'active');
+
+  xrSession.addEventListener('end',()=>{
+    xrSession=null;
+    document.getElementById('bStart').disabled=false;
+    document.getElementById('bStop').disabled=true;
+    document.getElementById('ring').classList.remove('active');
+    if(frameCount>5)document.getElementById('bBake').disabled=false;
+    phase(1,'done');
+  });
+
+  const minDist=+document.getElementById('sMin').value/100; // cm→m
+  const maxDist=+document.getElementById('sMax').value/100;
+
+  const onFrame=(t,frame)=>{
+    if(!xrSession)return;
+    xrSession.requestAnimationFrame(onFrame);
+    if(!frame)return;
+
+    const pose=frame.getViewerPose(xrRefSpace);
+    const layer=xrSession.renderState.baseLayer;
+    if(!pose||!layer)return;
+
+    // Clear the XR framebuffer each frame (required)
+    gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);
+    gl.viewport(0,0,layer.framebufferWidth,layer.framebufferHeight);
+    gl.clearColor(0,0,0,0); // transparent — shows passthrough camera
+    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+
+    // Render live point cloud preview
+    if(allPts.length>0&&glPtBuf&&glProg){
+      const step=Math.max(1,Math.floor(allPts.length/3/6000))*3;
+      const previewPts=[];
+      for(let i=0;i<allPts.length;i+=step*3)previewPts.push(allPts[i]/1000,allPts[i+1]/1000,allPts[i+2]/1000);
+      const pa=new Float32Array(previewPts);
+      gl.bindBuffer(gl.ARRAY_BUFFER,glPtBuf);
+      gl.bufferData(gl.ARRAY_BUFFER,pa,gl.DYNAMIC_DRAW);
+      gl.useProgram(glProg);
+      // Build simple MVP from XR view
+      const view=pose.views[0];
+      const proj=view.projectionMatrix;
+      const viewMat=view.transform.inverse.matrix;
+      // Combined proj*view matrix (column major)
+      const mvp=mat4mul(proj,viewMat);
+      const mvpLoc=gl.getUniformLocation(glProg,'mvp');
+      gl.uniformMatrix4fv(mvpLoc,false,mvp);
+      const posLoc=gl.getAttribLocation(glProg,'pos');
+      gl.enableVertexAttribArray(posLoc);
+      gl.vertexAttribPointer(posLoc,3,gl.FLOAT,false,0,0);
+      gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+      gl.drawArrays(gl.POINTS,0,pa.length/3);
+      gl.disable(gl.BLEND);
+      glPtCount=pa.length/3;
+    }
+
+    // Throttle depth integration to 250ms
+    const doIntegrate=(t-lastIntegrate)>250;
+    if(!doIntegrate)return;
+    lastIntegrate=t;
+
+    for(const view of pose.views){
+      let depth=null;
+      try{depth=frame.getDepthInformation?.(view)}catch(e){continue}
+      if(!depth)continue;
+
+      const vp=view.projectionMatrix;
+      const invView=view.transform.inverse.matrix;
+      const pts=[];
+      let nearestDist=Infinity;
+      // Sample depth at 5% grid (≈every 5th pixel at typical AR resolution)
+      for(let u=0.025;u<0.975;u+=0.05)for(let v=0.025;v<0.975;v+=0.05){
+        const dm=depth.getDepthInMeters(u,v);
+        if(!dm||dm<minDist||dm>maxDist)continue;
+        if(dm<nearestDist)nearestDist=dm;
+        // Correct perspective unproject via projection matrix
+        // vp[0]=focal_x, vp[5]=focal_y (column-major)
+        const ndcX=u*2-1,ndcY=1-v*2;
+        const cx=ndcX*dm/vp[0],cy=ndcY*dm/vp[5];
+        // Camera-space point → world via inverse view transform
+        const wx=invView[0]*cx+invView[4]*cy+invView[8]*(-dm)+invView[12];
+        const wy=invView[1]*cx+invView[5]*cy+invView[9]*(-dm)+invView[13];
+        const wz=invView[2]*cx+invView[6]*cy+invView[10]*(-dm)+invView[14];
+        // Convert m→mm for TSDF
+        pts.push(wx*1000,wy*1000,wz*1000);
+        // Update bbox
+        if(wx*1000<xrBBox.minX)xrBBox.minX=wx*1000;if(wx*1000>xrBBox.maxX)xrBBox.maxX=wx*1000;
+        if(wy*1000<xrBBox.minY)xrBBox.minY=wy*1000;if(wy*1000>xrBBox.maxY)xrBBox.maxY=wy*1000;
+        if(wz*1000<xrBBox.minZ)xrBBox.minZ=wz*1000;if(wz*1000>xrBBox.maxZ)xrBBox.maxZ=wz*1000;
+      }
+      if(pts.length){
+        worker.postMessage({type:'integrate',data:{points:new Float32Array(pts)}});
+        ptCount+=pts.length/3|0;
+        if(allPts.length<360000)allPts.push(...pts);
+        // Show distance guide
+        if(nearestDist<Infinity){
+          const distEl=document.getElementById('dist');
+          const dm=nearestDist;
+          const ok=dm>=0.2&&dm<=0.8;
+          if(distEl)distEl.textContent=(dm<0.15?'⚠ TOO CLOSE ':dm>0.8?'⚠ TOO FAR ':'◎ GOOD RANGE ')+(dm*100).toFixed(0)+'cm to nearest object';
+          if(distEl)distEl.style.color=ok?'rgba(0,255,153,.8)':'rgba(255,160,64,.9)';
+        }
+      }
+    }
+    frameCount++;
+
+    // After 5 frames: reinit TSDF to actual scan bbox for better grid fit.
+    // This ensures the voxel grid covers the real object, not a fixed cube.
+    if(frameCount===5&&ptCount>50){
+      const voxSz2=+document.getElementById('sVox').value;
+      const pad=voxSz2*20; // 20-voxel padding around detected bbox
+      const sx2=xrBBox.maxX-xrBBox.minX,sy2=xrBBox.maxY-xrBBox.minY,sz2=xrBBox.maxZ-xrBBox.minZ;
+      // Cap each dimension at 150 voxels
+      const nvx=Math.min(150,Math.ceil((sx2+pad*2)/voxSz2));
+      const nvy=Math.min(150,Math.ceil((sy2+pad*2)/voxSz2));
+      const nvz=Math.min(150,Math.ceil((sz2+pad*2)/voxSz2));
+      const bbMin2={
+        x:xrBBox.minX-pad,
+        y:xrBBox.minY-pad,
+        z:xrBBox.minZ-pad
+      };
+      worker.postMessage({type:'init',data:{nx:nvx,ny:nvy,nz:nvz,voxSz:voxSz2,bbMin:bbMin2}});
+      sts('◉ GRID ADAPTED TO SCAN AREA...');
+      console.log('TSDF reinit to bbox:',nvx+'x'+nvy+'x'+nvz,'voxels, bbMin:',bbMin2);
+    }
+
+    // Update HUD
+    const sx=((xrBBox.maxX-xrBBox.minX)||0).toFixed(0);
+    const sy=((xrBBox.maxY-xrBBox.minY)||0).toFixed(0);
+    const sz=((xrBBox.maxZ-xrBBox.minZ)||0).toFixed(0);
+    prg(`⬤ ${frameCount}fr · ${(ptCount/1000).toFixed(0)}k pts`);
+    dim(`${sx}×${sy}×${sz}mm`);
+
+    // Auto-stop: stable bbox for 10 consecutive integrations (~2.5s)
+    const spanX=xrBBox.maxX-xrBBox.minX,spanY=xrBBox.maxY-xrBBox.minY,spanZ=xrBBox.maxZ-xrBBox.minZ;
+    const grew=Math.abs(spanX-bboxLast.x)+Math.abs(spanY-bboxLast.y)+Math.abs(spanZ-bboxLast.z);
+    bboxLast={x:spanX,y:spanY,z:spanZ};
+    if(grew<4)bboxStable++;else bboxStable=0;
+    if(frameCount>=targetFrames||bboxStable>10){
+      sts('◉ SCAN STABLE — tap BAKE MESH');
+      prg('ready to bake');
+      stopScan();
+    }
+  };
+  xrSession.requestAnimationFrame(onFrame);
+};
+
+// ── STOP ──────────────────────────────────────────────────────────────────────
+function stopScan(){
+  if(xrSession){xrSession.end().catch(()=>{})}
+}
+document.getElementById('bStop').onclick=()=>{
+  stopScan();
+  sts('◉ STOPPED — tap BAKE MESH');
+};
+
+// ── BAKE MESH → STL ───────────────────────────────────────────────────────────
+document.getElementById('bBake').onclick=()=>{
+  if(!worker||frameCount<3){sts('⚠ NOT ENOUGH DATA');return}
+  sts('⚗ MARCHING CUBES...');
+  prg('processing TSDF volume...');
+  phase(2,'active');
+  const iso=+document.getElementById('sIso').value;
+  worker.onmessage=ev=>{
+    if(ev.data.type==='mesh'){
+      phase(2,'done');phase(3,'active');
+      let verts=ev.data.verts;
+      if(!verts||verts.length<9){sts('⚠ NO SURFACE — try more frames or smaller voxel');phase(2,'');return}
+      sts('⚗ SMOOTHING...');
+      if(document.getElementById('sSmooth').checked){
+        verts=laplacianSmooth(verts,5);
+      }
+      sts('⚗ BUILDING STL...');
+      const stl=vertsToSTL(verts);
+      phase(3,'done');
+      sts('✔ COMPLETE — '+Math.round(verts.length/9).toLocaleString()+' triangles');
+      prg('');
+
+      if(document.getElementById('sSend').checked&&window.opener){
+        // Send to parent P3dK window
+        try{
+          window.opener.postMessage({type:'p3dk-scan-mesh',stl:stl},'*');
+          document.getElementById('sendBanner').style.display='block';
+        }catch(e){downloadSTL(stl)}
+      }else{
+        // BroadcastChannel for same-origin P3dK tabs
+        try{
+          const bc=new BroadcastChannel('p3dk');
+          bc.postMessage({type:'scan-mesh',stl:stl});
+          bc.close();
+          sts('✔ SENT TO P3dK — switch tabs');
+          phase(3,'done');
+        }catch(e){}
+        // Also download directly
+        downloadSTL(stl);
+      }
+    }
+  };
+  worker.postMessage({type:'march',data:{iso,minW:3}});
+};
+
+// ── LAPLACIAN SMOOTH ──────────────────────────────────────────────────────────
+function laplacianSmooth(verts,passes){
+  const n=verts.length/3|0;
+  // Build adjacency from shared positions
+  const adj=new Map();
+  for(let i=0;i<n;i++)adj.set(i,new Set());
+  for(let i=0;i<n;i+=3){
+    const a=i,b=i+1,c=i+2;
+    adj.get(a).add(b);adj.get(a).add(c);
+    adj.get(b).add(a);adj.get(b).add(c);
+    adj.get(c).add(a);adj.get(c).add(b);
+  }
+  const pos=new Float32Array(verts);
+  for(let p=0;p<passes;p++){
+    const np=new Float32Array(pos.length);
+    for(let i=0;i<n;i++){
+      const nb=adj.get(i);
+      if(!nb||!nb.size){np[i*3]=pos[i*3];np[i*3+1]=pos[i*3+1];np[i*3+2]=pos[i*3+2];continue}
+      let cx=0,cy=0,cz=0;
+      for(const j of nb){cx+=pos[j*3];cy+=pos[j*3+1];cz+=pos[j*3+2]}
+      const f=1/nb.size;
+      np[i*3]=pos[i*3]+(cx*f-pos[i*3])*.5;
+      np[i*3+1]=pos[i*3+1]+(cy*f-pos[i*3+1])*.5;
+      np[i*3+2]=pos[i*3+2]+(cz*f-pos[i*3+2])*.5;
+    }
+    pos.set(np);
+  }
+  return pos;
+}
+
+// ── STL BINARY EXPORT ─────────────────────────────────────────────────────────
+function vertsToSTL(verts){
+  const nTri=verts.length/9|0;
+  const buf=new ArrayBuffer(84+nTri*50);
+  const view=new DataView(buf);
+  // Header (80 bytes)
+  const enc=new TextEncoder();
+  const hdr=enc.encode('P3dK Scanner STL');
+  for(let i=0;i<Math.min(80,hdr.length);i++)view.setUint8(i,hdr[i]);
+  view.setUint32(80,nTri,true);
+  let off=84;
+  for(let i=0;i<nTri;i++){
+    const b=i*9;
+    const ax=verts[b],ay=verts[b+1],az=verts[b+2];
+    const bx=verts[b+3],by=verts[b+4],bz=verts[b+5];
+    const cx=verts[b+6],cy=verts[b+7],cz=verts[b+8];
+    // Normal
+    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;
+    const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+    const nl=Math.hypot(nx,ny,nz)||1;
+    view.setFloat32(off,nx/nl,true);view.setFloat32(off+4,ny/nl,true);view.setFloat32(off+8,nz/nl,true);off+=12;
+    view.setFloat32(off,ax,true);view.setFloat32(off+4,ay,true);view.setFloat32(off+8,az,true);off+=12;
+    view.setFloat32(off,bx,true);view.setFloat32(off+4,by,true);view.setFloat32(off+8,bz,true);off+=12;
+    view.setFloat32(off,cx,true);view.setFloat32(off+4,cy,true);view.setFloat32(off+8,cz,true);off+=12;
+    view.setUint16(off,0,true);off+=2;
+  }
+  return buf;
+}
+function downloadSTL(buf){
+  const ts=new Date().toISOString().slice(0,16).replace('T','-').replace(':','');
+  const fname='p3dk-scan-'+ts+'.stl';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download=fname;a.click();
+  // Show download confirmation banner
+  document.getElementById('dlName').textContent=fname;
+  document.getElementById('dlBanner').style.display='block';
+  hx(30); // strong haptic on download
+}
+
+// ── MAT4 MULTIPLY (column-major, WebXR standard) ─────────────────────────────
+// WebXR matrices are column-major Float32Arrays.
+// out = a * b where columns are stored sequentially: col0=[0-3], col1=[4-7], etc.
+// Element [row r, col c] = a[r,c] = a[r + c*4]
+// (a*b)[r,c] = sum_k a[r,k] * b[k,c]
+function mat4mul(a,b){
+  const o=new Float32Array(16);
+  for(let c=0;c<4;c++)for(let r=0;r<4;r++){
+    o[r+c*4]=a[r+0*4]*b[0+c*4]+a[r+1*4]*b[1+c*4]+a[r+2*4]*b[2+c*4]+a[r+3*4]*b[3+c*4];
+  }
+  return o;
+}
+
+// ── RESIZE ────────────────────────────────────────────────────────────────────
+window.onresize=()=>{cvs.width=innerWidth;cvs.height=innerHeight};
+
+// ── P3dK BroadcastChannel LISTENER (if opened from P3dK) ─────────────────────
+// P3dK listens on the 'p3dk' channel for scan-mesh messages
+// Nothing needed here — we just broadcast, P3dK receives
+
+// ── HAPTICS ───────────────────────────────────────────────────────────────────
+const hx=(ms=10)=>navigator.vibrate?.(ms);
+document.getElementById('bStart').addEventListener('pointerdown',()=>hx(15));
+document.getElementById('bStop').addEventListener('pointerdown',()=>hx(15));
+document.getElementById('bBake').addEventListener('pointerdown',()=>hx(20));
+</script>
+</body>
+</html>
