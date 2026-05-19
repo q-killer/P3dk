@@ -36,7 +36,7 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
   background:repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0px,rgba(0,0,0,.08) 1px,transparent 1px,transparent 3px);
   opacity:.5}
 /* TOP HUD */
-#top{position:fixed;top:0;left:0;right:0;z-index:10;
+#top{position:fixed;top:0;left:0;right:0;z-index:300;
   background:linear-gradient(rgba(0,0,12,.92) 80%,transparent);
   padding:10px 12px 20px}
 #lcars-bar{display:flex;align-items:center;gap:0;margin-bottom:8px}
@@ -57,7 +57,7 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
 #loadBar{position:fixed;top:0;left:0;height:3px;background:var(--gold);z-index:100;transition:width .3s;width:0%}
 
 /* BOTTOM PANEL */
-#bot{position:fixed;bottom:0;left:0;right:0;z-index:10;
+#bot{position:fixed;bottom:0;left:0;right:0;z-index:300;
   background:linear-gradient(transparent,rgba(0,0,12,.95) 30%);
   padding:12px}
 .lrow{display:flex;gap:0;margin-bottom:8px;height:52px}
@@ -74,8 +74,9 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
 .r2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 
 /* SETTINGS DRAWER */
-#sets{background:rgba(0,0,20,.97);border-top:2px solid var(--gold);
-  padding:12px;margin-bottom:10px;display:none}
+#sets{background:rgba(0,0,20,.99);border-top:2px solid var(--gold);
+  padding:12px;margin-bottom:10px;display:none;
+  position:relative;z-index:300}
 #sets.open{display:block}
 .sr{display:flex;align-items:center;gap:8px;margin:7px 0}
 .sl{font-size:13px;color:var(--peach);width:110px;flex-shrink:0}
@@ -84,9 +85,9 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
 .sr label{font-size:13px;color:var(--peach);display:flex;align-items:center;gap:6px;cursor:pointer}
 .sr input[type=checkbox]{accent-color:var(--gold);width:16px;height:16px}
 
-/* OVERLAYS */
+/* OVERLAYS — sit above camera/canvas but below HUD panels */
 .ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,20,.97);z-index:200;overflow-y:auto;
+  background:rgba(0,0,20,.97);z-index:250;overflow-y:auto;
   -webkit-overflow-scrolling:touch}
 .ov.on{display:flex;flex-direction:column}
 .ov-h{background:var(--gold);color:#000;padding:12px 16px;font-size:15px;font-weight:bold;
@@ -99,7 +100,7 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
 .ov-b b{color:#fff}
 .ob2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;
   position:fixed;bottom:0;left:0;right:0;padding:12px;
-  background:rgba(0,0,20,.97);z-index:201}
+  background:rgba(0,0,20,.99);z-index:350}
 
 /* TARGETING RETICLE */
 #reticle{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
@@ -275,6 +276,7 @@ const sts=t=>{$('sts').textContent=t};
 const wkr=t=>{$('wkr').textContent=t};
 const prg=t=>{$('prg').textContent=t};
 function hideTips(){$('tipOv').classList.remove('on');sessionStorage.setItem('st','1')}
+window.hideTips=hideTips;
 
 // ── TSDF WORKER ───────────────────────────────────────────────────────────────
 // Same proven TSDF + marching cubes worker from v3, but now receives
