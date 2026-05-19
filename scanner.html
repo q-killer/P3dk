@@ -1,429 +1,905 @@
-```html
 <!DOCTYPE html>
-<html lang="en">
+<!-- P3dK SCANNER v4 — Neural Depth Edition
+  Uses Depth Anything V2 Small (26MB ONNX via Transformers.js) for monocular
+  depth estimation from the phone camera. No ARCore, no LiDAR, no app store.
+  Works on ANY phone (Android + iPhone) over HTTPS.
+
+  PIPELINE:
+    Camera frame → Depth Anything V2 Small (ONNX/WASM, ~300ms/frame S21U)
+    → per-pixel depth map (384×384 relative depth)
+    → Tron shader overlay (cyan=near orange=far wireframe aesthetic)
+    → multi-frame TSDF accumulation (Web Worker, m→mm)
+    → low-voxel marching cubes → clean low-poly watertight mesh → STL
+
+  INSIGHT: low voxel count + Laplacian smooth = clean CGI-quality topology
+  not noisy photogrammetry. The neural depth is the regularizer.
+-->
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>P3dK // iOS Studio Engine</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <style>
-        :root { --cyan: #0ff; --amber: #ffb000; --magenta: #f0f; --bg: #050505; --font: 'Courier New', monospace; }
-        * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; overflow: hidden; }
-        body { background: var(--bg); color: var(--cyan); font-family: var(--font); touch-action: none; }
-        
-        #video-feed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; opacity: 1.0; }
-        #glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; background: transparent; }
-        #bg-black { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; background: #080808; display: none;}
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>P3dK SCANNER</title>
+<style>
+:root{
+  --gold:#ff9900;--blue:#9999ff;--red:#cc6666;--teal:#33cccc;
+  --peach:#ffcc99;--purple:#cc99cc;--green:#00cc99;--bg:#000008;
+}
+*{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
+  font-family:'Courier New',monospace;color:var(--teal)}
+/* Camera feed fills background */
+#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;opacity:1}
+/* WebGL canvas: Tron depth overlay on top of camera */
+#cvs{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
+/* CRT scanlines */
+body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0px,rgba(0,0,0,.08) 1px,transparent 1px,transparent 3px);
+  opacity:.5}
+/* TOP HUD */
+#top{position:fixed;top:0;left:0;right:0;z-index:300;
+  background:linear-gradient(rgba(0,0,12,.92) 80%,transparent);
+  padding:10px 12px 20px}
+#lcars-bar{display:flex;align-items:center;gap:0;margin-bottom:8px}
+#lpill{background:var(--gold);border-radius:20px 0 0 20px;
+  padding:7px 16px;font-size:12px;font-weight:bold;color:#000;letter-spacing:3px;flex-shrink:0}
+#lline{flex:1;height:5px;background:linear-gradient(90deg,var(--gold),var(--blue))}
+#lsq{width:32px;height:32px;background:var(--blue);flex-shrink:0}
+#sts{font-size:18px;font-weight:bold;color:var(--teal);letter-spacing:1px;min-height:22px}
+#prg{font-size:14px;color:var(--gold);min-height:18px;margin-top:3px;font-weight:bold}
+#chips{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
+.chip{border:1px solid rgba(153,153,255,.4);padding:3px 10px;
+  font-size:13px;color:var(--blue);font-weight:bold;letter-spacing:.5px}
+#dst{font-size:15px;font-weight:bold;margin-top:5px;min-height:18px}
+#pbar-wrap{height:5px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:8px}
+#pbar{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--blue));border-radius:3px;transition:width .3s}
+#wkr{font-size:14px;color:var(--purple);font-weight:bold;margin-top:5px;min-height:18px}
+/* Model load progress */
+#loadBar{position:fixed;top:0;left:0;height:3px;background:var(--gold);z-index:100;transition:width .3s;width:0%}
 
-        #ghost-overlay {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover;
-            z-index: 3; opacity: 0; pointer-events: none; mix-blend-mode: screen; 
-            filter: sepia(100%) hue-rotate(150deg) saturate(300%); transition: opacity 0.3s;
-        }
+/* BOTTOM PANEL */
+#bot{position:fixed;bottom:0;left:0;right:0;z-index:300;
+  background:linear-gradient(transparent,rgba(0,0,12,.95) 30%);
+  padding:12px}
+.lrow{display:flex;gap:0;margin-bottom:8px;height:52px}
+.lrow .ll{display:flex;align-items:center;justify-content:center;
+  padding:0 10px;font-size:10px;font-weight:bold;letter-spacing:1px;
+  color:#000;flex-shrink:0;min-width:52px}
+.lrow .ll.rnd{border-radius:18px 0 0 18px}
+.btn{flex:1;border:none;font:bold 12px 'Courier New';letter-spacing:2px;
+  cursor:pointer;transition:background .12s;padding:0 8px;
+  background:rgba(10,15,30,.8)}
+.btn:active{color:#000!important}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.lrow .le{width:16px;flex-shrink:0;align-self:stretch}
+.r2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
 
-        .ar-grid {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 4;
-            background: linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
-            background-size: 50px 50px; pointer-events: none; clip-path: circle(35% at 50% 50%);
-        }
+/* SETTINGS DRAWER */
+#sets{background:rgba(0,0,20,.99);border-top:2px solid var(--gold);
+  padding:12px;margin-bottom:10px;display:none;
+  position:relative;z-index:300}
+#sets.open{display:block}
+.sr{display:flex;align-items:center;gap:8px;margin:7px 0}
+.sl{font-size:13px;color:var(--peach);width:110px;flex-shrink:0}
+.sr input[type=range]{flex:1;accent-color:var(--gold);cursor:pointer;height:18px}
+.sv{width:42px;text-align:right;color:var(--gold);font-size:14px;font-weight:bold;flex-shrink:0}
+.sr label{font-size:13px;color:var(--peach);display:flex;align-items:center;gap:6px;cursor:pointer}
+.sr input[type=checkbox]{accent-color:var(--gold);width:16px;height:16px}
 
-        #ui-layer {
-            position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
-            display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; padding: 15px;
-        }
+/* OVERLAYS — sit above camera/canvas but below HUD panels */
+.ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,20,.97);z-index:250;overflow-y:auto;
+  -webkit-overflow-scrolling:touch}
+.ov.on{display:flex;flex-direction:column}
+.ov-h{background:var(--gold);color:#000;padding:12px 16px;font-size:15px;font-weight:bold;
+  letter-spacing:3px;flex-shrink:0}
+.ov-h.grn{background:var(--green)}
+.ov-b{padding:16px;flex:1;display:flex;flex-direction:column;overflow-y:auto;
+  padding-bottom:120px}
+.ov-b p,.ov-b li{font-size:14px;color:var(--peach);line-height:2;margin:2px 0}
+.ov-b ul{padding-left:20px;margin:8px 0}
+.ov-b b{color:#fff}
+.ob2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;
+  position:fixed;bottom:0;left:0;right:0;padding:12px;
+  background:rgba(0,0,20,.99);z-index:350}
 
-        .panel {
-            background: rgba(0, 15, 15, 0.85); border: 1px solid var(--cyan); padding: 12px;
-            backdrop-filter: blur(8px); pointer-events: auto;
-        }
-
-        .sys-text { font-size: 11px; font-weight: bold; line-height: 1.5; text-shadow: 0 0 5px #000; }
-        .amber { color: var(--amber); }
-        .sys-err { color: var(--magenta); margin-top: 5px; white-space: pre-wrap; font-size: 10px; text-shadow: none; }
-
-        .btn {
-            background: rgba(0, 40, 40, 0.8); color: var(--cyan); border: 1px solid var(--cyan);
-            padding: 15px; font-family: var(--font); font-size: 14px; font-weight: bold;
-            cursor: pointer; text-transform: uppercase; width: 100%; margin-top: 10px; transition: 0.1s;
-            pointer-events: auto;
-        }
-        .btn:active { background: var(--cyan); color: #000; }
-        
-        #btn-stitch { 
-            height: 80px; font-size: 20px; border-width: 2px; border-color: var(--cyan);
-            background: rgba(0, 255, 255, 0.1);
-        }
-        #btn-stitch:active { background: var(--cyan); color: #000; }
-
-        #controls-review { display: none; }
-        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        
-        .slider-group { margin-top: 10px; }
-        .slider-label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px; color: #ccc;}
-        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin-bottom: 5px; pointer-events: auto; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--cyan); cursor: pointer; margin-top: -6px; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(0, 255, 255, 0.2); border-radius: 2px; }
-
-        #flash {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: #fff; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s;
-        }
-        
-        .crosshair {
-            position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%);
-            border: 2px solid var(--amber); border-radius: 50%; z-index: 5; pointer-events: none; opacity: 0.5;
-        }
-    </style>
+/* TARGETING RETICLE */
+#reticle{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:5;pointer-events:none;display:none}
+#reticle.on{display:block}
+</style>
 </head>
 <body>
 
-    <div id="bg-black"></div>
-    <video id="video-feed" autoplay playsinline muted></video>
-    <img id="ghost-overlay" src="" />
-    <canvas id="glcanvas"></canvas>
-    
-    <div class="ar-grid" id="ar-grid"></div>
-    <div class="crosshair" id="crosshair"></div>
-    <div id="flash"></div>
+<!-- Camera background -->
+<video id=vid autoplay playsinline muted></video>
+<!-- Ghost overlay: previous captured frame shown as cyan-tinted guide for alignment -->
+<img id=ghost style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;
+  opacity:0;pointer-events:none;mix-blend-mode:screen;
+  filter:sepia(100%) hue-rotate(150deg) saturate(300%);transition:opacity .5s">
+<!-- Subtle AR grid clipped to a circle in the scan zone -->
+<div id=argrid style="position:fixed;inset:0;z-index:2;pointer-events:none;
+  background:linear-gradient(rgba(0,255,255,.05) 1px,transparent 1px),
+             linear-gradient(90deg,rgba(0,255,255,.05) 1px,transparent 1px);
+  background-size:50px 50px;clip-path:circle(38% at 50% 50%);
+  opacity:0;transition:opacity .6s"></div>
+<!-- White flash on frame capture -->
+<div id=flash style="position:fixed;inset:0;background:#fff;z-index:50;
+  opacity:0;pointer-events:none;transition:opacity .08s"></div>
+<!-- WebGL overlay for Tron depth effect -->
+<canvas id=cvs></canvas>
+<!-- Model loading progress bar -->
+<div id=loadBar></div>
 
-    <div id="ui-layer">
-        <header>
-            <div class="panel">
-                <div class="sys-text">
-                    <div id="lbl-mode">MODE: STUDIO STANDBY</div>
-                    <div id="lbl-pts" class="cyan">MAPPED FRAMES: 0</div>
-                    <div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
-                    <div id="lbl-err" class="sys-err"></div>
-                </div>
-            </div>
-        </header>
+<!-- TOP LCARS HUD -->
+<div id=top>
+  <div id=lcars-bar>
+    <div id=lpill>P3dK SCANNER</div>
+    <div id=lline></div>
+    <div id=lsq></div>
+  </div>
+  <div id=sts>LOADING NEURAL ENGINE...</div>
+  <div id=prg></div>
+  <div id=chips>
+    <div class=chip id=cW>W: —</div>
+    <div class=chip id=cH>H: —</div>
+    <div class=chip id=cD>D: —</div>
+    <div class=chip id=cP>PTS: 0</div>
+  </div>
+  <div id=dst></div>
+  <div id=pbar-wrap><div id=pbar></div></div>
+  <div id=wkr></div>
+</div>
 
-        <footer>
-            <div id="controls-live" class="panel">
-                <button class="btn" id="btn-init">1. INIT SENSORS</button>
-                <div id="stitch-container" style="display:none;">
-                    <div class="sys-text amber" style="text-align:center; margin-bottom:5px;">ALIGN GHOST IMAGE & TAP TO STITCH</div>
-                    <button class="btn" id="btn-stitch">[ STITCH ALIGNED FRAME ]</button>
-                    <div class="btn-grid">
-                        <button class="btn" id="btn-torch" style="border-color: var(--amber); color: var(--amber);">🔦 ILLUMINATE</button>
-                        <button class="btn" id="btn-done">REVIEW 3D</button>
-                    </div>
-                </div>
-            </div>
-            
-            <div id="controls-review" class="panel">
-                <div class="sys-text amber" style="margin-bottom: 10px;">STUDIO CALIBRATION</div>
-                
-                <div class="slider-group">
-                    <div class="slider-label"><span>EXTRUSION DEPTH</span> <span id="val-scale">0.5x</span></div>
-                    <input type="range" id="sl-scale" min="0.0" max="3.0" step="0.1" value="0.5">
-                </div>
-                
-                <div class="slider-group">
-                    <div class="slider-label"><span>SURFACE SMOOTHING</span> <span id="val-smooth">50%</span></div>
-                    <input type="range" id="sl-smooth" min="0" max="1" step="0.05" value="0.5">
-                </div>
+<!-- LCARS targeting reticle -->
+<div id=reticle>
+  <svg width=220 height=220 viewBox="0 0 220 220">
+    <path d="M110,12 A98,98 0 0,1 208,110" fill=none stroke="var(--gold)" stroke-width=3.5 opacity=.8/>
+    <path d="M208,110 A98,98 0 0,1 110,208" fill=none stroke="var(--blue)" stroke-width=3.5 opacity=.8/>
+    <path d="M110,208 A98,98 0 0,1 12,110" fill=none stroke="var(--teal)" stroke-width=3.5 opacity=.8/>
+    <path d="M12,110 A98,98 0 0,1 110,12" fill=none stroke="var(--purple)" stroke-width=3.5 opacity=.8/>
+    <circle cx=110 cy=110 r=56 fill=none stroke="rgba(51,204,204,.4)" stroke-width=1.5 stroke-dasharray="5 4"/>
+    <rect x=10 y=10 width=26 height=5 fill="var(--gold)"/>
+    <rect x=10 y=10 width=5 height=26 fill="var(--gold)"/>
+    <rect x=184 y=10 width=26 height=5 fill="var(--blue)"/>
+    <rect x=205 y=10 width=5 height=26 fill="var(--blue)"/>
+    <rect x=10 y=205 width=26 height=5 fill="var(--teal)"/>
+    <rect x=10 y=184 width=5 height=26 fill="var(--teal)"/>
+    <rect x=184 y=205 width=26 height=5 fill="var(--purple)"/>
+    <rect x=205 y=184 width=5 height=26 fill="var(--purple)"/>
+    <line x1=110 y1=96 x2=110 y2=108 stroke="var(--teal)" stroke-width=2/>
+    <line x1=110 y1=112 x2=110 y2=124 stroke="var(--teal)" stroke-width=2/>
+    <line x1=96 y1=110 x2=108 y2=110 stroke="var(--teal)" stroke-width=2/>
+    <line x1=112 y1=110 x2=124 y2=110 stroke="var(--teal)" stroke-width=2/>
+    <text x=110 y=162 text-anchor=middle fill="rgba(51,204,204,.6)"
+      font-size="9" font-family="Courier New" letter-spacing="2">NEURAL DEPTH</text>
+  </svg>
+</div>
 
-                <div class="btn-grid" style="margin-top: 10px;">
-                    <button class="btn" id="btn-clay">CLAY RENDER</button>
-                    <button class="btn" id="btn-wire">WIREFRAME</button>
-                </div>
-                
-                <div class="btn-grid">
-                    <button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD</button>
-                    <button class="btn" id="btn-export" style="border-color: var(--amber); color: var(--amber);">EXPORT .OBJ</button>
-                </div>
-            </div>
-        </footer>
+<!-- BOTTOM PANEL -->
+<div id=bot>
+  <div id=sets>
+    <div class=sr><span class=sl>VOXEL mm</span>
+      <input type=range id=sVox min=3 max=20 step=1 value=8
+        oninput="document.getElementById('sVoxV').textContent=this.value">
+      <span class=sv id=sVoxV>8</span></div>
+    <div class=sr><span class=sl>FRAMES</span>
+      <input type=range id=sFr min=10 max=100 step=5 value=40
+        oninput="document.getElementById('sFrV').textContent=this.value">
+      <span class=sv id=sFrV>40</span></div>
+    <div class=sr><span class=sl>ISO LEVEL</span>
+      <input type=range id=sIso min=-10 max=10 step=1 value=0
+        oninput="document.getElementById('sIsoV').textContent=this.value">
+      <span class=sv id=sIsoV>0</span></div>
+    <div class=sr><span class=sl>DEPTH SCALE</span>
+      <input type=range id=sScale min=50 max=500 step=10 value=200
+        oninput="document.getElementById('sScaleV').textContent=this.value+'mm'">
+      <span class=sv id=sScaleV>200mm</span></div>
+    <div class=sr><span class=sl>INFER EVERY</span>
+      <input type=range id=sEvery min=1 max=10 step=1 value=3
+        oninput="document.getElementById('sEveryV').textContent=this.value+'fr'">
+      <span class=sv id=sEveryV>3fr</span></div>
+    <div class=sr>
+      <label><input type=checkbox id=sSm checked> SMOOTH MESH</label>
+      <label style="margin-left:12px"><input type=checkbox id=sTron checked> TRON OVERLAY</label>
+      <label style="margin-left:12px"><input type=checkbox id=sSd> →P3dK</label>
     </div>
+    <div class=sr style="margin-top:8px;gap:6px">
+      <button class=btn id=bTorch style="height:44px;color:var(--gold);border:2px solid var(--gold);flex:1"
+        onclick="window.togTorch()">🔦 TORCH</button>
+      <button class=btn id=bExportObj style="height:44px;color:var(--gold);border:2px solid var(--gold);flex:1"
+        onclick="window.exportOBJ()" disabled>↓ OBJ</button>
+    </div>
+  </div>
 
-<script>
-/**
- * P3dK // Studio Engine (V14 - iOS Safari Compatibility)
- * Fixes iOS DeviceOrientationEvent "User Gesture Expiration" bug by 
- * requesting gyro permissions instantly on click, before awaiting camera APIs.
- */
+  <!-- START -->
+  <div class=lrow>
+    <div class=ll rnd style="background:var(--green)">SCN</div>
+    <button class=btn id=bStart style="color:var(--green);border:2px solid var(--green)">
+      [ 📷 START SCAN ]</button>
+    <div class=le style="background:var(--green);border-radius:0 18px 18px 0"></div>
+  </div>
+  <!-- STOP + CONFIG + TORCH -->
+  <div class=r2>
+    <div class=lrow style="margin-bottom:0">
+      <div class=ll rnd style="background:var(--red)">HLT</div>
+      <button class=btn id=bStop disabled style="color:var(--red);border:2px solid var(--red)">STOP</button>
+      <div class=le style="background:var(--red);border-radius:0 18px 18px 0"></div>
+    </div>
+    <div class=lrow style="margin-bottom:0">
+      <div class=ll rnd style="background:var(--blue)">CFG</div>
+      <button class=btn id=bCfg style="color:var(--blue);border:2px solid var(--blue)"
+        onclick="window.togCfg()">CONFIG</button>
+      <div class=le style="background:var(--blue);border-radius:0 18px 18px 0"></div>
+    </div>
+  </div>
+  <!-- BAKE -->
+  <div class=lrow>
+    <div class=ll rnd style="background:var(--purple)">MCB</div>
+    <button class=btn id=bBake disabled style="color:var(--purple);border:2px solid var(--purple)">
+      [ ∴ BAKE → STL ]</button>
+    <div class=le style="background:var(--purple);border-radius:0 18px 18px 0"></div>
+  </div>
+</div>
 
-const UI = {
-    video: document.getElementById('video-feed'),
-    ghost: document.getElementById('ghost-overlay'),
-    canvas: document.getElementById('glcanvas'),
-    bgBlack: document.getElementById('bg-black'),
-    arGrid: document.getElementById('ar-grid'),
-    crosshair: document.getElementById('crosshair'),
-    lblMode: document.getElementById('lbl-mode'),
-    lblPts: document.getElementById('lbl-pts'),
-    lblImu: document.getElementById('lbl-imu'),
-    lblErr: document.getElementById('lbl-err'),
-    controlsLive: document.getElementById('controls-live'),
-    stitchContainer: document.getElementById('stitch-container'),
-    controlsReview: document.getElementById('controls-review'),
-    btnInit: document.getElementById('btn-init'),
-    btnStitch: document.getElementById('btn-stitch'),
-    btnDone: document.getElementById('btn-done'),
-    btnTorch: document.getElementById('btn-torch'),
-    flash: document.getElementById('flash'),
-    slScale: document.getElementById('sl-scale'),
-    slSmooth: document.getElementById('sl-smooth'),
-    valScale: document.getElementById('val-scale'),
-    valSmooth: document.getElementById('val-smooth'),
-    btnWire: document.getElementById('btn-wire'),
-    btnClay: document.getElementById('btn-clay')
+<!-- Tips -->
+<div class=ov id=tipOv>
+  <div class=ov-h>NEURAL SCAN PROTOCOL</div>
+  <div class=ov-b>
+    <ul>
+      <li>No ARCore needed — works on <b>any phone</b></li>
+      <li>Hold object <b>20–60cm</b> from camera</li>
+      <li>Move <b>slowly</b> around it — all angles</li>
+      <li>Good <b>lighting</b> = better depth</li>
+      <li>Low voxel count = <b>clean CGI-quality</b> mesh</li>
+      <li>Increase voxel mm for smoother results</li>
+      <li>STL saves to <b>Downloads</b></li>
+    </ul>
+    <div class=ob2>
+      <button class=btn id=bTipStart
+        style="height:48px;color:var(--green);border:2px solid var(--green)"
+        onclick="hideTips();document.getElementById('bStart').click()">[ ▶ ENGAGE ]</button>
+      <button class=btn style="height:48px;color:var(--teal);border:2px solid var(--teal)"
+        onclick="hideTips()">[ SKIP ]</button>
+    </div>
+  </div>
+</div>
+
+<!-- Download confirm -->
+<div class=ov id=dlOv>
+  <div class=ov-h grn>TRANSFER COMPLETE</div>
+  <div class=ov-b>
+    <p>Saved to <b>Downloads</b>:</p>
+    <p id=dlName style="color:var(--gold);word-break:break-all;margin:8px 0;font-size:13px"></p>
+    <p>Chrome <b>⋮ → Downloads</b> to find it</p>
+    <div class=ob2>
+      <button class=btn style="height:52px;color:var(--teal);border:2px solid var(--teal)"
+        onclick="document.getElementById('dlOv').classList.remove('on')">[ OK ]</button>
+      <button class=btn style="height:52px;color:var(--green);border:2px solid var(--green)"
+        onclick="document.getElementById('dlOv').classList.remove('on');
+                 document.getElementById('bBake').click()">[ ↺ RE-BAKE ]</button>
+    </div>
+  </div>
+</div>
+
+<!-- Load Transformers.js from CDN (ONNX runtime for browser) -->
+<script type=module>
+import {pipeline,env} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+
+// ── CONFIG ────────────────────────────────────────────────────────────────────
+env.allowLocalModels=false;
+env.useBrowserCache=true; // cache model after first download
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const sts=t=>{$('sts').textContent=t};
+const wkr=t=>{$('wkr').textContent=t};
+const prg=t=>{$('prg').textContent=t};
+function hideTips(){$('tipOv').classList.remove('on');sessionStorage.setItem('st','1')}
+window.hideTips=hideTips;
+
+// ── TSDF WORKER ───────────────────────────────────────────────────────────────
+// Same proven TSDF + marching cubes worker from v3, but now receives
+// neural depth maps instead of ARCore depth data
+const WC=`
+let nx=0,ny=0,nz=0,sz=0,bb={x:0,y:0,z:0},sd=null,wt=null,rdy=false;
+const TR=60;
+const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+self.onmessage=function(e){
+  const{type,data}=e;
+  if(type==='init'){
+    nx=data.nx;ny=data.ny;nz=data.nz;sz=data.sz;bb=data.bb;
+    const N=nx*ny*nz;
+    sd=new Float32Array(N).fill(TR);
+    wt=new Float32Array(N);
+    rdy=true;
+    self.postMessage({type:'ready',dims:[nx,ny,nz]});
+  }
+  else if(type==='integrate'){
+    if(!rdy){self.postMessage({type:'done'});return}
+    const p=data.pts;
+    for(let i=0;i<p.length;i+=3){
+      const px=p[i],py=p[i+1],pz=p[i+2];
+      const vx=Math.floor((px-bb.x)/sz)|0;
+      const vy=Math.floor((py-bb.y)/sz)|0;
+      const vz=Math.floor((pz-bb.z)/sz)|0;
+      const bv=Math.ceil(TR/sz)+1;
+      for(let dz2=-bv;dz2<=bv;dz2++){
+        const zi=vz+dz2;
+        if(vx<0||vy<0||zi<0||vx>=nx||vy>=ny||zi>=nz)continue;
+        const idx=vi(vx,vy,zi);
+        const s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
+        const w=wt[idx];
+        sd[idx]=(sd[idx]*w+s)/(w+1);
+        wt[idx]=Math.min(w+1,255);
+      }
+    }
+    self.postMessage({type:'done'});
+  }
+  else if(type==='march'){
+    if(!rdy){self.postMessage({type:'mesh',verts:new Float32Array(0)});return}
+    const iso=data.iso||0,minW=data.minW||2;
+    const verts=[];
+    const ip=(p1,p2,v1,v2)=>{
+      const t=(iso-v1)/((v2-v1)||.0001);
+      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
+    };
+    const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
+    for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
+      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
+               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+      const vals=c.map(([x,y,z])=>{
+        const idx=vi(Math.min(nx-1,x),Math.min(ny-1,y),Math.min(nz-1,z));
+        return wt[idx]<minW?TR:sd[idx];
+      });
+      const pos=c.map(([x,y,z])=>[bb.x+x*sz+sz*.5,bb.y+y*sz+sz*.5,bb.z+z*sz+sz*.5]);
+      for(const[a,b,cc,d]of tets){
+        const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
+        const ins=sv.map(v=>v<iso?1:0),bit=ins[0]|(ins[1]<<1)|(ins[2]<<2)|(ins[3]<<3);
+        if(!bit||bit===15)continue;
+        const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
+        for(const[ea,eb]of edges)if(ins[ea]!==ins[eb])cuts.push(ip(sp[ea],sp[eb],sv[ea],sv[eb]));
+        if(cuts.length>=3){
+          verts.push(...cuts[0],...cuts[1],...cuts[2]);
+          if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3]);
+        }
+      }
+    }
+    const arr=new Float32Array(verts);
+    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
+  }
+};`;
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let depthPipe=null; // Depth Anything V2 pipeline
+let worker=null;
+let running=false,integBusy=false,bakeQ=false;
+let fc=0,pc=0,framesBaked=0;
+let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+let adapted=false,bs=0,bl={x:0,y:0,z:0};
+let lastPts=[]; // for Tron overlay
+let rafId=null;
+
+// ── WEBGL OVERLAY ─────────────────────────────────────────────────────────────
+// Tron-style depth overlay: renders depth map as colored points over camera feed
+// near=cyan, mid=white, far=orange — vectorized aesthetic
+let gl=null,ovProg=null,ovBuf=null,ovCount=0;
+
+function initGL(){
+  const cvs=$('cvs');cvs.width=innerWidth;cvs.height=innerHeight;
+  gl=cvs.getContext('webgl2',{alpha:true,premultipliedAlpha:false,antialias:false})
+    ||cvs.getContext('webgl',{alpha:true,premultipliedAlpha:false,antialias:false});
+  if(!gl)return;
+  const mk=(vs,fs)=>{
+    const p=gl.createProgram();
+    [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]].forEach(([t,src])=>{
+      const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);gl.attachShader(p,s);
+    });
+    gl.linkProgram(p);return p;
+  };
+  // Point shader: screen-space (x,y in NDC) + depth value → Tron color
+  ovProg=mk(
+    `attribute vec2 aXY;attribute float aD;varying float vD;
+     void main(){vD=aD;gl_PointSize=3.0;gl_Position=vec4(aXY,0.,1.);}`,
+    `precision mediump float;varying float vD;
+     void main(){
+       vec2 c=gl_PointCoord*2.-1.;if(dot(c,c)>1.)discard;
+       // Tron: near=cyan(0,1,1) mid=white(1,1,1) far=orange(1,.5,.1)
+       float t=clamp(vD,0.,1.);
+       vec3 col=t<.5?mix(vec3(0.,1.,1.),vec3(1.,1.,1.),t*2.)
+                    :mix(vec3(1.,1.,1.),vec3(1.,.5,.1),(t-.5)*2.);
+       gl_FragColor=vec4(col,.85*(1.-dot(c,c)*.4));}`
+  );
+  ovBuf=gl.createBuffer();
+}
+
+function renderOverlay(depthData,W,H){
+  if(!gl||!$('sTron').checked)return;
+  // depthData: Float32Array of HxW normalized 0..1 depth values
+  // Convert to screen-space NDC points for overlay
+  const step=Math.max(1,Math.floor(W/80)); // ~80 columns of points
+  const pts=[];
+  for(let y=0;y<H;y+=step)for(let x=0;x<W;x+=step){
+    const d=depthData[y*W+x];
+    if(!isFinite(d))continue;
+    // NDC: x = (px/W)*2-1, y = inverted for WebGL
+    pts.push((x/W)*2-1, 1-(y/H)*2, d);
+  }
+  if(!pts.length)return;
+  const fa=new Float32Array(pts);
+  gl.bindBuffer(gl.ARRAY_BUFFER,ovBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,fa,gl.DYNAMIC_DRAW);
+  const cvs=$('cvs');
+  gl.viewport(0,0,cvs.width,cvs.height);
+  gl.clearColor(0,0,0,0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.useProgram(ovProg);
+  const aXY=gl.getAttribLocation(ovProg,'aXY');
+  const aD=gl.getAttribLocation(ovProg,'aD');
+  gl.enableVertexAttribArray(aXY);gl.enableVertexAttribArray(aD);
+  gl.vertexAttribPointer(aXY,2,gl.FLOAT,false,12,0);
+  gl.vertexAttribPointer(aD,1,gl.FLOAT,false,12,8);
+  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
+  gl.drawArrays(gl.POINTS,0,pts.length/3);
+  gl.disable(gl.BLEND);
+  ovCount=pts.length/3;
+}
+
+// ── WORKER INIT ───────────────────────────────────────────────────────────────
+function mkWorker(voxSz,bbMin,dims){
+  if(worker)worker.terminate();
+  worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
+  integBusy=true;
+  worker.onmessage=ev=>{
+    const{type}=ev.data;
+    if(type==='ready'){
+      integBusy=false;
+      wkr(`TSDF: ${ev.data.dims.join('×')} voxels`);
+    }
+    else if(type==='done'){integBusy=false}
+    else if(type==='mesh'){
+      integBusy=false;bakeQ=false;
+      const v=ev.data.verts;
+      if(!v||v.length<9){
+        sts('NO SURFACE — try more frames or lower voxel size');
+        wkr('Tip: move phone more, better lighting');
+        $('bBake').disabled=false;return;
+      }
+      sts('SMOOTHING...');wkr((v.length/9|0).toLocaleString()+' triangles');
+      const out=$('sSm').checked?laplacian(v,4):v;
+      sts('COMPLETE — '+(out.length/9|0).toLocaleString()+' triangles');
+      lastMeshVerts=out; // store for OBJ export
+      $('bExportObj').disabled=false;
+      $('bStart').disabled=false;$('bBake').disabled=false;
+      const stl=mkSTL(out);
+      if($('sSd').checked)sendP3dK(stl);else dlSTL(stl);
+    }
+  };
+  worker.postMessage({type:'init',data:{nx:dims[0],ny:dims[1],nz:dims[2],sz:voxSz,bb:bbMin}});
+}
+
+// ── LOAD DEPTH ANYTHING V2 ────────────────────────────────────────────────────
+// 26MB quantized ONNX model, cached in browser after first download
+async function loadModel(){
+  sts('LOADING NEURAL ENGINE...');
+  prg('Depth Anything V2 Small (26MB — cached after first use)');
+  $('loadBar').style.width='10%';
+  try{
+    // Use the quantized small model — best speed/quality tradeoff for mobile
+    depthPipe=await pipeline(
+      'depth-estimation',
+      'onnx-community/depth-anything-v2-small',
+      {
+        progress_callback:(p)=>{
+          if(p.status==='downloading'||p.status==='loading'){
+            const pct=p.progress??(p.loaded&&p.total?(p.loaded/p.total*100):50);
+            $('loadBar').style.width=Math.round(10+pct*.85)+'%';
+            prg(`LOADING ${p.file||'model'}... ${Math.round(pct)}%`);
+          }
+        }
+      }
+    );
+    $('loadBar').style.width='100%';
+    setTimeout(()=>{$('loadBar').style.width='0%'},1000);
+    sts('NEURAL ENGINE READY');
+    prg('Depth Anything V2 Small — 26M params');
+    $('bStart').disabled=false;
+    if(!sessionStorage.getItem('st'))$('tipOv').classList.add('on');
+  }catch(err){
+    sts('MODEL LOAD FAILED');
+    prg(err.message.slice(0,60));
+    console.error('Model load error:',err);
+  }
+}
+
+// ── START SCAN ────────────────────────────────────────────────────────────────
+$('bStart').onclick=async()=>{
+  if(!depthPipe){sts('MODEL NOT READY YET');return}
+  // Reset state
+  fc=0;pc=0;adapted=false;bs=0;bl={x:0,y:0,z:0};
+  bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+  $('pbar').style.width='0%';
+  $('cW').textContent='W: —';$('cH').textContent='H: —';$('cD').textContent='D: —';
+  $('cP').textContent='PTS: 0';
+  // Init TSDF grid
+  const vSz=+$('sVox').value;
+  const range=120*vSz;
+  mkWorker(vSz,{x:-range/2,y:-range/2,z:0},[120,120,120]);
+  // Stop any existing camera stream first
+  const vid=$('vid');
+  if(vid.srcObject){
+    vid.srcObject.getTracks().forEach(t=>t.stop());
+    vid.srcObject=null;
+    await new Promise(r=>setTimeout(r,200));
+  }
+  // Start camera
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
+    });
+    vid.srcObject=stream;
+    videoTrack=stream.getVideoTracks()[0]; // store for torch API
+    await new Promise((res,rej)=>{
+      vid.onloadedmetadata=()=>vid.play().then(res).catch(rej);
+      vid.onerror=rej;
+    });
+  }catch(err){sts('CAMERA FAILED: '+err.message.slice(0,50));return}
+
+  // iOS Safari: request DeviceOrientation permission (needed for future gyro use)
+  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+    try{await DeviceOrientationEvent.requestPermission()}catch(e){}
+  }
+  running=true;
+  $('bStart').disabled=true;$('bStop').disabled=false;$('bBake').disabled=true;
+  $('reticle').classList.add('on');
+  showGrid(true);
+  hideTips();
+  sts('SCANNING...');
+  loop();
 };
 
-function logError(msg) {
-    UI.lblErr.innerText += `\n[!] ${msg}`;
-    console.error(msg);
+// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
+let loopFrame=0;
+async function loop(){
+  if(!running)return;
+  loopFrame++;
+  // Run neural depth every N frames (configurable — balance speed vs coverage)
+  const every=+$('sEvery').value;
+  if(loopFrame%every===0){
+    await inferAndIntegrate();
+  }
+  rafId=requestAnimationFrame(loop);
 }
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 0, 0); 
-const renderer = new THREE.WebGLRenderer({ canvas: UI.canvas, antialias: true, alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.enabled = false;
+// Offscreen canvas for grabbing video frames to feed to the pipeline
+let inferCanvas=null,inferCtx=null;
 
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
-const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.6); dirLight1.position.set(5, 5, 5); scene.add(dirLight1);
-const dirLight2 = new THREE.DirectionalLight(0x00ffff, 0.3); dirLight2.position.set(-5, -5, -5); scene.add(dirLight2);
+async function inferAndIntegrate(){
+  const vid=$('vid');
+  if(vid.readyState<2||!depthPipe||!running)return;
+  try{
+    // Transformers.js depth pipeline needs a canvas/image, not a raw video element.
+    // Draw current video frame to an offscreen canvas first.
+    if(!inferCanvas){
+      inferCanvas=document.createElement('canvas');
+      // Use a fixed inference resolution — smaller = faster, 512 is a good balance
+      inferCanvas.width=512;
+      inferCanvas.height=Math.round(512*(vid.videoHeight/vid.videoWidth)||512);
+      inferCtx=inferCanvas.getContext('2d');
+    }
+    // Update canvas size if video dimensions changed
+    const newH=Math.round(512*(vid.videoHeight/vid.videoWidth||1));
+    if(inferCanvas.height!==newH){inferCanvas.height=newH}
+    inferCtx.drawImage(vid,0,0,inferCanvas.width,inferCanvas.height);
 
-const meshGroup = new THREE.Group(); scene.add(meshGroup);
-
-let capturedFrames = []; 
-let showWireframe = false;
-let isClayMode = false;
-let isTorchOn = false;
-let videoTrack = null;
-
-const RES = 160; 
-const RADIUS = 3.0; 
-const procCanvas = document.createElement('canvas'); procCanvas.width = RES; procCanvas.height = RES;
-const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
-const deviceQuat = new THREE.Quaternion();
-
-function setupIMU() {
-    window.addEventListener('deviceorientation', (event) => {
-        if (!event.alpha && !event.beta && !event.gamma) return;
-        UI.lblImu.innerText = "GYRO: SYNCED"; UI.lblImu.className = "cyan";
-        
-        const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-        const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-        const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-        const orient = window.orientation ? THREE.MathUtils.degToRad(window.orientation) : 0;
-
-        const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
-        deviceQuat.setFromEuler(euler);
-        const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); 
-        deviceQuat.multiply(q1);
-        const q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -orient);
-        deviceQuat.multiply(q0);
-    });
-}
-
-function stitchFrame() {
-    UI.flash.style.opacity = 0.8; setTimeout(() => UI.flash.style.opacity = 0, 150);
-    if(navigator.vibrate) navigator.vibrate([50, 50]);
-
-    const fullCanvas = document.createElement('canvas');
-    fullCanvas.width = UI.video.videoWidth; fullCanvas.height = UI.video.videoHeight;
-    fullCanvas.getContext('2d').drawImage(UI.video, 0, 0);
-    UI.ghost.src = fullCanvas.toDataURL('image/jpeg'); UI.ghost.style.opacity = 0.35;
-
-    const minDim = Math.min(UI.video.videoWidth, UI.video.videoHeight);
-    const sx = (UI.video.videoWidth - minDim) / 2, sy = (UI.video.videoHeight - minDim) / 2;
-    ctx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, RES, RES);
-    const data = ctx.getImageData(0, 0, RES, RES).data;
-
-    const rawMap = new Float32Array(RES * RES), smmMap = new Float32Array(RES * RES);
-    const center = RES / 2, maxRadius = RES / 2;
-
-    for (let y = 0; y < RES; y++) {
-        for (let x = 0; x < RES; x++) {
-            const i = (y * RES + x) * 4;
-            rawMap[y * RES + x] = (data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114) / 255.0;
-            const dist = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
-            let alpha = 255;
-            if (dist > maxRadius * 0.6) alpha = 255 * (1.0 - (dist - maxRadius * 0.6) / (maxRadius * 0.4));
-            data[i+3] = Math.max(0, Math.min(255, alpha)); 
-        }
+    // Run Depth Anything V2 on the canvas element — this is the supported input type
+    const result=await depthPipe(inferCanvas);
+    // Transformers.js v3 depth-estimation returns:
+    //   result.predicted_depth: Tensor {data: Float32Array, dims: [1,H,W]}
+    //   result.depth: RawImage (for visualization only, uint8)
+    // We want the raw float depth tensor for precision.
+    let dData,dW,dH;
+    if(result.predicted_depth){
+      // v3 API: Tensor with dims [1, H, W] or [H, W]
+      const t=result.predicted_depth;
+      const dims=t.dims||t.shape;
+      dH=dims[dims.length-2];
+      dW=dims[dims.length-1];
+      dData=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
+      // Normalize to 0..1 for overlay (min=near=1, max=far=0 convention)
+      let mn=Infinity,mx=-Infinity;
+      for(let i=0;i<dData.length;i++){if(dData[i]<mn)mn=dData[i];if(dData[i]>mx)mx=dData[i]}
+      const range=(mx-mn)||1;
+      const norm=new Float32Array(dData.length);
+      for(let i=0;i<dData.length;i++)norm[i]=(dData[i]-mn)/range;
+      dData=norm; // now 0=far, 1=near
+    } else if(result.depth){
+      // v2 fallback: RawImage
+      const depthMap=result.depth;
+      dW=depthMap.width; dH=depthMap.height;
+      // RawImage.data is Uint8ClampedArray — normalize to 0..1
+      const raw=depthMap.data;
+      dData=new Float32Array(raw.length/depthMap.channels);
+      const ch=depthMap.channels||1;
+      for(let i=0;i<dData.length;i++)dData[i]=raw[i*ch]/255;
+    } else {
+      wkr('UNEXPECTED MODEL OUTPUT FORMAT');return;
     }
 
-    const k = 2; 
-    for (let y = 0; y < RES; y++) {
-        for (let x = 0; x < RES; x++) {
-            let sum = 0, count = 0;
-            for (let ky = -k; ky <= k; ky++) {
-                for (let kx = -k; kx <= k; kx++) {
-                    if (y+ky>=0 && y+ky<RES && x+kx>=0 && x+kx<RES) {
-                        sum += rawMap[(y+ky)*RES + (x+kx)]; count++;
-                    }
-                }
-            }
-            smmMap[y * RES + x] = sum / count;
-        }
+    // Render Tron overlay
+    renderOverlay(dData,dW,dH);
+
+    // Motion stability check + scan guidance
+    const stability=checkMotionStability(dData,dW,dH);
+
+    if(integBusy||bakeQ)return; // skip integration if worker busy
+
+    // ── Convert depth map to 3D point cloud ─────────────────────────────────
+    // DA2 normalized depth: 1=near, 0=far
+    // depthScale maps the full 0-1 range to millimeters
+    const depthScale=+$('sScale').value;
+    const fovRad=60*Math.PI/180;
+    const fx=dW/(2*Math.tan(fovRad/2));
+    const fy=dH/(2*Math.tan(fovRad/2));
+    const cx2=dW/2,cy2=dH/2;
+    const pts=[];
+    let nd=Infinity,validCount=0,totalSampled=0;
+    const step=Math.max(2,Math.floor(dW/40));
+    for(let v=0;v<dH;v+=step)for(let u=0;u<dW;u+=step){
+      totalSampled++;
+      const rawD=dData[v*dW+u];
+      if(!isFinite(rawD))continue;
+      // rawD: 1=near 0=far — convert to distance in mm
+      // Use rawD directly as depth proportion, scale to range
+      const d=rawD*depthScale; // 1=near → full depthScale mm
+      if(d<5)continue; // skip essentially-zero depth (far background)
+      validCount++;
+      if(d<nd)nd=d;
+      const X=(u-cx2)/fx*d;
+      const Y=-(v-cy2)/fy*d;
+      const Z=d;
+      if(!isFinite(X)||!isFinite(Y)||!isFinite(Z))continue;
+      pts.push(X,Y,Z);
+      if(X<bbox.minX)bbox.minX=X;if(X>bbox.maxX)bbox.maxX=X;
+      if(Y<bbox.minY)bbox.minY=Y;if(Y>bbox.maxY)bbox.maxY=Y;
+      if(Z<bbox.minZ)bbox.minZ=Z;if(Z>bbox.maxZ)bbox.maxZ=Z;
     }
-
-    const geo = new THREE.PlaneGeometry(2.5, 2.5, RES - 1, RES - 1);
-    const texCanvas = document.createElement('canvas');
-    texCanvas.width = RES; texCanvas.height = RES;
-    const imgData = ctx.getImageData(0,0,RES,RES);
-    // Replace alpha back into imgData
-    for(let i=0; i<data.length; i+=4) imgData.data[i+3] = data[i+3];
-    texCanvas.getContext('2d').putImageData(imgData, 0, 0);
-    
-    const texture = new THREE.CanvasTexture(texCanvas);
-    const baseMat = new THREE.MeshStandardMaterial({ 
-        map: texture, color: 0xffffff, roughness: 0.8, transparent: true, depthWrite: false, side: THREE.DoubleSide
-    });
-    const mesh = new THREE.Mesh(geo, baseMat);
-    const wireMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.1 });
-    const wireMesh = new THREE.Mesh(geo, wireMat); wireMesh.visible = showWireframe; mesh.add(wireMesh);
-
-    const pivot = new THREE.Group(); pivot.quaternion.copy(camera.quaternion); 
-    mesh.position.set(0, 0, -RADIUS); pivot.add(mesh); meshGroup.add(pivot);
-    capturedFrames.push({ geo: geo, rawMap: rawMap, smmMap: smmMap, mesh: mesh, texture: texture, wireMesh: wireMesh });
-    
-    UI.lblPts.innerText = `MAPPED FRAMES: ${capturedFrames.length}`; updateCalibration(); 
-}
-
-function updateCalibration() {
-    const scale = parseFloat(UI.slScale.value), smooth = parseFloat(UI.slSmooth.value);
-    capturedFrames.forEach(frame => {
-        const vertices = frame.geo.attributes.position.array;
-        for (let i = 0; i < frame.rawMap.length; i++) {
-            const depth = frame.rawMap[i] * (1 - smooth) + frame.smmMap[i] * smooth;
-            vertices[i * 3 + 2] = depth * scale;
-        }
-        frame.geo.attributes.position.needsUpdate = true; frame.geo.computeVertexNormals();
-    });
-}
-
-UI.slScale.addEventListener('input', () => { UI.valScale.innerText = parseFloat(UI.slScale.value).toFixed(1) + 'x'; updateCalibration(); });
-UI.slSmooth.addEventListener('input', () => { UI.valSmooth.innerText = Math.round(parseFloat(UI.slSmooth.value) * 100) + '%'; updateCalibration(); });
-UI.btnWire.addEventListener('click', () => {
-    showWireframe = !showWireframe; capturedFrames.forEach(f => f.wireMesh.visible = showWireframe);
-    UI.btnWire.style.backgroundColor = showWireframe ? 'var(--cyan)' : 'transparent'; UI.btnWire.style.color = showWireframe ? '#000' : 'var(--cyan)';
-});
-UI.btnClay.addEventListener('click', () => {
-    isClayMode = !isClayMode;
-    capturedFrames.forEach(f => {
-        f.mesh.material.map = isClayMode ? null : f.texture;
-        f.mesh.material.color.setHex(isClayMode ? 0xaaaaaa : 0xffffff); f.mesh.material.needsUpdate = true;
-    });
-    UI.btnClay.style.backgroundColor = isClayMode ? 'var(--cyan)' : 'transparent'; UI.btnClay.style.color = isClayMode ? '#000' : 'var(--cyan)';
-});
-
-UI.btnTorch.addEventListener('click', async () => {
-    if (!videoTrack) return;
-    const capabilities = videoTrack.getCapabilities();
-    if (!capabilities.torch) { logError("Flashlight API not supported on this browser/device."); return; }
-    isTorchOn = !isTorchOn;
-    try {
-        await videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
-        UI.btnTorch.style.backgroundColor = isTorchOn ? 'var(--amber)' : 'transparent'; UI.btnTorch.style.color = isTorchOn ? '#000' : 'var(--amber)';
-    } catch (e) { logError("Failed to access Torch."); }
-});
-
-function buildReviewScene() {
-    UI.lblMode.innerText = "MODE: 3D STUDIO REVIEW";
-    camera.position.set(0, 0, RADIUS * 0.2); controls.target.set(0, 0, -RADIUS); controls.enabled = true;
-    UI.video.style.display = 'none'; UI.ghost.style.display = 'none'; UI.bgBlack.style.display = 'block';
-    UI.arGrid.style.display = 'none'; UI.crosshair.style.display = 'none'; UI.controlsLive.style.display = 'none'; UI.controlsReview.style.display = 'block';
-    if (isTorchOn && videoTrack) { videoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(e=>{}); isTorchOn = false; }
-}
-
-function exportFusedOBJ() {
-    if (capturedFrames.length === 0) return;
-    UI.lblPts.innerText = "CALCULATING MATRICES...";
-    let obj = "# P3dK Studio Export\n"; let vOffset = 0; let vtOffset = 0; const tempVec = new THREE.Vector3();
-    capturedFrames.forEach((frame, index) => {
-        const mesh = frame.mesh; mesh.updateMatrixWorld(true);
-        const pos = frame.geo.attributes.position.array, uvs = frame.geo.attributes.uv.array, idx = frame.geo.index.array;
-        obj += `o StitchedFrame_${index}\n`;
-        for (let i = 0; i < pos.length; i += 3) {
-            tempVec.set(pos[i], pos[i+1], pos[i+2]).applyMatrix4(mesh.matrixWorld);
-            obj += `v ${tempVec.x.toFixed(4)} ${tempVec.y.toFixed(4)} ${tempVec.z.toFixed(4)}\n`;
-        }
-        for (let i = 0; i < uvs.length; i += 2) obj += `vt ${uvs[i].toFixed(4)} ${uvs[i+1].toFixed(4)}\n`;
-        for (let i = 0; i < idx.length; i += 3) {
-            const a = idx[i] + 1 + vOffset, b = idx[i+1] + 1 + vOffset, c = idx[i+2] + 1 + vOffset;
-            const uvA = idx[i] + 1 + vtOffset, uvB = idx[i+1] + 1 + vtOffset, uvC = idx[i+2] + 1 + vtOffset;
-            obj += `f ${a}/${uvA} ${b}/${uvB} ${c}/${uvC}\n`;
-        }
-        vOffset += (pos.length / 3); vtOffset += (uvs.length / 2);
-    });
-    const blob = new Blob([obj], { type: 'text/plain' }); const link = document.createElement('a'); 
-    link.href = URL.createObjectURL(blob); link.download = 'p3dk_studio_scan.obj'; link.click(); UI.lblPts.innerText = "EXPORT COMPLETE.";
-}
-
-function animate() {
-    requestAnimationFrame(animate);
-    if (!controls.enabled && deviceQuat.length() > 0) camera.quaternion.copy(deviceQuat);
-    if (controls.enabled) controls.update(); renderer.render(scene, camera);
-} animate();
-
-
-// --- iOS SAFARI COMPATIBILITY FIX ---
-UI.btnInit.addEventListener('click', async () => {
-    try {
-        UI.btnInit.innerText = "WAITING FOR PERMISSIONS...";
-        UI.lblErr.innerText = "INITIALIZING SENSORS...";
-
-        // 1. APPLE PRIVACY POLICY REQUIREMENT: We MUST ask for the Gyroscope
-        // absolutely synchronously with the button click before doing ANY async video calls.
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            const perm = await DeviceOrientationEvent.requestPermission();
-            if (perm !== 'granted') throw new Error("Gyro permission denied by user.");
-        } else if (typeof window.DeviceOrientationEvent === 'undefined') {
-            logError("Warning: Gyroscope API not detected (Testing on PC?)");
-        }
-
-        // 2. NOW we can safely ask for the Camera
-        if (!navigator.mediaDevices) throw new Error("Camera API denied. Use HTTPS.");
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1080 } } });
-        
-        UI.video.srcObject = stream;
-        videoTrack = stream.getVideoTracks()[0];
-        await UI.video.play();
-        
-        setupIMU();
-        
-        UI.btnInit.style.display = 'none';
-        UI.stitchContainer.style.display = 'block';
-        UI.lblMode.innerText = "MODE: GHOST-SYNC CAPTURE";
-        UI.lblErr.innerText = ""; 
-    } catch (e) { 
-        logError(e.message || "Hardware initialization failed."); 
-        UI.btnInit.innerText = "RETRY HARDWARE INIT";
+    // Debug: show inference diagnostics so we can see what's happening
+    wkr(`DEPTH ${dW}×${dH} · ${validCount}/${totalSampled} valid · fc:${fc}`);
+    if(!pts.length){
+      prg('No pts from depth — check DEPTH SCALE setting');return;
     }
-});
+    pc+=pts.length/3|0;
+    fc++;
 
-UI.btnStitch.addEventListener('click', stitchFrame);
-UI.btnDone.addEventListener('click', buildReviewScene);
-document.getElementById('btn-export').addEventListener('click', exportFusedOBJ);
+    // Scan guidance (motion + distance)
+    updateGuidance(stability,nd,depthScale);
 
-document.getElementById('btn-discard').addEventListener('click', () => {
-    capturedFrames.length = 0;
-    while(meshGroup.children.length > 0) meshGroup.remove(meshGroup.children[0]); 
-    controls.enabled = false; camera.position.set(0,0,0);
-    
-    UI.video.style.display = 'block'; UI.ghost.style.display = 'block'; UI.ghost.style.opacity = 0;
-    UI.bgBlack.style.display = 'none'; UI.canvas.style.display = 'block'; UI.arGrid.style.display = 'block';
-    UI.crosshair.style.display = 'block'; UI.controlsLive.style.display = 'block'; UI.controlsReview.style.display = 'none';
-    UI.lblPts.innerText = "MAPPED FRAMES: 0"; UI.lblMode.innerText = "MODE: GHOST-SYNC CAPTURE";
-    
-    isClayMode = false; UI.btnClay.style.backgroundColor = 'transparent'; UI.btnClay.style.color = 'var(--cyan)';
-    showWireframe = false; UI.btnWire.style.backgroundColor = 'transparent'; UI.btnWire.style.color = 'var(--cyan)';
-});
+    // Ghost image every 10 frames so user can see coverage
+    if(fc%10===1){captureGhost()}
+    // Flash every 25 frames as frame-capture feedback
+    if(fc%25===0){triggerFlash()}
 
-window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
-});
+    // Always send to TSDF
+    integBusy=true;
+    worker.postMessage({type:'integrate',data:{pts:new Float32Array(pts)}});
+    // Update HUD — always visible
+    const bboxOk=bbox.minX<1e8;
+    $('cW').textContent='W: '+(bboxOk?((bbox.maxX-bbox.minX)|0)+'mm':'—');
+    $('cH').textContent='H: '+(bboxOk?((bbox.maxY-bbox.minY)|0)+'mm':'—');
+    $('cD').textContent='D: '+(bboxOk?((bbox.maxZ-bbox.minZ)|0)+'mm':'—');
+    $('cP').textContent='PTS: '+(pc/1000).toFixed(1)+'k';
+    // Progress bar
+    const tgt=+$('sFr').value;
+    $('pbar').style.width=Math.min(100,fc/tgt*100)+'%';
+    prg(`⬤ ${fc}fr · ${(pc/1000).toFixed(1)}k pts · ${pts.length/3|0} this frame`);
+    // Adapt TSDF to real bbox after 8 frames
+    if(fc===8&&bboxOk&&!adapted&&pc>50){
+      adapted=true;
+      const vSz=+$('sVox').value,pad=vSz*8;
+      const dx=bbox.maxX-bbox.minX,dy=bbox.maxY-bbox.minY,dz=bbox.maxZ-bbox.minZ;
+      const nvx=Math.min(120,Math.max(20,Math.ceil((dx+pad*2)/vSz)));
+      const nvy=Math.min(120,Math.max(20,Math.ceil((dy+pad*2)/vSz)));
+      const nvz=Math.min(120,Math.max(20,Math.ceil((dz+pad*2)/vSz)));
+      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nvx,nvy,nvz]);
+      wkr('GRID ADAPTED: '+nvx+'×'+nvy+'×'+nvz);
+    }
+    // Auto-stop: bbox stable
+    if(bboxOk){
+      const sx=(bbox.maxX-bbox.minX)|0,sy=(bbox.maxY-bbox.minY)|0,sz=(bbox.maxZ-bbox.minZ)|0;
+      const grew=Math.abs(sx-bl.x)+Math.abs(sy-bl.y)+Math.abs(sz-bl.z);
+      bl={x:sx,y:sy,z:sz};
+      if(grew<5)bs++;else bs=0;
+    }
+    if(fc>=tgt||(bs>15&&fc>15)){
+      sts('SCAN STABLE — TAP BAKE MESH');
+      prg('ready · '+fc+' frames · '+(pc/1000).toFixed(0)+'k pts');
+      stopScan();
+    }
+  }catch(err){
+    console.error('Inference error:',err);
+    wkr('INFERENCE ERR: '+err.message.slice(0,40));
+  }
+}
 
+// ── STOP ─────────────────────────────────────────────────────────────────────
+function stopScan(){
+  running=false;
+  if(rafId){cancelAnimationFrame(rafId);rafId=null}
+  $('bStart').disabled=false;$('bStop').disabled=true;
+  $('reticle').classList.remove('on');
+  showGrid(false);
+  $('ghost').style.opacity='0';
+  if(fc>3)$('bBake').disabled=false;
+  const vid=$('vid');
+  if(vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null}
+  if(torchOn&&videoTrack){videoTrack.applyConstraints({advanced:[{torch:false}]}).catch(()=>{});torchOn=false}
+}
+window.stopScan=stopScan;
+window.togCfg=()=>{
+  const s=$('sets');
+  $('tipOv').classList.remove('on');$('dlOv').classList.remove('on');
+  s.classList.toggle('open');
+};
+$('bStop').onclick=()=>{stopScan();sts('SCAN STOPPED')};
+
+// ── TORCH ─────────────────────────────────────────────────────────────────────
+let torchOn=false,videoTrack=null;
+window.togTorch=async()=>{
+  if(!videoTrack){wkr('START SCAN FIRST');return}
+  const cap=videoTrack.getCapabilities?.();
+  if(!cap?.torch){wkr('TORCH NOT SUPPORTED ON THIS DEVICE');return}
+  torchOn=!torchOn;
+  try{
+    await videoTrack.applyConstraints({advanced:[{torch:torchOn}]});
+    $('bTorch').style.background=torchOn?'var(--gold)':'transparent';
+    $('bTorch').style.color=torchOn?'#000':'var(--gold)';
+  }catch(e){wkr('TORCH ERR: '+e.message.slice(0,30))}
+};
+
+// ── GHOST IMAGE + FLASH (Gemini's best idea) ──────────────────────────────────
+// After each inference frame, store a ghost of the camera for alignment guidance.
+// User can see where previous frames were captured to help fill coverage gaps.
+let ghostCanvas=document.createElement('canvas'),ghostCtx=ghostCanvas.getContext('2d');
+function captureGhost(){
+  const vid=$('vid');
+  if(vid.videoWidth<10)return;
+  ghostCanvas.width=vid.videoWidth;ghostCanvas.height=vid.videoHeight;
+  ghostCtx.drawImage(vid,0,0);
+  $('ghost').src=ghostCanvas.toDataURL('image/jpeg',0.5);
+  // Show briefly then fade
+  $('ghost').style.opacity='0.3';
+  setTimeout(()=>$('ghost').style.opacity='0',2000);
+}
+function triggerFlash(){
+  const f=$('flash');f.style.opacity='0.7';
+  setTimeout(()=>f.style.opacity='0',120);
+  navigator.vibrate?.([40,20]);
+}
+
+// ── AR GRID during scan ───────────────────────────────────────────────────────
+function showGrid(on){$('argrid').style.opacity=on?'1':'0'}
+
+// ── OBJ EXPORT (in addition to STL) ──────────────────────────────────────────
+let lastMeshVerts=null;
+window.exportOBJ=()=>{
+  if(!lastMeshVerts||lastMeshVerts.length<9){wkr('NO MESH — BAKE FIRST');return}
+  const v=lastMeshVerts;const n=v.length/9|0;
+  let obj='# P3dK Neural Scanner\n# '+n+' triangles\n';
+  for(let i=0;i<v.length;i+=3)obj+=`v ${v[i].toFixed(4)} ${v[i+1].toFixed(4)} ${v[i+2].toFixed(4)}\n`;
+  for(let i=0;i<n;i++){const b=i*3+1;obj+=`f ${b} ${b+1} ${b+2}\n`}
+  const a=document.createElement('a');
+  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
+  a.download='p3dk-'+ts+'.obj';
+  a.href=URL.createObjectURL(new Blob([obj],{type:'text/plain'}));a.click();
+  wkr('OBJ EXPORTED');
+};
+
+// ── SCAN GUIDANCE ─────────────────────────────────────────────────────────────
+// Compare consecutive depth maps to detect motion blur / fast movement
+let lastDepthSnapshot=null;
+function checkMotionStability(dData,dW,dH){
+  if(!lastDepthSnapshot||lastDepthSnapshot.length!==dData.length){
+    lastDepthSnapshot=dData.slice();return 1;
+  }
+  let diff=0;const step=Math.max(1,Math.floor(dW*dH/1000));
+  for(let i=0;i<dData.length;i+=step)diff+=Math.abs(dData[i]-lastDepthSnapshot[i]);
+  lastDepthSnapshot=dData.slice();
+  return 1-(diff/(dData.length/step)); // 0=lots of motion, 1=stable
+}
+
+let guidanceCooldown=0;
+function updateGuidance(stability,nd,depthScale){
+  if(Date.now()<guidanceCooldown)return;
+  if(stability<0.4){
+    $('dst').textContent='⚠ MOVING TOO FAST — SLOW DOWN';
+    $('dst').style.color='var(--red)';guidanceCooldown=Date.now()+1200;return;
+  }
+  if(nd<20){$('dst').textContent='⚠ TOO CLOSE — BACK AWAY';$('dst').style.color='var(--gold)';return}
+  if(nd>depthScale*.8){$('dst').textContent='⚠ MOVE CLOSER TO OBJECT';$('dst').style.color='var(--gold)';return}
+  $('dst').textContent='◎ RANGE OK  '+nd.toFixed(0)+'mm';$('dst').style.color='var(--green)';
+}
+
+// ── BAKE ──────────────────────────────────────────────────────────────────────
+$('bBake').onclick=()=>{
+  if(!worker||fc<3){sts('NOT ENOUGH DATA — scan first');return}
+  if(integBusy){
+    wkr('FINISHING LAST FRAME...');
+    setTimeout(()=>{if(!integBusy&&!bakeQ)$('bBake').click()},800);
+    return;
+  }
+  $('reticle').classList.remove('on');
+  sts('MARCHING CUBES...');prg('');wkr('building mesh...');
+  $('bBake').disabled=true;
+  bakeQ=true;integBusy=true;
+  worker.postMessage({type:'march',data:{iso:+$('sIso').value,minW:2}});
+};
+
+// ── LAPLACIAN SMOOTH ──────────────────────────────────────────────────────────
+function laplacian(v,n){
+  const cnt=v.length/3|0,adj=new Map();
+  for(let i=0;i<cnt;i++)adj.set(i,new Set());
+  for(let i=0;i<cnt;i+=3){
+    adj.get(i).add(i+1);adj.get(i).add(i+2);
+    adj.get(i+1).add(i);adj.get(i+1).add(i+2);
+    adj.get(i+2).add(i);adj.get(i+2).add(i+1);
+  }
+  const p=new Float32Array(v);
+  for(let k=0;k<n;k++){
+    const np=new Float32Array(p.length);
+    for(let i=0;i<cnt;i++){
+      const nb=adj.get(i);
+      if(!nb?.size){np[i*3]=p[i*3];np[i*3+1]=p[i*3+1];np[i*3+2]=p[i*3+2];continue}
+      let cx=0,cy=0,cz=0;
+      for(const j of nb){cx+=p[j*3];cy+=p[j*3+1];cz+=p[j*3+2]}
+      const f=1/nb.size;
+      np[i*3]=p[i*3]+(cx*f-p[i*3])*.5;
+      np[i*3+1]=p[i*3+1]+(cy*f-p[i*3+1])*.5;
+      np[i*3+2]=p[i*3+2]+(cz*f-p[i*3+2])*.5;
+    }
+    p.set(np);
+  }
+  return p;
+}
+
+// ── STL BINARY ────────────────────────────────────────────────────────────────
+function mkSTL(v){
+  const n=v.length/9|0,buf=new ArrayBuffer(84+n*50),dv=new DataView(buf);
+  const h=new TextEncoder().encode('P3dK Neural Scan v4');
+  for(let i=0;i<Math.min(80,h.length);i++)dv.setUint8(i,h[i]);
+  dv.setUint32(80,n,true);let o=84;
+  for(let i=0;i<n;i++){
+    const b=i*9,ax=v[b],ay=v[b+1],az=v[b+2],bx=v[b+3],by=v[b+4],bz=v[b+5],cx=v[b+6],cy=v[b+7],cz=v[b+8];
+    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz2=cz-az;
+    const qx=uy*vz2-uz*vy,qy=uz*vx-ux*vz2,qz=ux*vy-uy*vx,ql=Math.hypot(qx,qy,qz)||1;
+    dv.setFloat32(o,qx/ql,true);dv.setFloat32(o+4,qy/ql,true);dv.setFloat32(o+8,qz/ql,true);o+=12;
+    dv.setFloat32(o,ax,true);dv.setFloat32(o+4,ay,true);dv.setFloat32(o+8,az,true);o+=12;
+    dv.setFloat32(o,bx,true);dv.setFloat32(o+4,by,true);dv.setFloat32(o+8,bz,true);o+=12;
+    dv.setFloat32(o,cx,true);dv.setFloat32(o+4,cy,true);dv.setFloat32(o+8,cz,true);o+=12;
+    dv.setUint16(o,0,true);o+=2;
+  }
+  return buf;
+}
+function dlSTL(buf){
+  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
+  const nm='p3dk-neural-'+ts+'.stl';
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download=nm;a.click();
+  $('dlName').textContent=nm;$('dlOv').classList.add('on');
+  navigator.vibrate?.(30);
+}
+function sendP3dK(buf){
+  try{const bc=new BroadcastChannel('p3dk');bc.postMessage({type:'scan-mesh',stl:buf});bc.close()}catch(e){}
+  if(window.opener)try{window.opener.postMessage({type:'p3dk-scan-mesh',stl:buf},'*')}catch(e){}
+  dlSTL(buf);
+}
+
+// ── RESIZE ────────────────────────────────────────────────────────────────────
+window.onresize=()=>{const c=$('cvs');if(c&&gl){c.width=innerWidth;c.height=innerHeight}};
+
+// ── BOOT ──────────────────────────────────────────────────────────────────────
+initGL();
+loadModel(); // starts downloading/loading the 26MB model immediately
 </script>
 </body>
 </html>
-
-```
