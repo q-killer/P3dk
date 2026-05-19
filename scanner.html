@@ -532,18 +532,60 @@ async function loop(){
   rafId=requestAnimationFrame(loop);
 }
 
+// Offscreen canvas for grabbing video frames to feed to the pipeline
+let inferCanvas=null,inferCtx=null;
+
 async function inferAndIntegrate(){
   const vid=$('vid');
   if(vid.readyState<2||!depthPipe||!running)return;
   try{
-    // Run Depth Anything V2 on current video frame
-    // The pipeline handles canvas extraction internally
-    const result=await depthPipe(vid);
-    // result.depth is a RawImage with .data (Float32Array of normalized depth 0..1)
-    // and .width, .height
-    const depthMap=result.depth;
-    const dW=depthMap.width,dH=depthMap.height;
-    const dData=depthMap.data; // Float32Array, values 0..1, 1=near 0=far (DA2 convention)
+    // Transformers.js depth pipeline needs a canvas/image, not a raw video element.
+    // Draw current video frame to an offscreen canvas first.
+    if(!inferCanvas){
+      inferCanvas=document.createElement('canvas');
+      // Use a fixed inference resolution — smaller = faster, 512 is a good balance
+      inferCanvas.width=512;
+      inferCanvas.height=Math.round(512*(vid.videoHeight/vid.videoWidth)||512);
+      inferCtx=inferCanvas.getContext('2d');
+    }
+    // Update canvas size if video dimensions changed
+    const newH=Math.round(512*(vid.videoHeight/vid.videoWidth||1));
+    if(inferCanvas.height!==newH){inferCanvas.height=newH}
+    inferCtx.drawImage(vid,0,0,inferCanvas.width,inferCanvas.height);
+
+    // Run Depth Anything V2 on the canvas element — this is the supported input type
+    const result=await depthPipe(inferCanvas);
+    // Transformers.js v3 depth-estimation returns:
+    //   result.predicted_depth: Tensor {data: Float32Array, dims: [1,H,W]}
+    //   result.depth: RawImage (for visualization only, uint8)
+    // We want the raw float depth tensor for precision.
+    let dData,dW,dH;
+    if(result.predicted_depth){
+      // v3 API: Tensor with dims [1, H, W] or [H, W]
+      const t=result.predicted_depth;
+      const dims=t.dims||t.shape;
+      dH=dims[dims.length-2];
+      dW=dims[dims.length-1];
+      dData=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
+      // Normalize to 0..1 for overlay (min=near=1, max=far=0 convention)
+      let mn=Infinity,mx=-Infinity;
+      for(let i=0;i<dData.length;i++){if(dData[i]<mn)mn=dData[i];if(dData[i]>mx)mx=dData[i]}
+      const range=(mx-mn)||1;
+      const norm=new Float32Array(dData.length);
+      for(let i=0;i<dData.length;i++)norm[i]=(dData[i]-mn)/range;
+      dData=norm; // now 0=far, 1=near
+    } else if(result.depth){
+      // v2 fallback: RawImage
+      const depthMap=result.depth;
+      dW=depthMap.width; dH=depthMap.height;
+      // RawImage.data is Uint8ClampedArray — normalize to 0..1
+      const raw=depthMap.data;
+      dData=new Float32Array(raw.length/depthMap.channels);
+      const ch=depthMap.channels||1;
+      for(let i=0;i<dData.length;i++)dData[i]=raw[i*ch]/255;
+    } else {
+      wkr('UNEXPECTED MODEL OUTPUT FORMAT');return;
+    }
 
     // Render Tron overlay on WebGL canvas
     renderOverlay(dData,dW,dH);
