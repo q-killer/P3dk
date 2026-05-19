@@ -85,16 +85,21 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
 .sr input[type=checkbox]{accent-color:var(--gold);width:16px;height:16px}
 
 /* OVERLAYS */
-.ov{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:rgba(0,0,20,.97);z-index:200;width:90%;max-height:82vh;overflow-y:auto}
-.ov.on{display:block}
-.ov-h{background:var(--gold);color:#000;padding:10px 16px;font-size:15px;font-weight:bold;letter-spacing:3px}
+.ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,20,.97);z-index:200;overflow-y:auto;
+  -webkit-overflow-scrolling:touch}
+.ov.on{display:flex;flex-direction:column}
+.ov-h{background:var(--gold);color:#000;padding:12px 16px;font-size:15px;font-weight:bold;
+  letter-spacing:3px;flex-shrink:0}
 .ov-h.grn{background:var(--green)}
-.ov-b{padding:16px}
+.ov-b{padding:16px;flex:1;display:flex;flex-direction:column;overflow-y:auto;
+  padding-bottom:120px}
 .ov-b p,.ov-b li{font-size:14px;color:var(--peach);line-height:2;margin:2px 0}
 .ov-b ul{padding-left:20px;margin:8px 0}
 .ov-b b{color:#fff}
-.ob2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.ob2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;
+  position:fixed;bottom:0;left:0;right:0;padding:12px;
+  background:rgba(0,0,20,.97);z-index:201}
 
 /* TARGETING RETICLE */
 #reticle{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
@@ -247,9 +252,9 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
     <p id=dlName style="color:var(--gold);word-break:break-all;margin:8px 0;font-size:13px"></p>
     <p>Chrome <b>⋮ → Downloads</b> to find it</p>
     <div class=ob2>
-      <button class=btn style="height:44px;color:var(--teal);border:2px solid var(--teal)"
+      <button class=btn style="height:52px;color:var(--teal);border:2px solid var(--teal)"
         onclick="document.getElementById('dlOv').classList.remove('on')">[ OK ]</button>
-      <button class=btn style="height:44px;color:var(--green);border:2px solid var(--green)"
+      <button class=btn style="height:52px;color:var(--green);border:2px solid var(--green)"
         onclick="document.getElementById('dlOv').classList.remove('on');
                  document.getElementById('bBake').click()">[ ↺ RE-BAKE ]</button>
     </div>
