@@ -4,258 +4,395 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>P3dK // Raw Math Rasterizer</title>
+    <title>P3dK // Spatial Fusion</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
-        :root { --cyan: #0ff; --bg: #000; --font: 'Courier New', monospace; }
+        :root { --cyan: #0ff; --amber: #ffb000; --magenta: #f0f; --bg: #050505; --font: 'Courier New', monospace; }
         * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; overflow: hidden; }
         body { background: var(--bg); color: var(--cyan); font-family: var(--font); touch-action: none; }
         
-        /* The main display canvas */
-        #display { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1; }
-        
-        /* Hidden video elements for processing */
-        #video-feed { display: none; }
-        
-        /* CRT Scanline aesthetic */
-        .scanlines {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
-            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-            background-size: 100% 4px; pointer-events: none;
+        #video-feed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; opacity: 0.8; }
+        #glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; background: #000; display: none; }
+
+        /* AR Overlay aesthetic */
+        .ar-grid {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3;
+            background: linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px; pointer-events: none;
         }
 
-        #ui { position: absolute; z-index: 20; padding: 20px; pointer-events: none; width: 100%; }
-        .sys-text { font-size: 12px; font-weight: bold; text-shadow: 0 0 5px var(--cyan); }
-        
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10;
+            display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; padding: 15px;
+        }
+
+        .panel {
+            background: rgba(0, 15, 15, 0.8); border: 1px solid var(--cyan); padding: 12px;
+            backdrop-filter: blur(8px); pointer-events: auto;
+        }
+
+        .sys-text { font-size: 11px; font-weight: bold; line-height: 1.5; text-shadow: 0 0 5px #000; }
+        .amber { color: var(--amber); }
+
         .btn {
-            pointer-events: auto; background: rgba(0, 40, 40, 0.6); color: var(--cyan);
-            border: 1px solid var(--cyan); padding: 10px 20px; font-family: var(--font);
-            cursor: pointer; text-transform: uppercase; margin-top: 10px; backdrop-filter: blur(4px);
+            background: rgba(0, 40, 40, 0.8); color: var(--cyan); border: 1px solid var(--cyan);
+            padding: 15px; font-family: var(--font); font-size: 14px; font-weight: bold;
+            cursor: pointer; text-transform: uppercase; width: 100%; margin-top: 10px; transition: 0.1s;
         }
         .btn:active { background: var(--cyan); color: #000; }
+        
+        #btn-sweep { 
+            height: 80px; font-size: 18px; border-width: 2px;
+            background: repeating-linear-gradient(45deg, rgba(0,255,255,0.1), rgba(0,255,255,0.1) 10px, transparent 10px, transparent 20px);
+        }
+        #btn-sweep:active { background: var(--cyan); color: #000; }
+
+        #controls-review { display: none; }
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        
+        /* Leveler UI for Gyro */
+        #leveler {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 100px; height: 1px; background: rgba(255,255,255,0.5); z-index: 5; pointer-events: none;
+        }
+        #leveler::after {
+            content: ''; position: absolute; left: 50%; top: -10px; width: 2px; height: 20px; background: var(--amber);
+        }
+
     </style>
 </head>
 <body>
 
-    <video id="video-feed" autoplay playsinline></video>
-    <canvas id="display"></canvas>
-    <div class="scanlines"></div>
+    <video id="video-feed" autoplay playsinline muted></video>
+    <canvas id="glcanvas"></canvas>
+    <div class="ar-grid"></div>
+    <div id="leveler"></div>
 
-    <div id="ui">
-        <div class="sys-text">
-            P3dK // BARE METAL ENGINE<br>
-            DEPENDENCIES: 0<br>
-            RENDERER: SOFTWARE RASTERIZER<br>
-            <span id="stats">PTS: 0 | FPS: 0</span>
-        </div>
-        <button class="btn" id="btn-start">INITIALIZE OPTICS</button>
-        <button class="btn" id="btn-mode" style="display:none;">MODE: POINT CLOUD</button>
+    <div id="ui-layer">
+        <header>
+            <div class="panel">
+                <div class="sys-text">
+                    <div id="lbl-mode">MODE: IMU FUSION STANDBY</div>
+                    <div id="lbl-pts">POINTS CAPTURED: 0</div>
+                    <div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
+                </div>
+            </div>
+        </header>
+
+        <footer>
+            <div id="controls-live">
+                <button class="btn" id="btn-init">1. INIT SENSORS & IMU</button>
+                <div id="sweep-container" style="display:none;">
+                    <div class="sys-text amber" style="text-align:center; margin-bottom:5px;">HOLD BUTTON & PAN SLOWLY</div>
+                    <button class="btn" id="btn-sweep">[ HOLD TO SWEEP SCAN ]</button>
+                    <button class="btn" id="btn-done" style="border-color: var(--amber); color: var(--amber);">FINISH & REVIEW</button>
+                </div>
+            </div>
+            
+            <div id="controls-review" class="panel">
+                <div class="sys-text amber" style="margin-bottom: 10px;">SPATIAL POINT CLOUD</div>
+                <div class="btn-grid">
+                    <button class="btn" id="btn-export" style="border-color: var(--cyan);">EXPORT .PLY</button>
+                    <button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD</button>
+                </div>
+            </div>
+        </footer>
     </div>
 
 <script>
 /**
- * P3dK // BARE METAL RASTERIZER
- * No Three.js. No WebGL. No CDNs.
- * Pure Math: Matrix Projection, Perspective Divide, CPU Edge Detection.
+ * P3dK // Spatial Fusion Engine (V9)
+ * Multi-frame IMU-tracked Point Cloud Accumulator.
+ * Uses DeviceOrientation to rotate depth data into a shared 3D world space.
  */
 
 const UI = {
     video: document.getElementById('video-feed'),
-    display: document.getElementById('display'),
-    stats: document.getElementById('stats'),
-    btnStart: document.getElementById('btn-start'),
-    btnMode: document.getElementById('btn-mode')
+    canvas: document.getElementById('glcanvas'),
+    lblMode: document.getElementById('lbl-mode'),
+    lblPts: document.getElementById('lbl-pts'),
+    lblImu: document.getElementById('lbl-imu'),
+    controlsLive: document.getElementById('controls-live'),
+    sweepContainer: document.getElementById('sweep-container'),
+    controlsReview: document.getElementById('controls-review'),
+    btnInit: document.getElementById('btn-init'),
+    btnSweep: document.getElementById('btn-sweep'),
+    btnDone: document.getElementById('btn-done'),
+    leveler: document.getElementById('leveler')
 };
 
-// Internal low-res canvas for fast CPU pixel processing (like 90s Mode 13h!)
-const procWidth = 160; 
-const procHeight = 120;
+// --- THREE.JS SCENE SETUP ---
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 0); // Camera starts at origin for AR
+
+const renderer = new THREE.WebGLRenderer({ canvas: UI.canvas, antialias: false });
+renderer.setSize(window.innerWidth, window.innerHeight);
+
+// We will use a custom target for the OrbitControls later
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.enabled = false; // Disabled during live scan
+
+// --- SPATIAL FUSION STATE ---
+let isSweeping = false;
+let pointCloudData = []; // Array to hold raw vertices {x, y, z, r, g, b}
+let finalPointsMesh = null;
+
+// Processing Canvas (Keep resolution moderate to allow 20fps sweeping)
+const scanRes = 100; 
 const procCanvas = document.createElement('canvas');
-procCanvas.width = procWidth;
-procCanvas.height = procHeight;
-const procCtx = procCanvas.getContext('2d', { willReadFrequently: true });
+procCanvas.width = scanRes;
+procCanvas.height = scanRes;
+const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
 
-// 2D Display Context (No WebGL)
-const ctx = UI.display.getContext('2d');
-let width = window.innerWidth;
-let height = window.innerHeight;
-UI.display.width = width;
-UI.display.height = height;
+// --- IMU (GYROSCOPE) TRACKING ---
+const currentQuat = new THREE.Quaternion();
+const initialQuatInv = new THREE.Quaternion(); // Used to "Zero" the rotation on start
+let hasZeroedIMU = false;
 
-// State
-let isRunning = false;
-let renderMode = 0; // 0 = Points, 1 = Wireframe Connect
-let pointCloud = []; // Array of 3D objects: {x, y, z, brightness}
-let time = 0;
-
-// --- 1. PURE 3D MATH ENGINE ---
-// These are the raw algorithms used in assembly before GPUs existed.
-
-// Projects a 3D coordinate (x,y,z) onto a 2D screen (x,y)
-function project(x, y, z, fov, viewerDistance) {
-    // Avoid division by zero
-    const factor = fov / (viewerDistance + z || 0.001); 
-    const xProjected = (x * factor) + (width / 2);
-    const yProjected = (y * factor) + (height / 2);
-    return { x: xProjected, y: yProjected, scale: factor };
-}
-
-// Rotates a 3D point around the Y and X axes using Sine/Cosine math
-function rotate3D(x, y, z, pitch, yaw) {
-    const cosY = Math.cos(yaw), sinY = Math.sin(yaw);
-    const cosX = Math.cos(pitch), sinX = Math.sin(pitch);
-
-    // Y-axis rotation (Yaw)
-    let x1 = x * cosY - z * sinY;
-    let z1 = x * sinY + z * cosY;
-
-    // X-axis rotation (Pitch)
-    let y2 = y * cosX - z1 * sinX;
-    let z2 = y * sinX + z1 * cosX;
-
-    return { x: x1, y: y2, z: z2 };
-}
-
-// --- 2. CPU OPTICAL EXTRACTION (The "Assembler" approach to CV) ---
-// We read pixels directly from memory and calculate contrast to find edges.
-function extractTopology() {
-    // Draw current video frame to low-res buffer
-    procCtx.drawImage(UI.video, 0, 0, procWidth, procHeight);
-    const frame = procCtx.getImageData(0, 0, procWidth, procHeight);
-    const data = frame.data;
-
-    pointCloud = []; // Clear old points
-    const threshold = 30; // Contrast threshold for edge detection
-    
-    // Loop through pixels, skipping rows/cols for speed
-    for (let y = 1; y < procHeight - 1; y += 2) {
-        for (let x = 1; x < procWidth - 1; x += 2) {
-            const idx = (y * procWidth + x) * 4;
-            
-            // Grayscale luminance
-            const lum = data[idx] * 0.299 + data[idx+1] * 0.587 + data[idx+2] * 0.114;
-            
-            // Look at right neighbor to find hard edges
-            const idxRight = (y * procWidth + (x + 1)) * 4;
-            const lumRight = data[idxRight] * 0.299 + data[idxRight+1] * 0.587 + data[idxRight+2] * 0.114;
-            
-            const edgeStrength = Math.abs(lum - lumRight);
-            
-            // If we found a hard edge, map it into 3D space!
-            if (edgeStrength > threshold) {
-                // Map 2D coordinate to a 3D plane
-                // We use luminance to push bright pixels "forward" in Z space (Depth approximation)
-                const depth = (lum / 255.0) * 100 - 50; 
-                
-                pointCloud.push({
-                    x: (x - procWidth / 2) * 3, // Scale up
-                    y: (y - procHeight / 2) * 3,
-                    z: depth,
-                    brightness: lum
-                });
-            }
+function setupIMU() {
+    window.addEventListener('deviceorientation', (event) => {
+        if (!event.alpha) return;
+        
+        UI.lblImu.innerText = "GYRO: LOCKED & TRACKING";
+        UI.lblImu.className = "cyan";
+        
+        // Convert Euler angles to Quaternion
+        const alpha = THREE.MathUtils.degToRad(event.alpha);
+        const beta = THREE.MathUtils.degToRad(event.beta);
+        const gamma = THREE.MathUtils.degToRad(event.gamma);
+        const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+        
+        const rawQuat = new THREE.Quaternion().setFromEuler(euler);
+        
+        if (!hasZeroedIMU) {
+            // Store the inverse of the first frame to "Zero" our coordinate system
+            initialQuatInv.copy(rawQuat).invert();
+            hasZeroedIMU = true;
         }
-    }
+        
+        // Multiply raw orientation by our zeroing offset
+        currentQuat.multiplyQuaternions(initialQuatInv, rawQuat);
+        
+        // Visual feedback for the UI Leveler
+        UI.leveler.style.transform = `translate(-50%, -50%) rotate(${event.gamma}deg)`;
+    });
 }
 
-// --- 3. SOFTWARE RENDERING LOOP ---
-let lastTime = performance.now();
-let frames = 0;
-let lastFpsTime = 0;
+// --- CORE ACCUMULATION LOGIC ---
+const tempVec = new THREE.Vector3();
+let lastCaptureTime = 0;
 
-function render() {
-    if (!isRunning) return requestAnimationFrame(render);
-    
-    time += 0.01;
-    
-    // 1. Black out canvas
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.8)'; // Trail effect
-    ctx.fillRect(0, 0, width, height);
-    
-    // 2. Extract new 3D points from live camera
-    extractTopology();
-    
-    // 3. Render 3D point cloud to 2D screen
-    const fov = 400; // Field of view
-    const viewDist = 200; // Camera distance
-    const yaw = Math.sin(time) * 0.5; // Auto-rotate back and forth
-    const pitch = Math.cos(time * 0.5) * 0.2;
-    
-    ctx.strokeStyle = 'rgba(0, 255, 255, 0.5)';
-    ctx.fillStyle = '#0ff';
-    ctx.lineWidth = 1;
-    
-    if (renderMode === 1) ctx.beginPath(); // Start wireframe path
-
-    for (let i = 0; i < pointCloud.length; i++) {
-        const pt = pointCloud[i];
-        
-        // Rotate in 3D
-        const rot = rotate3D(pt.x, pt.y, pt.z, pitch, yaw);
-        
-        // Project to 2D
-        const proj = project(rot.x, rot.y, rot.z, fov, viewDist);
-        
-        // Don't draw things behind the camera
-        if (proj.scale > 0) {
-            if (renderMode === 0) {
-                // Draw Point Cloud
-                const size = Math.max(0.5, proj.scale * 2 * (pt.brightness / 255));
-                ctx.globalAlpha = pt.brightness / 255; // Brighter points are more opaque
-                ctx.fillRect(proj.x, proj.y, size, size);
-            } else {
-                // Draw Wireframe (Connect adjacent points)
-                if (i === 0 || i % procWidth === 0) {
-                    ctx.moveTo(proj.x, proj.y);
-                } else {
-                    ctx.lineTo(proj.x, proj.y);
-                }
-            }
-        }
-    }
-    
-    if (renderMode === 1) ctx.stroke(); // Draw wireframe
-    ctx.globalAlpha = 1.0;
-
-    // FPS Counter
-    frames++;
+function captureSweepFrame() {
     const now = performance.now();
-    if (now - lastFpsTime >= 1000) {
-        UI.stats.innerText = `PTS: ${pointCloud.length} | FPS: ${frames}`;
-        frames = 0;
-        lastFpsTime = now;
+    if (now - lastCaptureTime < 100) return; // Cap at ~10 FPS to prevent memory overload
+    lastCaptureTime = now;
+
+    // Draw video to processing canvas
+    const minDim = Math.min(UI.video.videoWidth, UI.video.videoHeight);
+    const sx = (UI.video.videoWidth - minDim) / 2;
+    const sy = (UI.video.videoHeight - minDim) / 2;
+    ctx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, scanRes, scanRes);
+    const data = ctx.getImageData(0, 0, scanRes, scanRes).data;
+
+    const fovScale = 2.0; // Spreads the points out to match camera FOV
+
+    // Iterate pixels
+    for (let y = 0; y < scanRes; y += 2) { // Skip pixels for performance
+        for (let x = 0; x < scanRes; x += 2) {
+            const i = (y * scanRes + x) * 4;
+            const r = data[i];
+            const g = data[i+1];
+            const b = data[i+2];
+
+            // Filter out pure black noise
+            if (r < 10 && g < 10 && b < 10) continue; 
+
+            // Depth from luminance
+            const lum = (r*0.299 + g*0.587 + b*0.114) / 255.0;
+            const zDepth = -(lum * 2.0 + 1.0); // Push object 1-3 meters away
+
+            // 1. Plot in 3D Camera Space
+            tempVec.set(
+                ((x / scanRes) - 0.5) * fovScale * Math.abs(zDepth),
+                -((y / scanRes) - 0.5) * fovScale * Math.abs(zDepth),
+                zDepth
+            );
+
+            // 2. Rotate into World Space using IMU! (The Magic Step)
+            tempVec.applyQuaternion(currentQuat);
+
+            // Save point
+            pointCloudData.push({
+                x: tempVec.x, y: tempVec.y, z: tempVec.z,
+                r: r, g: g, b: b
+            });
+        }
     }
 
-    requestAnimationFrame(render);
+    UI.lblPts.innerText = `POINTS CAPTURED: ${pointCloudData.length.toLocaleString()}`;
+    if(navigator.vibrate) navigator.vibrate([15]); // Geiger-counter feel
 }
 
-// --- HARDWARE BINDINGS ---
-UI.btnStart.addEventListener('click', async () => {
+// --- BUILD 3D POINT CLOUD FOR REVIEW ---
+function buildReviewScene() {
+    isSweeping = false;
+    UI.lblMode.innerText = "MODE: SPATIAL REVIEW";
+    
+    // Convert JS Array to Three.js BufferGeometry
+    const geometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(pointCloudData.length * 3);
+    const colors = new Float32Array(pointCloudData.length * 3);
+
+    for (let i = 0; i < pointCloudData.length; i++) {
+        const pt = pointCloudData[i];
+        positions[i*3] = pt.x;
+        positions[i*3+1] = pt.y;
+        positions[i*3+2] = pt.z;
+        
+        colors[i*3] = pt.r / 255.0;
+        colors[i*3+1] = pt.g / 255.0;
+        colors[i*3+2] = pt.b / 255.0;
+    }
+
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+    const material = new THREE.PointsMaterial({ size: 0.03, vertexColors: true, transparent: true, opacity: 0.9 });
+    
+    if (finalPointsMesh) scene.remove(finalPointsMesh);
+    finalPointsMesh = new THREE.Points(geometry, material);
+    scene.add(finalPointsMesh);
+
+    // Setup Camera to orbit around the cloud
+    camera.position.set(0, 0, 1);
+    controls.target.set(0, 0, -2); // Look at where the points spawned
+    controls.enabled = true;
+
+    // UI Updates
+    UI.video.style.display = 'none';
+    UI.leveler.style.display = 'none';
+    UI.canvas.style.display = 'block';
+    UI.controlsLive.style.display = 'none';
+    UI.controlsReview.style.display = 'block';
+}
+
+
+// --- .PLY POINT CLOUD EXPORT ---
+// PLY is the industry standard for colored point clouds
+function exportPLY() {
+    if (pointCloudData.length === 0) return;
+    
+    UI.lblPts.innerText = "WRITING .PLY FILE...";
+
+    let ply = `ply
+format ascii 1.0
+element vertex ${pointCloudData.length}
+property float x
+property float y
+property float z
+property uchar red
+property uchar green
+property uchar blue
+end_header\n`;
+
+    // Append all points
+    for (let i = 0; i < pointCloudData.length; i++) {
+        const pt = pointCloudData[i];
+        ply += `${pt.x.toFixed(4)} ${pt.y.toFixed(4)} ${pt.z.toFixed(4)} ${pt.r} ${pt.g} ${pt.b}\n`;
+    }
+
+    const blob = new Blob([ply], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'p3dk_spatial_fusion.ply';
+    link.click();
+    
+    UI.lblPts.innerText = "EXPORT COMPLETE.";
+}
+
+// --- RENDER LOOP ---
+function animate() {
+    requestAnimationFrame(animate);
+    
+    if (isSweeping) {
+        captureSweepFrame();
+    }
+    
+    if (controls.enabled) controls.update();
+    renderer.render(scene, camera);
+}
+animate();
+
+// --- EVENT BINDINGS ---
+UI.btnInit.addEventListener('click', async () => {
     try {
+        // Request Camera
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "environment", width: { ideal: 640 } }
         });
         UI.video.srcObject = stream;
+        await UI.video.play();
         
-        UI.btnStart.style.display = 'none';
-        UI.btnMode.style.display = 'block';
+        // Request iOS Gyro Permission if necessary
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            const permission = await DeviceOrientationEvent.requestPermission();
+            if (permission !== 'granted') throw new Error("Gyro permission denied.");
+        }
+        setupIMU();
         
-        isRunning = true;
-        render();
-    } catch (err) {
-        alert("Camera required for raw data extraction.");
+        UI.btnInit.style.display = 'none';
+        UI.sweepContainer.style.display = 'block';
+        UI.lblMode.innerText = "MODE: IMU READY. ZEROED.";
+    } catch (e) {
+        alert("Camera and Motion Sensors required for Spatial Fusion.");
+        console.error(e);
     }
 });
 
-UI.btnMode.addEventListener('click', () => {
-    renderMode = renderMode === 0 ? 1 : 0;
-    UI.btnMode.innerText = renderMode === 0 ? "MODE: POINT CLOUD" : "MODE: TOPOLOGY WIRE";
+// Sweeping mechanics (Touch/Mouse down to scan)
+UI.btnSweep.addEventListener('pointerdown', (e) => {
+    isSweeping = true;
+    UI.btnSweep.style.background = "var(--cyan)";
+    UI.btnSweep.style.color = "#000";
+    e.target.setPointerCapture(e.pointerId);
+});
+
+UI.btnSweep.addEventListener('pointerup', (e) => {
+    isSweeping = false;
+    UI.btnSweep.style.background = "";
+    UI.btnSweep.style.color = "var(--cyan)";
+    e.target.releasePointerCapture(e.pointerId);
+});
+
+UI.btnDone.addEventListener('click', buildReviewScene);
+document.getElementById('btn-export').addEventListener('click', exportPLY);
+
+document.getElementById('btn-discard').addEventListener('click', () => {
+    pointCloudData = [];
+    if (finalPointsMesh) { scene.remove(finalPointsMesh); finalPointsMesh = null; }
+    
+    controls.enabled = false;
+    camera.position.set(0,0,0);
+    camera.quaternion.identity();
+    
+    hasZeroedIMU = false; // Will re-zero on next sweep
+    
+    UI.video.style.display = 'block';
+    UI.canvas.style.display = 'none';
+    UI.leveler.style.display = 'block';
+    UI.controlsLive.style.display = 'block';
+    UI.controlsReview.style.display = 'none';
+    UI.lblPts.innerText = "POINTS CAPTURED: 0";
+    UI.lblMode.innerText = "MODE: IMU FUSION STANDBY";
 });
 
 window.addEventListener('resize', () => {
-    width = window.innerWidth;
-    height = window.innerHeight;
-    UI.display.width = width;
-    UI.display.height = height;
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
 </script>
