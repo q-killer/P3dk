@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>P3dK // Ghost-Sync Engine</title>
+    <title>P3dK // Studio Engine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -16,11 +16,10 @@
         #glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; background: transparent; }
         #bg-black { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; background: #080808; display: none;}
 
-        /* The Ghost Image Overlay for Visual SLAM Alignment */
         #ghost-overlay {
             position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover;
-            z-index: 3; opacity: 0; pointer-events: none; mix-blend-mode: screen; filter: sepia(100%) hue-rotate(150deg) saturate(300%);
-            transition: opacity 0.3s;
+            z-index: 3; opacity: 0; pointer-events: none; mix-blend-mode: screen; 
+            filter: sepia(100%) hue-rotate(150deg) saturate(300%); transition: opacity 0.3s;
         }
 
         .ar-grid {
@@ -92,7 +91,7 @@
         <header>
             <div class="panel">
                 <div class="sys-text">
-                    <div id="lbl-mode">MODE: GHOST-SYNC STANDBY</div>
+                    <div id="lbl-mode">MODE: STUDIO STANDBY</div>
                     <div id="lbl-pts" class="cyan">MAPPED FRAMES: 0</div>
                     <div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
                     <div id="lbl-err" class="sys-err"></div>
@@ -107,19 +106,18 @@
                     <div class="sys-text amber" style="text-align:center; margin-bottom:5px;">ALIGN GHOST IMAGE & TAP TO STITCH</div>
                     <button class="btn" id="btn-stitch">[ STITCH ALIGNED FRAME ]</button>
                     <div class="btn-grid">
-                        <button class="btn" id="btn-toggle-ghost">HIDE GHOST</button>
-                        <button class="btn" id="btn-done" style="border-color: var(--amber); color: var(--amber);">REVIEW 3D</button>
+                        <button class="btn" id="btn-torch" style="border-color: var(--amber); color: var(--amber);">🔦 ILLUMINATE</button>
+                        <button class="btn" id="btn-done">REVIEW 3D</button>
                     </div>
                 </div>
             </div>
             
             <div id="controls-review" class="panel">
-                <div class="sys-text amber" style="margin-bottom: 10px;">SEAMLESS TOPOLOGY CALIBRATION</div>
+                <div class="sys-text amber" style="margin-bottom: 10px;">STUDIO CALIBRATION</div>
                 
                 <div class="slider-group">
-                    <div class="slider-label"><span>EXTRUSION DEPTH</span> <span id="val-scale">1.0x</span></div>
-                    <!-- Default set much higher so it's not a flat 2D picture -->
-                    <input type="range" id="sl-scale" min="0.0" max="4.0" step="0.1" value="1.0">
+                    <div class="slider-label"><span>EXTRUSION DEPTH</span> <span id="val-scale">0.5x</span></div>
+                    <input type="range" id="sl-scale" min="0.0" max="3.0" step="0.1" value="0.5">
                 </div>
                 
                 <div class="slider-group">
@@ -128,21 +126,23 @@
                 </div>
 
                 <div class="btn-grid" style="margin-top: 10px;">
-                    <button class="btn" id="btn-wire">TOGGLE WIREFRAME</button>
+                    <button class="btn" id="btn-clay">CLAY RENDER</button>
+                    <button class="btn" id="btn-wire">WIREFRAME</button>
+                </div>
+                
+                <div class="btn-grid">
+                    <button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD</button>
                     <button class="btn" id="btn-export" style="border-color: var(--amber); color: var(--amber);">EXPORT .OBJ</button>
                 </div>
-                <button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD DATA</button>
             </div>
         </footer>
     </div>
 
 <script>
 /**
- * P3dK // Ghost-Sync Engine (V12)
- * Features:
- * 1. Ghost Image Overlay for manual human-driven visual SLAM.
- * 2. Alpha-feathered edge blending to eliminate the "deck of cards" hard edges.
- * 3. Transparent sorting fixes for overlapping 3D geometry.
+ * P3dK // Studio Engine (V13)
+ * Features: Active Hardware Illumination (Torch) and Clay Render mode 
+ * for advanced geometric inspection.
  */
 
 const UI = {
@@ -162,14 +162,15 @@ const UI = {
     btnInit: document.getElementById('btn-init'),
     btnStitch: document.getElementById('btn-stitch'),
     btnDone: document.getElementById('btn-done'),
-    btnToggleGhost: document.getElementById('btn-toggle-ghost'),
+    btnTorch: document.getElementById('btn-torch'),
     flash: document.getElementById('flash'),
     
     slScale: document.getElementById('sl-scale'),
     slSmooth: document.getElementById('sl-smooth'),
     valScale: document.getElementById('val-scale'),
     valSmooth: document.getElementById('val-smooth'),
-    btnWire: document.getElementById('btn-wire')
+    btnWire: document.getElementById('btn-wire'),
+    btnClay: document.getElementById('btn-clay')
 };
 
 function logError(msg) {
@@ -189,20 +190,27 @@ const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.enabled = false;
 
-scene.add(new THREE.AmbientLight(0xffffff, 0.7));
-const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
-dirLight.position.set(0, 5, 5);
-scene.add(dirLight);
+// Enhanced Studio Lighting for Clay Mode
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+scene.add(ambientLight);
+const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight1.position.set(5, 5, 5);
+scene.add(dirLight1);
+const dirLight2 = new THREE.DirectionalLight(0x00ffff, 0.3); // Cyan rim light
+dirLight2.position.set(-5, -5, -5);
+scene.add(dirLight2);
 
 const meshGroup = new THREE.Group();
 scene.add(meshGroup);
 
 let capturedFrames = []; 
 let showWireframe = false;
-let isGhostVisible = true;
+let isClayMode = false;
+let isTorchOn = false;
+let videoTrack = null;
 
-const RES = 128; // High resolution
-const RADIUS = 3.0; // Distance mesh spawns from camera
+const RES = 160; // Upgraded Resolution! (25,600 vertices)
+const RADIUS = 3.0; 
 const procCanvas = document.createElement('canvas');
 procCanvas.width = RES;
 procCanvas.height = RES;
@@ -223,10 +231,8 @@ function setupIMU() {
 
         const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
         deviceQuat.setFromEuler(euler);
-        
         const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); 
         deviceQuat.multiply(q1);
-        
         const q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -orient);
         deviceQuat.multiply(q0);
     });
@@ -238,16 +244,15 @@ function stitchFrame() {
     setTimeout(() => UI.flash.style.opacity = 0, 150);
     if(navigator.vibrate) navigator.vibrate([50, 50]);
 
-    // Update Ghost Overlay for the human to align the next shot
-    // We capture the full video bounds to make the ghost overlay match the screen
+    // Ghost Overlay Update
     const fullCanvas = document.createElement('canvas');
     fullCanvas.width = UI.video.videoWidth;
     fullCanvas.height = UI.video.videoHeight;
     fullCanvas.getContext('2d').drawImage(UI.video, 0, 0);
     UI.ghost.src = fullCanvas.toDataURL('image/jpeg');
-    if (isGhostVisible) UI.ghost.style.opacity = 0.35;
+    UI.ghost.style.opacity = 0.35;
 
-    // 1. Process Square Image Data for the 3D Mesh
+    // 1. Process Image
     const minDim = Math.min(UI.video.videoWidth, UI.video.videoHeight);
     const sx = (UI.video.videoWidth - minDim) / 2;
     const sy = (UI.video.videoHeight - minDim) / 2;
@@ -256,10 +261,9 @@ function stitchFrame() {
     const imgData = ctx.getImageData(0, 0, RES, RES);
     const data = imgData.data;
 
-    // 2. Build Buffers & ALPHA EDGE-FADE (Solves the Deck of Cards problem)
+    // 2. Build Buffers & Alpha Fade
     const rawMap = new Float32Array(RES * RES);
     const smmMap = new Float32Array(RES * RES);
-    
     const center = RES / 2;
     const maxRadius = RES / 2;
 
@@ -268,15 +272,9 @@ function stitchFrame() {
             const i = (y * RES + x) * 4;
             rawMap[y * RES + x] = (data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114) / 255.0;
 
-            // EDGE FADING LOGIC
-            // Calculate pixel distance from the center of the square
             const dist = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
-            
-            // If near the edge, fade the Alpha channel (data[i+3]) to 0
-            // This makes the square mesh a soft, blurry circle
             let alpha = 255;
             if (dist > maxRadius * 0.6) {
-                // Smoothly interpolate from 255 to 0
                 alpha = 255 * (1.0 - (dist - maxRadius * 0.6) / (maxRadius * 0.4));
                 alpha = Math.max(0, Math.min(255, alpha));
             }
@@ -284,8 +282,8 @@ function stitchFrame() {
         }
     }
 
-    // Box Blur for Smooth Slider
-    const k = 1; 
+    // Advanced Box Blur
+    const k = 2; // Wider blur for 160px resolution
     for (let y = 0; y < RES; y++) {
         for (let x = 0; x < RES; x++) {
             let sum = 0, count = 0;
@@ -302,18 +300,18 @@ function stitchFrame() {
 
     // 3. Build Mesh
     const geo = new THREE.PlaneGeometry(2.5, 2.5, RES - 1, RES - 1);
-    
     const texCanvas = document.createElement('canvas');
     texCanvas.width = RES; texCanvas.height = RES;
-    // We must put the image data with the new faded alpha channels!
     texCanvas.getContext('2d').putImageData(imgData, 0, 0);
     
-    // CRITICAL FIX: transparent: true, depthWrite: false allows meshes to overlap seamlessly
+    const texture = new THREE.CanvasTexture(texCanvas);
+    
     const baseMat = new THREE.MeshStandardMaterial({ 
-        map: new THREE.CanvasTexture(texCanvas), 
-        roughness: 0.9, 
+        map: texture, 
+        color: 0xffffff, // White base color
+        roughness: 0.8, 
         transparent: true, 
-        depthWrite: false, // Prevents Z-fighting
+        depthWrite: false,
         side: THREE.DoubleSide
     });
 
@@ -324,15 +322,14 @@ function stitchFrame() {
     wireMesh.visible = showWireframe;
     mesh.add(wireMesh);
 
-    // 4. SPATIAL FUSION
+    // 4. Transform & Spawn
     const pivot = new THREE.Group();
     pivot.quaternion.copy(camera.quaternion); 
-    
     mesh.position.set(0, 0, -RADIUS);
     pivot.add(mesh);
     meshGroup.add(pivot);
 
-    capturedFrames.push({ geo: geo, rawMap: rawMap, smmMap: smmMap, wireMesh: wireMesh });
+    capturedFrames.push({ geo: geo, rawMap: rawMap, smmMap: smmMap, mesh: mesh, texture: texture, wireMesh: wireMesh });
     
     UI.lblPts.innerText = `MAPPED FRAMES: ${capturedFrames.length}`;
     updateCalibration(); 
@@ -347,7 +344,6 @@ function updateCalibration() {
         
         for (let i = 0; i < frame.rawMap.length; i++) {
             const depth = frame.rawMap[i] * (1 - smooth) + frame.smmMap[i] * smooth;
-            // Extrude vertices
             vertices[i * 3 + 2] = depth * scale;
         }
         
@@ -356,25 +352,50 @@ function updateCalibration() {
     });
 }
 
-// Sliders
+// Sliders & Toggles
 UI.slScale.addEventListener('input', () => { UI.valScale.innerText = parseFloat(UI.slScale.value).toFixed(1) + 'x'; updateCalibration(); });
 UI.slSmooth.addEventListener('input', () => { UI.valSmooth.innerText = Math.round(parseFloat(UI.slSmooth.value) * 100) + '%'; updateCalibration(); });
+
 UI.btnWire.addEventListener('click', () => {
     showWireframe = !showWireframe;
     capturedFrames.forEach(f => f.wireMesh.visible = showWireframe);
-    UI.btnWire.style.borderColor = showWireframe ? 'var(--cyan)' : '#555';
-    UI.btnWire.style.color = showWireframe ? 'var(--cyan)' : '#aaa';
+    UI.btnWire.style.backgroundColor = showWireframe ? 'var(--cyan)' : 'transparent';
+    UI.btnWire.style.color = showWireframe ? '#000' : 'var(--cyan)';
 });
 
-UI.btnToggleGhost.addEventListener('click', () => {
-    isGhostVisible = !isGhostVisible;
-    UI.ghost.style.opacity = isGhostVisible ? 0.35 : 0.0;
-    UI.btnToggleGhost.innerText = isGhostVisible ? 'HIDE GHOST' : 'SHOW GHOST';
+UI.btnClay.addEventListener('click', () => {
+    isClayMode = !isClayMode;
+    capturedFrames.forEach(f => {
+        // Remove color map, set to studio grey
+        f.mesh.material.map = isClayMode ? null : f.texture;
+        f.mesh.material.color.setHex(isClayMode ? 0xaaaaaa : 0xffffff);
+        f.mesh.material.needsUpdate = true;
+    });
+    UI.btnClay.style.backgroundColor = isClayMode ? 'var(--cyan)' : 'transparent';
+    UI.btnClay.style.color = isClayMode ? '#000' : 'var(--cyan)';
 });
+
+UI.btnTorch.addEventListener('click', async () => {
+    if (!videoTrack) return;
+    const capabilities = videoTrack.getCapabilities();
+    if (!capabilities.torch) {
+        logError("Flashlight (Torch) API not supported on this device.");
+        return;
+    }
+    isTorchOn = !isTorchOn;
+    try {
+        await videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+        UI.btnTorch.style.backgroundColor = isTorchOn ? 'var(--amber)' : 'transparent';
+        UI.btnTorch.style.color = isTorchOn ? '#000' : 'var(--amber)';
+    } catch (e) {
+        logError("Failed to access Torch.");
+    }
+});
+
 
 // --- SCENE MANAGEMENT ---
 function buildReviewScene() {
-    UI.lblMode.innerText = "MODE: 3D REVIEW";
+    UI.lblMode.innerText = "MODE: 3D STUDIO REVIEW";
     
     camera.position.set(0, 0, RADIUS * 0.2);
     controls.target.set(0, 0, -RADIUS); 
@@ -387,17 +408,23 @@ function buildReviewScene() {
     UI.crosshair.style.display = 'none';
     UI.controlsLive.style.display = 'none';
     UI.controlsReview.style.display = 'block';
+    
+    // Turn off torch automatically
+    if (isTorchOn && videoTrack) {
+        videoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(e=>{});
+        isTorchOn = false;
+    }
 }
 
 function exportFusedOBJ() {
     if (capturedFrames.length === 0) return;
     UI.lblPts.innerText = "CALCULATING MATRICES...";
-    let obj = "# P3dK Nodal Stitch Export\n";
+    let obj = "# P3dK Studio Export\n";
     let vOffset = 0; let vtOffset = 0;
     const tempVec = new THREE.Vector3();
 
     capturedFrames.forEach((frame, index) => {
-        const mesh = frame.wireMesh.parent; 
+        const mesh = frame.mesh; 
         mesh.updateMatrixWorld(true);
         
         const pos = frame.geo.attributes.position.array;
@@ -421,7 +448,7 @@ function exportFusedOBJ() {
     });
 
     const blob = new Blob([obj], { type: 'text/plain' });
-    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'p3dk_nodal_scan.obj'; link.click();
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'p3dk_studio_scan.obj'; link.click();
     UI.lblPts.innerText = "EXPORT COMPLETE.";
 }
 
@@ -438,10 +465,11 @@ animate();
 UI.btnInit.addEventListener('click', async () => {
     try {
         UI.lblErr.innerText = "INITIALIZING SENSORS...";
-        if (!navigator.mediaDevices) throw new Error("Camera API denied. Use HTTPS.");
+        if (!navigator.mediaDevices) throw new Error("Camera API denied.");
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 640 } } });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1080 } } });
         UI.video.srcObject = stream;
+        videoTrack = stream.getVideoTracks()[0];
         await UI.video.play();
         
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -478,7 +506,10 @@ document.getElementById('btn-discard').addEventListener('click', () => {
     UI.controlsReview.style.display = 'none';
     UI.lblPts.innerText = "MAPPED FRAMES: 0";
     UI.lblMode.innerText = "MODE: GHOST-SYNC CAPTURE";
-    isGhostVisible = true; UI.btnToggleGhost.innerText = "HIDE GHOST";
+    
+    // Reset buttons
+    isClayMode = false; UI.btnClay.style.backgroundColor = 'transparent'; UI.btnClay.style.color = 'var(--cyan)';
+    showWireframe = false; UI.btnWire.style.backgroundColor = 'transparent'; UI.btnWire.style.color = 'var(--cyan)';
 });
 
 window.addEventListener('resize', () => {
