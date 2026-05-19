@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>P3dK // Spatial Fusion</title>
+    <title>P3dK // Ghost-Sync Engine</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -12,14 +12,21 @@
         * { box-sizing: border-box; user-select: none; margin: 0; padding: 0; overflow: hidden; }
         body { background: var(--bg); color: var(--cyan); font-family: var(--font); touch-action: none; }
         
-        #video-feed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; opacity: 0.8; }
-        #glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; background: #000; display: none; }
+        #video-feed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; opacity: 1.0; }
+        #glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; background: transparent; }
+        #bg-black { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; background: #080808; display: none;}
 
-        /* AR Overlay aesthetic */
+        /* The Ghost Image Overlay for Visual SLAM Alignment */
+        #ghost-overlay {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover;
+            z-index: 3; opacity: 0; pointer-events: none; mix-blend-mode: screen; filter: sepia(100%) hue-rotate(150deg) saturate(300%);
+            transition: opacity 0.3s;
+        }
+
         .ar-grid {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 3;
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 4;
             background: linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
-            background-size: 40px 40px; pointer-events: none;
+            background-size: 50px 50px; pointer-events: none; clip-path: circle(35% at 50% 50%);
         }
 
         #ui-layer {
@@ -28,7 +35,7 @@
         }
 
         .panel {
-            background: rgba(0, 15, 15, 0.8); border: 1px solid var(--cyan); padding: 12px;
+            background: rgba(0, 15, 15, 0.85); border: 1px solid var(--cyan); padding: 12px;
             backdrop-filter: blur(8px); pointer-events: auto;
         }
 
@@ -40,42 +47,53 @@
             background: rgba(0, 40, 40, 0.8); color: var(--cyan); border: 1px solid var(--cyan);
             padding: 15px; font-family: var(--font); font-size: 14px; font-weight: bold;
             cursor: pointer; text-transform: uppercase; width: 100%; margin-top: 10px; transition: 0.1s;
+            pointer-events: auto;
         }
         .btn:active { background: var(--cyan); color: #000; }
         
-        #btn-sweep { 
-            height: 80px; font-size: 18px; border-width: 2px;
-            background: repeating-linear-gradient(45deg, rgba(0,255,255,0.1), rgba(0,255,255,0.1) 10px, transparent 10px, transparent 20px);
+        #btn-stitch { 
+            height: 80px; font-size: 20px; border-width: 2px; border-color: var(--cyan);
+            background: rgba(0, 255, 255, 0.1);
         }
-        #btn-sweep:active { background: var(--cyan); color: #000; }
+        #btn-stitch:active { background: var(--cyan); color: #000; }
 
         #controls-review { display: none; }
         .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         
-        /* Leveler UI for Gyro */
-        #leveler {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 100px; height: 1px; background: rgba(255,255,255,0.5); z-index: 5; pointer-events: none;
-        }
-        #leveler::after {
-            content: ''; position: absolute; left: 50%; top: -10px; width: 2px; height: 20px; background: var(--amber);
-        }
+        .slider-group { margin-top: 10px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px; color: #ccc;}
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin-bottom: 5px; pointer-events: auto; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--cyan); cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(0, 255, 255, 0.2); border-radius: 2px; }
 
+        #flash {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: #fff; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s;
+        }
+        
+        .crosshair {
+            position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%);
+            border: 2px solid var(--amber); border-radius: 50%; z-index: 5; pointer-events: none; opacity: 0.5;
+        }
     </style>
 </head>
 <body>
 
+    <div id="bg-black"></div>
     <video id="video-feed" autoplay playsinline muted></video>
+    <img id="ghost-overlay" src="" />
     <canvas id="glcanvas"></canvas>
-    <div class="ar-grid"></div>
-    <div id="leveler"></div>
+    
+    <div class="ar-grid" id="ar-grid"></div>
+    <div class="crosshair" id="crosshair"></div>
+    <div id="flash"></div>
 
     <div id="ui-layer">
         <header>
             <div class="panel">
                 <div class="sys-text">
-                    <div id="lbl-mode">MODE: IMU FUSION STANDBY</div>
-                    <div id="lbl-pts">POINTS CAPTURED: 0</div>
+                    <div id="lbl-mode">MODE: GHOST-SYNC STANDBY</div>
+                    <div id="lbl-pts" class="cyan">MAPPED FRAMES: 0</div>
                     <div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
                     <div id="lbl-err" class="sys-err"></div>
                 </div>
@@ -83,46 +101,75 @@
         </header>
 
         <footer>
-            <div id="controls-live">
-                <button class="btn" id="btn-init">1. INIT SENSORS & IMU</button>
-                <div id="sweep-container" style="display:none;">
-                    <div class="sys-text amber" style="text-align:center; margin-bottom:5px;">HOLD BUTTON & PAN SLOWLY</div>
-                    <button class="btn" id="btn-sweep">[ HOLD TO SWEEP SCAN ]</button>
-                    <button class="btn" id="btn-done" style="border-color: var(--amber); color: var(--amber);">FINISH & REVIEW</button>
+            <div id="controls-live" class="panel">
+                <button class="btn" id="btn-init">1. INIT SENSORS</button>
+                <div id="stitch-container" style="display:none;">
+                    <div class="sys-text amber" style="text-align:center; margin-bottom:5px;">ALIGN GHOST IMAGE & TAP TO STITCH</div>
+                    <button class="btn" id="btn-stitch">[ STITCH ALIGNED FRAME ]</button>
+                    <div class="btn-grid">
+                        <button class="btn" id="btn-toggle-ghost">HIDE GHOST</button>
+                        <button class="btn" id="btn-done" style="border-color: var(--amber); color: var(--amber);">REVIEW 3D</button>
+                    </div>
                 </div>
             </div>
             
             <div id="controls-review" class="panel">
-                <div class="sys-text amber" style="margin-bottom: 10px;">SPATIAL POINT CLOUD</div>
-                <div class="btn-grid">
-                    <button class="btn" id="btn-export" style="border-color: var(--cyan);">EXPORT .PLY</button>
-                    <button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD</button>
+                <div class="sys-text amber" style="margin-bottom: 10px;">SEAMLESS TOPOLOGY CALIBRATION</div>
+                
+                <div class="slider-group">
+                    <div class="slider-label"><span>EXTRUSION DEPTH</span> <span id="val-scale">1.0x</span></div>
+                    <!-- Default set much higher so it's not a flat 2D picture -->
+                    <input type="range" id="sl-scale" min="0.0" max="4.0" step="0.1" value="1.0">
                 </div>
+                
+                <div class="slider-group">
+                    <div class="slider-label"><span>SURFACE SMOOTHING</span> <span id="val-smooth">50%</span></div>
+                    <input type="range" id="sl-smooth" min="0" max="1" step="0.05" value="0.5">
+                </div>
+
+                <div class="btn-grid" style="margin-top: 10px;">
+                    <button class="btn" id="btn-wire">TOGGLE WIREFRAME</button>
+                    <button class="btn" id="btn-export" style="border-color: var(--amber); color: var(--amber);">EXPORT .OBJ</button>
+                </div>
+                <button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD DATA</button>
             </div>
         </footer>
     </div>
 
 <script>
 /**
- * P3dK // Spatial Fusion Engine (V9)
- * Multi-frame IMU-tracked Point Cloud Accumulator.
- * Uses DeviceOrientation to rotate depth data into a shared 3D world space.
+ * P3dK // Ghost-Sync Engine (V12)
+ * Features:
+ * 1. Ghost Image Overlay for manual human-driven visual SLAM.
+ * 2. Alpha-feathered edge blending to eliminate the "deck of cards" hard edges.
+ * 3. Transparent sorting fixes for overlapping 3D geometry.
  */
 
 const UI = {
     video: document.getElementById('video-feed'),
+    ghost: document.getElementById('ghost-overlay'),
     canvas: document.getElementById('glcanvas'),
+    bgBlack: document.getElementById('bg-black'),
+    arGrid: document.getElementById('ar-grid'),
+    crosshair: document.getElementById('crosshair'),
     lblMode: document.getElementById('lbl-mode'),
     lblPts: document.getElementById('lbl-pts'),
     lblImu: document.getElementById('lbl-imu'),
     lblErr: document.getElementById('lbl-err'),
     controlsLive: document.getElementById('controls-live'),
-    sweepContainer: document.getElementById('sweep-container'),
+    stitchContainer: document.getElementById('stitch-container'),
     controlsReview: document.getElementById('controls-review'),
     btnInit: document.getElementById('btn-init'),
-    btnSweep: document.getElementById('btn-sweep'),
+    btnStitch: document.getElementById('btn-stitch'),
     btnDone: document.getElementById('btn-done'),
-    leveler: document.getElementById('leveler')
+    btnToggleGhost: document.getElementById('btn-toggle-ghost'),
+    flash: document.getElementById('flash'),
+    
+    slScale: document.getElementById('sl-scale'),
+    slSmooth: document.getElementById('sl-smooth'),
+    valScale: document.getElementById('val-scale'),
+    valSmooth: document.getElementById('val-smooth'),
+    btnWire: document.getElementById('btn-wire')
 };
 
 function logError(msg) {
@@ -132,278 +179,306 @@ function logError(msg) {
 
 // --- THREE.JS SCENE SETUP ---
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 0, 0); // Camera starts at origin for AR
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 0); 
 
-const renderer = new THREE.WebGLRenderer({ canvas: UI.canvas, antialias: false });
+const renderer = new THREE.WebGLRenderer({ canvas: UI.canvas, antialias: true, alpha: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-// We will use a custom target for the OrbitControls later
 const controls = new THREE.OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
-controls.enabled = false; // Disabled during live scan
+controls.enabled = false;
 
-// --- SPATIAL FUSION STATE ---
-let isSweeping = false;
-let pointCloudData = []; // Array to hold raw vertices {x, y, z, r, g, b}
-let finalPointsMesh = null;
+scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.6);
+dirLight.position.set(0, 5, 5);
+scene.add(dirLight);
 
-// Processing Canvas (Keep resolution moderate to allow 20fps sweeping)
-const scanRes = 100; 
+const meshGroup = new THREE.Group();
+scene.add(meshGroup);
+
+let capturedFrames = []; 
+let showWireframe = false;
+let isGhostVisible = true;
+
+const RES = 128; // High resolution
+const RADIUS = 3.0; // Distance mesh spawns from camera
 const procCanvas = document.createElement('canvas');
-procCanvas.width = scanRes;
-procCanvas.height = scanRes;
+procCanvas.width = RES;
+procCanvas.height = RES;
 const ctx = procCanvas.getContext('2d', { willReadFrequently: true });
 
-// --- IMU (GYROSCOPE) TRACKING ---
-const currentQuat = new THREE.Quaternion();
-const initialQuatInv = new THREE.Quaternion(); // Used to "Zero" the rotation on start
-let hasZeroedIMU = false;
+// --- IMU MATH ---
+const deviceQuat = new THREE.Quaternion();
 
 function setupIMU() {
     window.addEventListener('deviceorientation', (event) => {
-        if (!event.alpha) return;
+        if (!event.alpha && !event.beta && !event.gamma) return;
+        UI.lblImu.innerText = "GYRO: SYNCED"; UI.lblImu.className = "cyan";
         
-        UI.lblImu.innerText = "GYRO: LOCKED & TRACKING";
-        UI.lblImu.className = "cyan";
-        
-        // Convert Euler angles to Quaternion
-        const alpha = THREE.MathUtils.degToRad(event.alpha);
-        const beta = THREE.MathUtils.degToRad(event.beta);
-        const gamma = THREE.MathUtils.degToRad(event.gamma);
+        const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+        const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+        const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
+        const orient = window.orientation ? THREE.MathUtils.degToRad(window.orientation) : 0;
+
         const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+        deviceQuat.setFromEuler(euler);
         
-        const rawQuat = new THREE.Quaternion().setFromEuler(euler);
+        const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5)); 
+        deviceQuat.multiply(q1);
         
-        if (!hasZeroedIMU) {
-            // Store the inverse of the first frame to "Zero" our coordinate system
-            initialQuatInv.copy(rawQuat).invert();
-            hasZeroedIMU = true;
-        }
-        
-        // Multiply raw orientation by our zeroing offset
-        currentQuat.multiplyQuaternions(initialQuatInv, rawQuat);
-        
-        // Visual feedback for the UI Leveler
-        UI.leveler.style.transform = `translate(-50%, -50%) rotate(${event.gamma}deg)`;
+        const q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -orient);
+        deviceQuat.multiply(q0);
     });
 }
 
-// --- CORE ACCUMULATION LOGIC ---
-const tempVec = new THREE.Vector3();
-let lastCaptureTime = 0;
+// --- GHOST-SYNC STITCHING LOGIC ---
+function stitchFrame() {
+    UI.flash.style.opacity = 0.8;
+    setTimeout(() => UI.flash.style.opacity = 0, 150);
+    if(navigator.vibrate) navigator.vibrate([50, 50]);
 
-function captureSweepFrame() {
-    const now = performance.now();
-    if (now - lastCaptureTime < 100) return; // Cap at ~10 FPS to prevent memory overload
-    lastCaptureTime = now;
+    // Update Ghost Overlay for the human to align the next shot
+    // We capture the full video bounds to make the ghost overlay match the screen
+    const fullCanvas = document.createElement('canvas');
+    fullCanvas.width = UI.video.videoWidth;
+    fullCanvas.height = UI.video.videoHeight;
+    fullCanvas.getContext('2d').drawImage(UI.video, 0, 0);
+    UI.ghost.src = fullCanvas.toDataURL('image/jpeg');
+    if (isGhostVisible) UI.ghost.style.opacity = 0.35;
 
-    // Draw video to processing canvas
+    // 1. Process Square Image Data for the 3D Mesh
     const minDim = Math.min(UI.video.videoWidth, UI.video.videoHeight);
     const sx = (UI.video.videoWidth - minDim) / 2;
     const sy = (UI.video.videoHeight - minDim) / 2;
-    ctx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, scanRes, scanRes);
-    const data = ctx.getImageData(0, 0, scanRes, scanRes).data;
+    ctx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, RES, RES);
+    
+    const imgData = ctx.getImageData(0, 0, RES, RES);
+    const data = imgData.data;
 
-    const fovScale = 2.0; // Spreads the points out to match camera FOV
+    // 2. Build Buffers & ALPHA EDGE-FADE (Solves the Deck of Cards problem)
+    const rawMap = new Float32Array(RES * RES);
+    const smmMap = new Float32Array(RES * RES);
+    
+    const center = RES / 2;
+    const maxRadius = RES / 2;
 
-    // Iterate pixels
-    for (let y = 0; y < scanRes; y += 2) { // Skip pixels for performance
-        for (let x = 0; x < scanRes; x += 2) {
-            const i = (y * scanRes + x) * 4;
-            const r = data[i];
-            const g = data[i+1];
-            const b = data[i+2];
+    for (let y = 0; y < RES; y++) {
+        for (let x = 0; x < RES; x++) {
+            const i = (y * RES + x) * 4;
+            rawMap[y * RES + x] = (data[i]*0.299 + data[i+1]*0.587 + data[i+2]*0.114) / 255.0;
 
-            // Filter out pure black noise
-            if (r < 10 && g < 10 && b < 10) continue; 
-
-            // Depth from luminance
-            const lum = (r*0.299 + g*0.587 + b*0.114) / 255.0;
-            const zDepth = -(lum * 2.0 + 1.0); // Push object 1-3 meters away
-
-            // 1. Plot in 3D Camera Space
-            tempVec.set(
-                ((x / scanRes) - 0.5) * fovScale * Math.abs(zDepth),
-                -((y / scanRes) - 0.5) * fovScale * Math.abs(zDepth),
-                zDepth
-            );
-
-            // 2. Rotate into World Space using IMU! (The Magic Step)
-            tempVec.applyQuaternion(currentQuat);
-
-            // Save point
-            pointCloudData.push({
-                x: tempVec.x, y: tempVec.y, z: tempVec.z,
-                r: r, g: g, b: b
-            });
+            // EDGE FADING LOGIC
+            // Calculate pixel distance from the center of the square
+            const dist = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
+            
+            // If near the edge, fade the Alpha channel (data[i+3]) to 0
+            // This makes the square mesh a soft, blurry circle
+            let alpha = 255;
+            if (dist > maxRadius * 0.6) {
+                // Smoothly interpolate from 255 to 0
+                alpha = 255 * (1.0 - (dist - maxRadius * 0.6) / (maxRadius * 0.4));
+                alpha = Math.max(0, Math.min(255, alpha));
+            }
+            data[i+3] = alpha; 
         }
     }
 
-    UI.lblPts.innerText = `POINTS CAPTURED: ${pointCloudData.length.toLocaleString()}`;
-    if(navigator.vibrate) navigator.vibrate([15]); // Geiger-counter feel
-}
-
-// --- BUILD 3D POINT CLOUD FOR REVIEW ---
-function buildReviewScene() {
-    isSweeping = false;
-    UI.lblMode.innerText = "MODE: SPATIAL REVIEW";
-    
-    // Convert JS Array to Three.js BufferGeometry
-    const geometry = new THREE.BufferGeometry();
-    const positions = new Float32Array(pointCloudData.length * 3);
-    const colors = new Float32Array(pointCloudData.length * 3);
-
-    for (let i = 0; i < pointCloudData.length; i++) {
-        const pt = pointCloudData[i];
-        positions[i*3] = pt.x;
-        positions[i*3+1] = pt.y;
-        positions[i*3+2] = pt.z;
-        
-        colors[i*3] = pt.r / 255.0;
-        colors[i*3+1] = pt.g / 255.0;
-        colors[i*3+2] = pt.b / 255.0;
+    // Box Blur for Smooth Slider
+    const k = 1; 
+    for (let y = 0; y < RES; y++) {
+        for (let x = 0; x < RES; x++) {
+            let sum = 0, count = 0;
+            for (let ky = -k; ky <= k; ky++) {
+                for (let kx = -k; kx <= k; kx++) {
+                    if (y+ky>=0 && y+ky<RES && x+kx>=0 && x+kx<RES) {
+                        sum += rawMap[(y+ky)*RES + (x+kx)]; count++;
+                    }
+                }
+            }
+            smmMap[y * RES + x] = sum / count;
+        }
     }
 
-    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-
-    const material = new THREE.PointsMaterial({ size: 0.03, vertexColors: true, transparent: true, opacity: 0.9 });
+    // 3. Build Mesh
+    const geo = new THREE.PlaneGeometry(2.5, 2.5, RES - 1, RES - 1);
     
-    if (finalPointsMesh) scene.remove(finalPointsMesh);
-    finalPointsMesh = new THREE.Points(geometry, material);
-    scene.add(finalPointsMesh);
+    const texCanvas = document.createElement('canvas');
+    texCanvas.width = RES; texCanvas.height = RES;
+    // We must put the image data with the new faded alpha channels!
+    texCanvas.getContext('2d').putImageData(imgData, 0, 0);
+    
+    // CRITICAL FIX: transparent: true, depthWrite: false allows meshes to overlap seamlessly
+    const baseMat = new THREE.MeshStandardMaterial({ 
+        map: new THREE.CanvasTexture(texCanvas), 
+        roughness: 0.9, 
+        transparent: true, 
+        depthWrite: false, // Prevents Z-fighting
+        side: THREE.DoubleSide
+    });
 
-    // Setup Camera to orbit around the cloud
-    camera.position.set(0, 0, 1);
-    controls.target.set(0, 0, -2); // Look at where the points spawned
+    const mesh = new THREE.Mesh(geo, baseMat);
+    
+    const wireMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.1 });
+    const wireMesh = new THREE.Mesh(geo, wireMat);
+    wireMesh.visible = showWireframe;
+    mesh.add(wireMesh);
+
+    // 4. SPATIAL FUSION
+    const pivot = new THREE.Group();
+    pivot.quaternion.copy(camera.quaternion); 
+    
+    mesh.position.set(0, 0, -RADIUS);
+    pivot.add(mesh);
+    meshGroup.add(pivot);
+
+    capturedFrames.push({ geo: geo, rawMap: rawMap, smmMap: smmMap, wireMesh: wireMesh });
+    
+    UI.lblPts.innerText = `MAPPED FRAMES: ${capturedFrames.length}`;
+    updateCalibration(); 
+}
+
+function updateCalibration() {
+    const scale = parseFloat(UI.slScale.value);
+    const smooth = parseFloat(UI.slSmooth.value);
+
+    capturedFrames.forEach(frame => {
+        const vertices = frame.geo.attributes.position.array;
+        
+        for (let i = 0; i < frame.rawMap.length; i++) {
+            const depth = frame.rawMap[i] * (1 - smooth) + frame.smmMap[i] * smooth;
+            // Extrude vertices
+            vertices[i * 3 + 2] = depth * scale;
+        }
+        
+        frame.geo.attributes.position.needsUpdate = true;
+        frame.geo.computeVertexNormals();
+    });
+}
+
+// Sliders
+UI.slScale.addEventListener('input', () => { UI.valScale.innerText = parseFloat(UI.slScale.value).toFixed(1) + 'x'; updateCalibration(); });
+UI.slSmooth.addEventListener('input', () => { UI.valSmooth.innerText = Math.round(parseFloat(UI.slSmooth.value) * 100) + '%'; updateCalibration(); });
+UI.btnWire.addEventListener('click', () => {
+    showWireframe = !showWireframe;
+    capturedFrames.forEach(f => f.wireMesh.visible = showWireframe);
+    UI.btnWire.style.borderColor = showWireframe ? 'var(--cyan)' : '#555';
+    UI.btnWire.style.color = showWireframe ? 'var(--cyan)' : '#aaa';
+});
+
+UI.btnToggleGhost.addEventListener('click', () => {
+    isGhostVisible = !isGhostVisible;
+    UI.ghost.style.opacity = isGhostVisible ? 0.35 : 0.0;
+    UI.btnToggleGhost.innerText = isGhostVisible ? 'HIDE GHOST' : 'SHOW GHOST';
+});
+
+// --- SCENE MANAGEMENT ---
+function buildReviewScene() {
+    UI.lblMode.innerText = "MODE: 3D REVIEW";
+    
+    camera.position.set(0, 0, RADIUS * 0.2);
+    controls.target.set(0, 0, -RADIUS); 
     controls.enabled = true;
 
-    // UI Updates
     UI.video.style.display = 'none';
-    UI.leveler.style.display = 'none';
-    UI.canvas.style.display = 'block';
+    UI.ghost.style.display = 'none';
+    UI.bgBlack.style.display = 'block';
+    UI.arGrid.style.display = 'none';
+    UI.crosshair.style.display = 'none';
     UI.controlsLive.style.display = 'none';
     UI.controlsReview.style.display = 'block';
 }
 
+function exportFusedOBJ() {
+    if (capturedFrames.length === 0) return;
+    UI.lblPts.innerText = "CALCULATING MATRICES...";
+    let obj = "# P3dK Nodal Stitch Export\n";
+    let vOffset = 0; let vtOffset = 0;
+    const tempVec = new THREE.Vector3();
 
-// --- .PLY POINT CLOUD EXPORT ---
-// PLY is the industry standard for colored point clouds
-function exportPLY() {
-    if (pointCloudData.length === 0) return;
-    
-    UI.lblPts.innerText = "WRITING .PLY FILE...";
+    capturedFrames.forEach((frame, index) => {
+        const mesh = frame.wireMesh.parent; 
+        mesh.updateMatrixWorld(true);
+        
+        const pos = frame.geo.attributes.position.array;
+        const uvs = frame.geo.attributes.uv.array;
+        const idx = frame.geo.index.array;
+        
+        obj += `o StitchedFrame_${index}\n`;
 
-    let ply = `ply
-format ascii 1.0
-element vertex ${pointCloudData.length}
-property float x
-property float y
-property float z
-property uchar red
-property uchar green
-property uchar blue
-end_header\n`;
+        for (let i = 0; i < pos.length; i += 3) {
+            tempVec.set(pos[i], pos[i+1], pos[i+2]).applyMatrix4(mesh.matrixWorld);
+            obj += `v ${tempVec.x.toFixed(4)} ${tempVec.y.toFixed(4)} ${tempVec.z.toFixed(4)}\n`;
+        }
+        for (let i = 0; i < uvs.length; i += 2) obj += `vt ${uvs[i].toFixed(4)} ${uvs[i+1].toFixed(4)}\n`;
+        for (let i = 0; i < idx.length; i += 3) {
+            const a = idx[i] + 1 + vOffset, b = idx[i+1] + 1 + vOffset, c = idx[i+2] + 1 + vOffset;
+            const uvA = idx[i] + 1 + vtOffset, uvB = idx[i+1] + 1 + vtOffset, uvC = idx[i+2] + 1 + vtOffset;
+            obj += `f ${a}/${uvA} ${b}/${uvB} ${c}/${uvC}\n`;
+        }
+        
+        vOffset += (pos.length / 3); vtOffset += (uvs.length / 2);
+    });
 
-    // Append all points
-    for (let i = 0; i < pointCloudData.length; i++) {
-        const pt = pointCloudData[i];
-        ply += `${pt.x.toFixed(4)} ${pt.y.toFixed(4)} ${pt.z.toFixed(4)} ${pt.r} ${pt.g} ${pt.b}\n`;
-    }
-
-    const blob = new Blob([ply], { type: 'text/plain' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'p3dk_spatial_fusion.ply';
-    link.click();
-    
+    const blob = new Blob([obj], { type: 'text/plain' });
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'p3dk_nodal_scan.obj'; link.click();
     UI.lblPts.innerText = "EXPORT COMPLETE.";
 }
 
 // --- RENDER LOOP ---
 function animate() {
     requestAnimationFrame(animate);
-    
-    if (isSweeping) {
-        captureSweepFrame();
-    }
-    
+    if (!controls.enabled && deviceQuat.length() > 0) camera.quaternion.copy(deviceQuat);
     if (controls.enabled) controls.update();
     renderer.render(scene, camera);
 }
 animate();
 
-// --- EVENT BINDINGS ---
+// --- BINDINGS ---
 UI.btnInit.addEventListener('click', async () => {
     try {
         UI.lblErr.innerText = "INITIALIZING SENSORS...";
-        
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error("Camera API denied. Ensure HTTPS is active and permissions are granted.");
-        }
+        if (!navigator.mediaDevices) throw new Error("Camera API denied. Use HTTPS.");
 
-        // Request Camera
-        const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: "environment", width: { ideal: 640 } }
-        });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 640 } } });
         UI.video.srcObject = stream;
         await UI.video.play();
         
-        // Request iOS Gyro Permission if necessary
         if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            const permission = await DeviceOrientationEvent.requestPermission();
-            if (permission !== 'granted') throw new Error("Gyro permission denied.");
-        } else if (typeof window.DeviceOrientationEvent === 'undefined') {
-            logError("WARNING: Gyroscope API not detected on this device.");
+            const perm = await DeviceOrientationEvent.requestPermission();
+            if (perm !== 'granted') throw new Error("Gyro permission denied.");
         }
-        
         setupIMU();
         
         UI.btnInit.style.display = 'none';
-        UI.sweepContainer.style.display = 'block';
-        UI.lblMode.innerText = "MODE: IMU READY. ZEROED.";
-        UI.lblErr.innerText = ""; // Clear errors
-    } catch (e) {
-        logError(e.message || "Hardware initialization failed.");
-    }
+        UI.stitchContainer.style.display = 'block';
+        UI.lblMode.innerText = "MODE: GHOST-SYNC CAPTURE";
+        UI.lblErr.innerText = ""; 
+    } catch (e) { logError(e.message || "Hardware initialization failed."); }
 });
 
-// Sweeping mechanics (Touch/Mouse down to scan)
-UI.btnSweep.addEventListener('pointerdown', (e) => {
-    isSweeping = true;
-    UI.btnSweep.style.background = "var(--cyan)";
-    UI.btnSweep.style.color = "#000";
-    e.target.setPointerCapture(e.pointerId);
-});
-
-UI.btnSweep.addEventListener('pointerup', (e) => {
-    isSweeping = false;
-    UI.btnSweep.style.background = "";
-    UI.btnSweep.style.color = "var(--cyan)";
-    e.target.releasePointerCapture(e.pointerId);
-});
-
+UI.btnStitch.addEventListener('click', stitchFrame);
 UI.btnDone.addEventListener('click', buildReviewScene);
-document.getElementById('btn-export').addEventListener('click', exportPLY);
+document.getElementById('btn-export').addEventListener('click', exportFusedOBJ);
 
 document.getElementById('btn-discard').addEventListener('click', () => {
-    pointCloudData = [];
-    if (finalPointsMesh) { scene.remove(finalPointsMesh); finalPointsMesh = null; }
-    
+    capturedFrames.length = 0;
+    while(meshGroup.children.length > 0) meshGroup.remove(meshGroup.children[0]); 
     controls.enabled = false;
     camera.position.set(0,0,0);
-    camera.quaternion.identity();
-    
-    hasZeroedIMU = false; // Will re-zero on next sweep
     
     UI.video.style.display = 'block';
-    UI.canvas.style.display = 'none';
-    UI.leveler.style.display = 'block';
+    UI.ghost.style.display = 'block';
+    UI.ghost.style.opacity = 0;
+    UI.bgBlack.style.display = 'none';
+    UI.canvas.style.display = 'block';
+    UI.arGrid.style.display = 'block';
+    UI.crosshair.style.display = 'block';
     UI.controlsLive.style.display = 'block';
     UI.controlsReview.style.display = 'none';
-    UI.lblPts.innerText = "POINTS CAPTURED: 0";
-    UI.lblMode.innerText = "MODE: IMU FUSION STANDBY";
+    UI.lblPts.innerText = "MAPPED FRAMES: 0";
+    UI.lblMode.innerText = "MODE: GHOST-SYNC CAPTURE";
+    isGhostVisible = true; UI.btnToggleGhost.innerText = "HIDE GHOST";
 });
 
 window.addEventListener('resize', () => {
@@ -415,6 +490,5 @@ window.addEventListener('resize', () => {
 </script>
 </body>
 </html>
-
 
 ```
