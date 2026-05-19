@@ -53,13 +53,13 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
   font-size:18px;font-weight:bold;color:var(--lcars-teal);
   letter-spacing:1px;margin-bottom:4px;min-height:22px;
 }
-#prg{font-size:14px;color:var(--lcars-gold);min-height:18px;letter-spacing:1px}
+#prg{font-size:15px;color:var(--lcars-gold);min-height:20px;letter-spacing:1px;font-weight:bold}
 #dim-row{display:flex;gap:16px;margin-top:4px;flex-wrap:wrap}
 .dim-chip{
   background:rgba(0,153,255,.15);border:1px solid rgba(0,153,255,.4);
   padding:3px 8px;font-size:13px;color:var(--lcars-blue);font-weight:bold;
 }
-#dst{font-size:14px;margin-top:4px;min-height:18px;font-weight:bold}
+#dst{font-size:15px;margin-top:4px;min-height:20px;font-weight:bold;letter-spacing:.5px}
 
 /* ── PROGRESS BAR ──────────────────────────────────────────────── */
 #pbar-wrap{
@@ -71,8 +71,8 @@ html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);font-famil
 
 /* ── WORKER PROGRESS ──────────────────────────────────────────────── */
 #wkr{
-  font-size:12px;color:var(--lcars-purple);margin-top:5px;
-  min-height:16px;letter-spacing:1px;
+  font-size:15px;color:var(--lcars-purple);margin-top:6px;
+  min-height:20px;letter-spacing:1px;font-weight:bold;
 }
 
 /* ── SCAN RING ────────────────────────────────────────────────────── */
@@ -363,7 +363,10 @@ self.onmessage=function(e){
 
 // ── STATE ────────────────────────────────────────────────────────────────────
 let xrS=null,xrR=null,gl=null,worker=null;
-let fc=0,pc=0,lt=0,busy=false,adapted=false,bakeQueued=false;
+let fc=0,pc=0,lt=0,integBusy=false,prevBusy=false,adapted=false,bakeQueued=false;
+// integBusy: TSDF integration in flight (200ms typically)
+// prevBusy: wireframe preview in flight (can take 500ms+)
+// BAKE: clears prevBusy, waits for integBusy only
 let bs=0,bl={x:0,y:0,z:0};
 let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
 let aPts=[];
@@ -426,31 +429,33 @@ function mkWorker(){
   worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
   worker.onmessage=ev=>{
     const{type}=ev.data;
-    // Clear busy on all responses
-    busy=(type==='progress'); // stay busy during final bake progress
     if(type==='ready'){
+      integBusy=false;prevBusy=false;
       sts('SCANNING...');
-      wkr(`TSDF: ${ev.data.dims[0]}×${ev.data.dims[1]}×${ev.data.dims[2]} voxels`);
+      wkr('TSDF READY');
     }
-    else if(type==='done'){/* integration ack — busy cleared above */}
+    else if(type==='done'){
+      integBusy=false; // integration complete
+    }
     else if(type==='progress'){
-      wkr(`MCB: ${(ev.data.tris/1000).toFixed(0)}k triangles...`);
+      // bake in progress — keep bakeQueued=true, update display only
+      wkr('MCB: '+(ev.data.tris/1000).toFixed(0)+'k triangles...');
     }
     else if(type==='wire'){
+      prevBusy=false;
       if(ev.data.verts&&ev.data.verts.length>0){
         gl.bindBuffer(gl.ARRAY_BUFFER,wireBuf);
         gl.bufferData(gl.ARRAY_BUFFER,ev.data.verts,gl.DYNAMIC_DRAW);
         wireCnt=ev.data.verts.length/3|0;
-        wkr(`PREVIEW: ${(wireCnt/3)|0} tris`);
+        wkr('PREVIEW: '+(wireCnt/3|0)+' tris');
       }
-      busy=false;
     }
     else if(type==='mesh'){
-      busy=false;bakeQueued=false;
+      integBusy=false;prevBusy=false;bakeQueued=false;
       const v=ev.data.verts;
       if(!v||v.length<9){
-        sts('NO SURFACE — scan closer / more frames');
-        wkr('Try increasing frames or reducing voxel size');
+        sts('NO SURFACE — scan closer, more frames');
+        wkr('try ISO=-3 or reduce voxel size');
         $('bBake').disabled=false;return;
       }
       sts('SMOOTHING...');wkr((v.length/9|0).toLocaleString()+' triangles');
@@ -464,7 +469,7 @@ function mkWorker(){
 }
 
 function initGrid(vSz,bb,dims){
-  busy=true;
+  integBusy=true;
   worker.postMessage({type:'init',data:{nx:dims[0],ny:dims[1],nz:dims[2],sz:vSz,bb}});
 }
 
@@ -484,7 +489,7 @@ window.addEventListener('load',async()=>{
 // ── START ─────────────────────────────────────────────────────────────────────
 $('bStart').onclick=async()=>{
   if(xrS){try{await xrS.end()}catch(e){};xrS=null;await new Promise(r=>setTimeout(r,400))}
-  fc=0;pc=0;lt=0;adapted=false;bs=0;bl={x:0,y:0,z:0};wireCnt=0;aPts=[];
+  fc=0;pc=0;lt=0;integBusy=false;prevBusy=false;bakeQueued=false;adapted=false;bs=0;bl={x:0,y:0,z:0};wireCnt=0;aPts=[];
   bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
   $('pbar').style.width='0%';updateDims();$('dPts').textContent='PTS: 0';
   const vSz=+$('sVox').value;
@@ -599,15 +604,20 @@ function onF(t,frame){
       if(wy*1000<bbox.minY)bbox.minY=wy*1000;if(wy*1000>bbox.maxY)bbox.maxY=wy*1000;
       if(wz*1000<bbox.minZ)bbox.minZ=wz*1000;if(wz*1000>bbox.maxZ)bbox.maxZ=wz*1000;
     }
-    if(pts.length&&!busy){
-      busy=true;
-      worker.postMessage({type:'integrate',data:{pts:new Float32Array(pts)}});
+    if(pts.length){
+      // Always count pts and accumulate for display — never skip
       pc+=pts.length/3|0;
       if(aPts.length<300000)aPts.push(...pts);
       if(nd<Infinity){
         const ok=nd>=0.15&&nd<=0.6;
-        $('dst').textContent=(nd<0.12?'⚠ TOO CLOSE — back away':nd>0.6?'⚠ MOVE CLOSER TO OBJECT':'◎ OPTIMAL RANGE')+'  '+(nd*100).toFixed(0)+'cm';
+        $('dst').textContent=(nd<0.12?'⚠ TOO CLOSE':nd>0.6?'⚠ MOVE CLOSER':'◎ RANGE OK')+'  '+(nd*100).toFixed(0)+'cm';
         $('dst').style.color=ok?'var(--lcars-green)':'var(--lcars-gold)';
+      }
+      // Only send to worker if not busy integrating (preview can run in parallel conceptually
+      // but worker is single-threaded — skip frame if integration in flight)
+      if(!integBusy&&!bakeQueued){
+        integBusy=true;
+        worker.postMessage({type:'integrate',data:{pts:new Float32Array(pts)}});
       }
     }
   }
@@ -620,7 +630,6 @@ function onF(t,frame){
   const tgt=+$('sFr').value;
   $('pbar').style.width=Math.min(100,fc/tgt*100)+'%';
 
-  // Adapt TSDF to real bbox after frame 5 — only if points actually captured
   if(fc===5&&bboxValid()&&!adapted&&pc>30){
     adapted=true;
     const vSz=+$('sVox').value,pad=vSz*10;
@@ -629,12 +638,12 @@ function onF(t,frame){
     const nvy=Math.min(120,Math.max(24,Math.ceil((dy+pad*2)/vSz)));
     const nvz=Math.min(120,Math.max(24,Math.ceil((dz+pad*2)/vSz)));
     initGrid(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nvx,nvy,nvz]);
-    wkr('GRID ADAPTED: '+nvx+'×'+nvy+'×'+nvz+' voxels');
+    wkr('GRID: '+nvx+'×'+nvy+'×'+nvz);
   }
 
-  // Progressive wireframe every 25 frames
-  if($('sWr').checked&&fc>5&&fc%25===0&&!busy){
-    busy=true;
+  // Progressive wireframe every 25 frames — only if no preview already running
+  if($('sWr').checked&&fc>5&&fc%25===0&&!prevBusy&&!bakeQueued){
+    prevBusy=true;
     worker.postMessage({type:'preview',data:{iso:+$('sIso').value}});
   }
 
@@ -657,16 +666,19 @@ $('bStop').onclick=()=>{stopS();sts('SCAN STOPPED')};
 
 $('bBake').onclick=()=>{
   if(!worker||fc<3){sts('NOT ENOUGH DATA — scan again');return}
-  if(busy){
-    // Don't spin-loop. Show message and let user tap again.
-    wkr('WORKER BUSY — tap BAKE again in 1s');
-    setTimeout(()=>{if(!busy&&$('bBake')&&!$('bBake').disabled){wkr('ready to bake')}},1000);
+  if(bakeQueued){wkr('BAKE IN PROGRESS...');return}
+  // If integration is in flight, wait briefly then auto-retry once
+  if(integBusy){
+    wkr('FINISHING LAST FRAME...');
+    setTimeout(()=>{if(!integBusy&&!bakeQueued)$('bBake').click()},600);
     return;
   }
+  // Cancel any pending preview (it's in the worker queue — just ignore its result)
+  prevBusy=false; // we don't care about preview result anymore
   $('ring').classList.remove('on');
   sts('MARCHING CUBES...');$('prg').textContent='';wkr('building mesh...');
   $('bBake').disabled=true;
-  busy=true;bakeQueued=true;
+  bakeQueued=true;integBusy=true;
   worker.postMessage({type:'march',data:{iso:+$('sIso').value,minW:3}});
 };
 
