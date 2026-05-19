@@ -208,8 +208,8 @@ body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
     </div>
     <div class=lrow style="margin-bottom:0">
       <div class=ll rnd style="background:var(--blue)">CFG</div>
-      <button class=btn style="color:var(--blue);border:2px solid var(--blue)"
-        onclick="document.getElementById('sets').classList.toggle('open')">CONFIG</button>
+      <button class=btn id=bCfg style="color:var(--blue);border:2px solid var(--blue)"
+        onclick="window.togCfg()">CONFIG</button>
       <div class=le style="background:var(--blue);border-radius:0 18px 18px 0"></div>
     </div>
   </div>
@@ -503,14 +503,24 @@ $('bStart').onclick=async()=>{
   const vSz=+$('sVox').value;
   const range=120*vSz;
   mkWorker(vSz,{x:-range/2,y:-range/2,z:0},[120,120,120]);
+  // Stop any existing camera stream first
+  const vid=$('vid');
+  if(vid.srcObject){
+    vid.srcObject.getTracks().forEach(t=>t.stop());
+    vid.srcObject=null;
+    await new Promise(r=>setTimeout(r,200));
+  }
   // Start camera
   try{
     const stream=await navigator.mediaDevices.getUserMedia({
       video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
     });
-    $('vid').srcObject=stream;
-    await $('vid').play();
-  }catch(err){sts('CAMERA FAILED: '+err.message.slice(0,40));return}
+    vid.srcObject=stream;
+    await new Promise((res,rej)=>{
+      vid.onloadedmetadata=()=>vid.play().then(res).catch(rej);
+      vid.onerror=rej;
+    });
+  }catch(err){sts('CAMERA FAILED: '+err.message.slice(0,50));return}
   running=true;
   $('bStart').disabled=true;$('bStop').disabled=false;$('bBake').disabled=true;
   $('reticle').classList.add('on');
@@ -593,27 +603,28 @@ async function inferAndIntegrate(){
     if(integBusy||bakeQ)return; // skip integration if worker busy
 
     // ── Convert depth map to 3D point cloud ─────────────────────────────────
-    // We use a simple pinhole model with estimated FOV ~60 degrees
-    // The depth values are RELATIVE (not metric) — we scale by DEPTH SCALE setting
-    // This gives approximate real-world size but requires calibration for precision
-    const depthScale=+$('sScale').value; // default 200mm
+    // DA2 normalized depth: 1=near, 0=far
+    // depthScale maps the full 0-1 range to millimeters
+    const depthScale=+$('sScale').value;
     const fovRad=60*Math.PI/180;
     const fx=dW/(2*Math.tan(fovRad/2));
     const fy=dH/(2*Math.tan(fovRad/2));
     const cx2=dW/2,cy2=dH/2;
     const pts=[];
-    let nd=Infinity;
-    const step=Math.max(2,Math.floor(dW/40)); // ~40 columns of points
+    let nd=Infinity,validCount=0,totalSampled=0;
+    const step=Math.max(2,Math.floor(dW/40));
     for(let v=0;v<dH;v+=step)for(let u=0;u<dW;u+=step){
+      totalSampled++;
       const rawD=dData[v*dW+u];
-      if(!isFinite(rawD)||rawD<0.05)continue; // skip very far/invalid
-      // DA2: 1=near, 0=far — invert to get distance
-      const d=(1-rawD)*depthScale; // convert to mm
-      if(d<20||d>depthScale*0.95)continue;
+      if(!isFinite(rawD))continue;
+      // rawD: 1=near 0=far — convert to distance in mm
+      // Use rawD directly as depth proportion, scale to range
+      const d=rawD*depthScale; // 1=near → full depthScale mm
+      if(d<5)continue; // skip essentially-zero depth (far background)
+      validCount++;
       if(d<nd)nd=d;
-      // Back-project to 3D
       const X=(u-cx2)/fx*d;
-      const Y=-(v-cy2)/fy*d; // flip Y for standard coords
+      const Y=-(v-cy2)/fy*d;
       const Z=d;
       if(!isFinite(X)||!isFinite(Y)||!isFinite(Z))continue;
       pts.push(X,Y,Z);
@@ -621,28 +632,32 @@ async function inferAndIntegrate(){
       if(Y<bbox.minY)bbox.minY=Y;if(Y>bbox.maxY)bbox.maxY=Y;
       if(Z<bbox.minZ)bbox.minZ=Z;if(Z>bbox.maxZ)bbox.maxZ=Z;
     }
-    if(!pts.length)return;
+    // Debug: show inference diagnostics so we can see what's happening
+    wkr(`DEPTH ${dW}×${dH} · ${validCount}/${totalSampled} valid · fc:${fc}`);
+    if(!pts.length){
+      prg('No pts from depth — check DEPTH SCALE setting');return;
+    }
     pc+=pts.length/3|0;
     fc++;
     // Distance guide
     if(nd<Infinity){
-      const ok=nd>=40&&nd<=400;
-      $('dst').textContent=(nd<30?'⚠ TOO CLOSE':nd>400?'⚠ MOVE CLOSER':'◎ RANGE OK')+'  '+(nd).toFixed(0)+'mm';
+      const ok=nd>=30&&nd<=depthScale*.8;
+      $('dst').textContent=(nd<20?'⚠ TOO CLOSE':nd>depthScale*.8?'⚠ MOVE CLOSER':'◎ RANGE OK')+'  '+nd.toFixed(0)+'mm';
       $('dst').style.color=ok?'var(--green)':'var(--gold)';
     }
-    // Send to TSDF
+    // Always send to TSDF (non-blocking)
     integBusy=true;
     worker.postMessage({type:'integrate',data:{pts:new Float32Array(pts)}});
-    // Update HUD chips
+    // Update HUD — always visible
     const bboxOk=bbox.minX<1e8;
     $('cW').textContent='W: '+(bboxOk?((bbox.maxX-bbox.minX)|0)+'mm':'—');
     $('cH').textContent='H: '+(bboxOk?((bbox.maxY-bbox.minY)|0)+'mm':'—');
     $('cD').textContent='D: '+(bboxOk?((bbox.maxZ-bbox.minZ)|0)+'mm':'—');
-    $('cP').textContent='PTS: '+(pc/1000).toFixed(0)+'k';
+    $('cP').textContent='PTS: '+(pc/1000).toFixed(1)+'k';
     // Progress bar
     const tgt=+$('sFr').value;
     $('pbar').style.width=Math.min(100,fc/tgt*100)+'%';
-    prg(`⬤ ${fc} frames · ${(pc/1000).toFixed(0)}k pts`);
+    prg(`⬤ ${fc}fr · ${(pc/1000).toFixed(1)}k pts · ${pts.length/3|0} this frame`);
     // Adapt TSDF to real bbox after 8 frames
     if(fc===8&&bboxOk&&!adapted&&pc>50){
       adapted=true;
@@ -679,10 +694,17 @@ function stopScan(){
   $('bStart').disabled=false;$('bStop').disabled=true;
   $('reticle').classList.remove('on');
   if(fc>3)$('bBake').disabled=false;
-  // Stop camera stream
   const vid=$('vid');
-  vid.srcObject?.getTracks().forEach(t=>t.stop());
+  if(vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null}
 }
+window.stopScan=stopScan;
+window.togCfg=()=>{
+  const s=$('sets');
+  // Close any open overlays first
+  $('tipOv').classList.remove('on');
+  $('dlOv').classList.remove('on');
+  s.classList.toggle('open');
+};
 $('bStop').onclick=()=>{stopScan();sts('SCAN STOPPED')};
 
 // ── BAKE ──────────────────────────────────────────────────────────────────────
