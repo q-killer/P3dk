@@ -23,7 +23,7 @@
         }
 
         #ui-layer {
-            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 10;
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
             display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; padding: 15px;
         }
 
@@ -34,6 +34,7 @@
 
         .sys-text { font-size: 11px; font-weight: bold; line-height: 1.5; text-shadow: 0 0 5px #000; }
         .amber { color: var(--amber); }
+        .sys-err { color: var(--magenta); margin-top: 5px; white-space: pre-wrap; font-size: 10px; text-shadow: none; }
 
         .btn {
             background: rgba(0, 40, 40, 0.8); color: var(--cyan); border: 1px solid var(--cyan);
@@ -76,6 +77,7 @@
                     <div id="lbl-mode">MODE: IMU FUSION STANDBY</div>
                     <div id="lbl-pts">POINTS CAPTURED: 0</div>
                     <div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
+                    <div id="lbl-err" class="sys-err"></div>
                 </div>
             </div>
         </header>
@@ -113,6 +115,7 @@ const UI = {
     lblMode: document.getElementById('lbl-mode'),
     lblPts: document.getElementById('lbl-pts'),
     lblImu: document.getElementById('lbl-imu'),
+    lblErr: document.getElementById('lbl-err'),
     controlsLive: document.getElementById('controls-live'),
     sweepContainer: document.getElementById('sweep-container'),
     controlsReview: document.getElementById('controls-review'),
@@ -121,6 +124,11 @@ const UI = {
     btnDone: document.getElementById('btn-done'),
     leveler: document.getElementById('leveler')
 };
+
+function logError(msg) {
+    UI.lblErr.innerText += `\n[!] ${msg}`;
+    console.error(msg);
+}
 
 // --- THREE.JS SCENE SETUP ---
 const scene = new THREE.Scene();
@@ -329,6 +337,12 @@ animate();
 // --- EVENT BINDINGS ---
 UI.btnInit.addEventListener('click', async () => {
     try {
+        UI.lblErr.innerText = "INITIALIZING SENSORS...";
+        
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("Camera API denied. Ensure HTTPS is active and permissions are granted.");
+        }
+
         // Request Camera
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { facingMode: "environment", width: { ideal: 640 } }
@@ -337,18 +351,21 @@ UI.btnInit.addEventListener('click', async () => {
         await UI.video.play();
         
         // Request iOS Gyro Permission if necessary
-        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
             const permission = await DeviceOrientationEvent.requestPermission();
             if (permission !== 'granted') throw new Error("Gyro permission denied.");
+        } else if (typeof window.DeviceOrientationEvent === 'undefined') {
+            logError("WARNING: Gyroscope API not detected on this device.");
         }
+        
         setupIMU();
         
         UI.btnInit.style.display = 'none';
         UI.sweepContainer.style.display = 'block';
         UI.lblMode.innerText = "MODE: IMU READY. ZEROED.";
+        UI.lblErr.innerText = ""; // Clear errors
     } catch (e) {
-        alert("Camera and Motion Sensors required for Spatial Fusion.");
-        console.error(e);
+        logError(e.message || "Hardware initialization failed.");
     }
 });
 
@@ -398,5 +415,6 @@ window.addEventListener('resize', () => {
 </script>
 </body>
 </html>
+
 
 ```
