@@ -903,3 +903,672 @@ loadModel(); // starts downloading/loading the 26MB model immediately
 </script>
 </body>
 </html>
+
+
+----
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>P3dK // On-Demand Engine</title>
+<!-- Three.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<style>
+:root { --cyan: #0ff; --amber: #ffb000; --magenta: #f0f; --bg: #050505; --font: 'Courier New', monospace; }
+* { box-sizing: border-box; user-select: none; margin: 0; padding: 0; overflow: hidden; }
+body { background: var(--bg); color: var(--cyan); font-family: var(--font); touch-action: none; }
+
+#video-feed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; opacity: 1.0; }
+#track-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
+#glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; background: transparent; }
+#bg-black { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; background: #080808; display: none;}
+
+#ghost-overlay {
+position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover;
+z-index: 4; opacity: 0; pointer-events: none; transition: opacity 0.2s;
+}
+
+.ar-grid {
+position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;
+background: linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
+background-size: 50px 50px; pointer-events: none; clip-path: circle(35% at 50% 50%);
+}
+
+#ui-layer {
+position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
+display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; padding: 15px;
+}
+
+.panel {
+background: rgba(0, 15, 15, 0.85); border: 1px solid var(--cyan); padding: 12px;
+backdrop-filter: blur(8px); pointer-events: auto;
+}
+
+.sys-text { font-size: 11px; font-weight: bold; line-height: 1.5; text-shadow: 0 0 5px #000; }
+.amber { color: var(--amber); }
+.sys-err { color: var(--magenta); margin-top: 5px; white-space: pre-wrap; font-size: 10px; text-shadow: none; max-height: 45px; overflow: hidden;}
+
+.btn {
+background: rgba(0, 40, 40, 0.8); color: var(--cyan); border: 1px solid var(--cyan);
+padding: 15px; font-family: var(--font); font-size: 14px; font-weight: bold;
+cursor: pointer; text-transform: uppercase; width: 100%; margin-top: 10px; transition: 0.1s;
+pointer-events: auto;
+}
+.btn:active { background: var(--cyan); color: #000; }
+.btn:disabled { opacity: 0.5; pointer-events: none; border-color: #555; color: #aaa; }
+
+#btn-stitch {
+height: 80px; font-size: 18px; border-width: 2px; border-color: var(--cyan);
+background: rgba(0, 255, 255, 0.1);
+}
+#btn-stitch:active { background: var(--cyan); color: #000; }
+
+#controls-review { display: none; }
+.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.slider-group { margin-top: 10px; }
+.slider-label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px; color: #ccc;}
+input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin-bottom: 5px; pointer-events: auto; }
+input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--cyan); cursor: pointer; margin-top: -6px; }
+input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(0, 255, 255, 0.2); border-radius: 2px; }
+
+#flash {
+position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
+background: #fff; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s;
+}
+
+#loadBar { position: fixed; top: 0; left: 0; height: 3px; background: var(--amber); z-index: 200; transition: width 0.3s; width: 0%; }
+
+.crosshair {
+position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%);
+border: 2px solid var(--amber); border-radius: 50%; z-index: 6; pointer-events: none; opacity: 0.5;
+}
+</style>
+</head>
+<body>
+
+<div id="bg-black"></div>
+<video id="video-feed" autoplay playsinline muted></video>
+<canvas id="track-overlay"></canvas>
+<img id="ghost-overlay" src="" />
+<canvas id="glcanvas"></canvas>
+<div id="loadBar"></div>
+
+<div class="ar-grid" id="ar-grid"></div>
+<div class="crosshair" id="crosshair"></div>
+<div id="flash"></div>
+
+<div id="ui-layer">
+<header>
+<div class="panel">
+<div class="sys-text">
+<div id="lbl-mode">MODE: NEURAL INIT...</div>
+<div id="lbl-pts" class="cyan">MAPPED FRAMES: 0</div>
+<div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
+<div style="color:var(--magenta);" id="lbl-orb">ORB: WAIT</div>
+<div id="lbl-err" class="sys-err"></div>
+</div>
+</div>
+</header>
+
+<footer>
+<div id="controls-live" class="panel">
+<button class="btn" id="btn-init" disabled>WAITING FOR AI MODEL...</button>
+<div id="stitch-container" style="display:none;">
+<div class="sys-text amber" style="text-align:center; margin-bottom:5px;">GHOST ALIGNS AUTOMATICALLY VIA ORB</div>
+<button class="btn" id="btn-stitch">[ STITCH ALIGNED FRAME ]</button>
+<div class="btn-grid">
+<button class="btn" id="btn-torch" style="border-color: var(--amber); color: var(--amber);">🔦 ILLUMINATE</button>
+<button class="btn" id="btn-done">REVIEW 3D</button>
+</div>
+</div>
+</div>
+
+<div id="controls-review" class="panel">
+<div class="sys-text amber" style="margin-bottom: 10px;">STUDIO CALIBRATION</div>
+
+<div class="slider-group">
+<div class="slider-label"><span>EXTRUSION DEPTH</span> <span id="val-scale">0.5x</span></div>
+<input type="range" id="sl-scale" min="0.0" max="3.0" step="0.1" value="0.5">
+</div>
+
+<div class="slider-group">
+<div class="slider-label"><span>SURFACE SMOOTHING</span> <span id="val-smooth">50%</span></div>
+<input type="range" id="sl-smooth" min="0" max="1" step="0.05" value="0.5">
+</div>
+
+<div class="btn-grid" style="margin-top: 10px;">
+<button class="btn" id="btn-clay">CLAY RENDER</button>
+<button class="btn" id="btn-wire">WIREFRAME</button>
+</div>
+
+<div class="btn-grid">
+<button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD</button>
+<button class="btn" id="btn-export" style="border-color: var(--amber); color: var(--amber);">EXPORT .OBJ</button>
+</div>
+</div>
+</footer>
+</div>
+
+<script type="module">
+import {pipeline, env} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+
+env.allowLocalModels = false;
+env.useBrowserCache = true;
+
+const UI = {
+video: document.getElementById('video-feed'), ghost: document.getElementById('ghost-overlay'),
+canvas: document.getElementById('glcanvas'), bgBlack: document.getElementById('bg-black'),
+trackOverlay: document.getElementById('track-overlay'),
+arGrid: document.getElementById('ar-grid'), crosshair: document.getElementById('crosshair'),
+lblMode: document.getElementById('lbl-mode'), lblPts: document.getElementById('lbl-pts'),
+lblImu: document.getElementById('lbl-imu'), lblOrb: document.getElementById('lbl-orb'),
+lblErr: document.getElementById('lbl-err'), controlsLive: document.getElementById('controls-live'),
+stitchContainer: document.getElementById('stitch-container'), controlsReview: document.getElementById('controls-review'),
+btnInit: document.getElementById('btn-init'), btnStitch: document.getElementById('btn-stitch'),
+btnDone: document.getElementById('btn-done'), btnTorch: document.getElementById('btn-torch'),
+flash: document.getElementById('flash'), slScale: document.getElementById('sl-scale'),
+slSmooth: document.getElementById('sl-smooth'), valScale: document.getElementById('val-scale'),
+valSmooth: document.getElementById('val-smooth'), btnWire: document.getElementById('btn-wire'),
+btnClay: document.getElementById('btn-clay'), loadBar: document.getElementById('loadBar')
+};
+
+const trackCtx = UI.trackOverlay.getContext('2d');
+UI.trackOverlay.width = window.innerWidth;
+UI.trackOverlay.height = window.innerHeight;
+
+// Prevent error log from expanding endlessly and covering screen
+let errCount = 0;
+function logError(msg) {
+if (errCount > 2) return;
+UI.lblErr.innerText = `[!] ${msg}`;
+errCount++;
+console.error(msg);
+}
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 0, 0);
+const renderer = new THREE.WebGLRenderer({ canvas: UI.canvas, antialias: true, alpha: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.enabled = false;
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
+const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.6); dirLight1.position.set(5, 5, 5); scene.add(dirLight1);
+const dirLight2 = new THREE.DirectionalLight(0x00ffff, 0.3); dirLight2.position.set(-5, -5, -5); scene.add(dirLight2);
+
+const meshGroup = new THREE.Group(); scene.add(meshGroup);
+
+let depthPipe = null;
+let capturedFrames = [];
+let showWireframe = false, isClayMode = false, isTorchOn = false;
+let videoTrack = null;
+let isLive = false;
+
+const RES = 160;
+const RADIUS = 3.0;
+const deviceQuat = new THREE.Quaternion();
+
+async function loadModel() {
+try {
+depthPipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
+progress_callback: (p) => {
+if(p.status === 'downloading' || p.status === 'loading') {
+const pct = p.progress ?? (p.loaded && p.total ? (p.loaded/p.total*100) : 50);
+UI.loadBar.style.width = pct + '%';
+}
+}
+});
+UI.loadBar.style.width = '100%';
+setTimeout(() => UI.loadBar.style.width = '0%', 1000);
+UI.btnInit.innerText = "1. INIT SENSORS";
+UI.btnInit.disabled = false;
+UI.lblMode.innerText = "MODE: NEURAL READY";
+} catch (e) { logError("Model load failed. Reload page."); }
+}
+
+function setupIMU() {
+window.addEventListener('deviceorientation', (event) => {
+if (!event.alpha && !event.beta && !event.gamma) return;
+UI.lblImu.innerText = "GYRO: SYNCED"; UI.lblImu.className = "cyan";
+
+const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
+const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
+const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
+const orient = window.orientation ? THREE.MathUtils.degToRad(window.orientation) : 0;
+
+const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
+deviceQuat.setFromEuler(euler);
+const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+deviceQuat.multiply(q1);
+const q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -orient);
+deviceQuat.multiply(q0);
+});
+}
+
+// --- ORB MATH ---
+const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};let s=42;for(let i=0;i<256;i++)p.push(r(),r(),r(),r());return p})();
+function briefDesc(g,W,H,cx,cy){
+const d=new Uint32Array(8);
+for(let i=0;i<256;i++){const b=i*4,x1=Math.max(0,Math.min(W-1,cx+BP[b])),y1=Math.max(0,Math.min(H-1,cy+BP[b+1])),x2=Math.max(0,Math.min(W-1,cx+BP[b+2])),y2=Math.max(0,Math.min(H-1,cy+BP[b+3]));if(g[y1*W+x1]>g[y2*W+x2])d[i>>5]|=1<<(i&31)}
+return d;
+}
+function hamming(a,b){let h=0;for(let i=0;i<8;i++){let x=a[i]^b[i];x=x-((x>>1)&0x55555555);x=(x&0x33333333)+((x>>2)&0x33333333);h+=((x+(x>>4)&0xF0F0F0F)*0x1010101)>>24}return h}
+function matchBRIEF(kA,dA,kB,dB,th=52){
+const m=[];
+for(let i=0;i<kA.length;i++){let b=th+1,bi=-1;for(let j=0;j<kB.length;j++){const h=hamming(dA[i],dB[j]);if(h<b){b=h;bi=j}}if(bi>=0)m.push({ax:kA[i].x,ay:kA[i].y,bx:kB[bi].x,by:kB[bi].y})}
+return m;
+}
+function ransacAffine(m,N=80,th=4){
+if(m.length<4)return null;
+let best=null,bn=0;
+for(let it=0;it<N;it++){
+const a=m[Math.random()*m.length|0],b=m[Math.random()*m.length|0];
+if(a===b)continue;
+const tx=a.bx-a.ax,ty=a.by-a.ay;
+const dx1=b.ax-a.ax,dy1=b.ay-a.ay,dx2=b.bx-a.bx,dy2=b.by-a.by;
+const sc=Math.hypot(dx2,dy2)/(Math.hypot(dx1,dy1)||1);
+const ag=Math.atan2(dy2,dx2)-Math.atan2(dy1,dx1);
+const cos=sc*Math.cos(ag),sin=sc*Math.sin(ag);
+let n=0;for(const p of m){const px=p.ax*cos-p.ay*sin+tx,py=p.ax*sin+p.ay*cos+ty;if(Math.hypot(px-p.bx,py-p.by)<th)n++}
+if(n>bn){bn=n;best={tx,ty,sc,ag}}
+}
+return bn>3?best:null;
+}
+function fastCorners(g,W,H,th=18,mx=30){
+const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
+const raw=[];
+for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){
+const c=g[y*W+x];let br=0,dk=0;
+for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+th)br++;else if(v<c-th)dk++}
+if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)});
+}
+raw.sort((a,b)=>b.s-a.s);
+const kept=[],minD=12;
+for(const p of raw){
+if(kept.length>=mx)break;
+if(!kept.some(k=>Math.abs(k.x-p.x)<minD&&Math.abs(k.y-p.y)<minD))kept.push(p);
+}
+return kept;
+}
+
+function drawTrackingHUD(kp, mt) {
+trackCtx.clearRect(0, 0, UI.trackOverlay.width, UI.trackOverlay.height);
+if (!isLive) return;
+
+const vw = UI.video.videoWidth, vh = UI.video.videoHeight;
+if (!vw) return;
+
+const sw = window.innerWidth, sh = window.innerHeight;
+const scale = Math.max(sw / vw, sh / vh);
+const dw = vw * scale, dh = vh * scale;
+const offX = (sw - dw) / 2, offY = (sh - dh) / 2;
+const minDim = Math.min(vw, vh);
+const sx = (vw - minDim) / 2, sy = (vh - minDim) / 2;
+
+function mapToScreen(px, py) {
+return { x: offX + (sx + (px / 128) * minDim) * scale, y: offY + (sy + (py / 128) * minDim) * scale };
+}
+
+trackCtx.fillStyle = 'rgba(255, 0, 255, 0.7)';
+for (let p of kp) {
+const pt = mapToScreen(p.x, p.y);
+trackCtx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
+}
+
+if (mt && mt.length > 0 && +UI.ghost.style.opacity > 0) {
+trackCtx.fillStyle = '#0ff'; trackCtx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
+trackCtx.lineWidth = 1; trackCtx.beginPath();
+for (let m of mt) {
+const pt = mapToScreen(m.bx, m.by);
+trackCtx.fillRect(pt.x - 4, pt.y - 4, 8, 8);
+if (m === mt[0]) trackCtx.moveTo(pt.x, pt.y); else trackCtx.lineTo(pt.x, pt.y);
+}
+trackCtx.closePath(); trackCtx.stroke();
+}
+}
+
+let pGray=null, pKP=null, pDesc=null, snapTx=0, snapTy=0;
+function updateTracking(gray, dW, dH) {
+const kp = fastCorners(gray, dW, dH);
+const desc = kp.map(p => briefDesc(gray, dW, dH, p.x, p.y));
+let mt = [];
+
+if(pKP && pKP.length > 3 && desc.length > 3) {
+mt = matchBRIEF(pKP, pDesc, kp, desc);
+if(mt.length >= 4) {
+const af = ransacAffine(mt);
+if(af) {
+const sx = window.innerWidth / dW, sy = window.innerHeight / dH;
+snapTx = snapTx * 0.7 + (-af.tx * sx) * 0.3;
+snapTy = snapTy * 0.7 + (-af.ty * sy) * 0.3;
+if(+UI.ghost.style.opacity > 0) {
+UI.ghost.style.transform = `translate(${snapTx.toFixed(1)}px, ${snapTy.toFixed(1)}px)`;
+}
+UI.lblOrb.innerText = `ORB: ${mt.length}✓/${kp.length}kp`;
+} else { UI.lblOrb.innerText = `ORB: ${kp.length}kp (aligning)`; }
+}
+} else { if(kp.length > 0) UI.lblOrb.innerText = `ORB: ${kp.length}kp (acquiring)`; }
+
+drawTrackingHUD(kp, mt);
+pGray = gray; pKP = kp; pDesc = desc;
+}
+
+// --- OPTIMIZED AR TRACKING LOOP ---
+let lastTrack = 0;
+function trackLoop(time) {
+if (!isLive) return;
+
+// THROTTLE: Run at 20 FPS instead of 60 FPS. Saves massive CPU, stops thermal throttling.
+if (time - lastTrack > 50) {
+lastTrack = time;
+try {
+const w = UI.video.videoWidth, h = UI.video.videoHeight;
+if (w > 10) {
+const minDim = Math.min(w, h);
+const sx = (w - minDim) / 2, sy = (h - minDim) / 2;
+const trackCanvas = document.createElement('canvas'); trackCanvas.width=128; trackCanvas.height=128;
+const trackCtx = trackCanvas.getContext('2d', {willReadFrequently:true});
+trackCtx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, 128, 128);
+const tData = trackCtx.getImageData(0,0,128,128).data;
+const gray = new Uint8Array(128*128);
+for(let i=0; i<tData.length; i+=4) gray[i/4] = (tData[i]*0.299 + tData[i+1]*0.587 + tData[i+2]*0.114)|0;
+updateTracking(gray, 128, 128);
+}
+} catch(e) {}
+}
+requestAnimationFrame(trackLoop);
+}
+
+// --- ON-DEMAND STITCHING (NO MORE BACKGROUND AI) ---
+let inferCanvas = document.createElement('canvas'), inferCtx = inferCanvas.getContext('2d');
+
+async function stitchFrame() {
+if (!depthPipe) return;
+
+// Freeze UI
+UI.btnStitch.innerText = "[ PROCESSING AI DEPTH... ]";
+UI.btnStitch.style.pointerEvents = "none";
+UI.btnStitch.style.borderColor = "var(--amber)";
+UI.btnStitch.style.color = "var(--amber)";
+
+UI.flash.style.opacity = 0.5; setTimeout(() => UI.flash.style.opacity = 0, 100);
+
+// 1. RUN NEURAL INFERENCE ON-DEMAND
+let neuralDepthData = null;
+try {
+const w = UI.video.videoWidth, h = UI.video.videoHeight;
+inferCanvas.width = 512; inferCanvas.height = Math.round(512*(h/w));
+inferCtx.drawImage(UI.video, 0, 0, inferCanvas.width, inferCanvas.height);
+
+const result = await depthPipe(inferCanvas);
+
+if(result.predicted_depth) {
+const t = result.predicted_depth;
+const dData = t.data instanceof Float32Array ? t.data : new Float32Array(t.data);
+let mn = Infinity, mx = -Infinity;
+for(let i=0; i<dData.length; i++) { if(dData[i]<mn) mn=dData[i]; if(dData[i]>mx) mx=dData[i]; }
+const range = (mx-mn)||1;
+const norm = new Float32Array(dData.length);
+for(let i=0; i<dData.length; i++) norm[i] = (dData[i]-mn)/range;
+neuralDepthData = norm;
+}
+} catch(e) {
+logError("Inference failed.");
+UI.btnStitch.innerText = "[ STITCH ALIGNED FRAME ]";
+UI.btnStitch.style.pointerEvents = "auto";
+UI.btnStitch.style.borderColor = "var(--cyan)";
+UI.btnStitch.style.color = "var(--cyan)";
+return;
+}
+
+// 2. Prepare new Ghost Image
+const fullCanvas = document.createElement('canvas');
+fullCanvas.width = UI.video.videoWidth; fullCanvas.height = UI.video.videoHeight;
+const gCtx = fullCanvas.getContext('2d');
+gCtx.drawImage(UI.video, 0, 0);
+gCtx.fillStyle = "rgba(0, 255, 255, 0.35)";
+gCtx.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
+
+UI.ghost.src = fullCanvas.toDataURL('image/jpeg', 0.5);
+UI.ghost.style.opacity = 0.6;
+snapTx = 0; snapTy = 0; UI.ghost.style.transform = `translate(0px, 0px)`;
+
+// 3. Process Color Image
+const minDim = Math.min(UI.video.videoWidth, UI.video.videoHeight);
+const sx = (UI.video.videoWidth - minDim) / 2, sy = (UI.video.videoHeight - minDim) / 2;
+const texCanvas = document.createElement('canvas'); texCanvas.width=RES; texCanvas.height=RES;
+const tx = texCanvas.getContext('2d');
+tx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, RES, RES);
+const imgData = tx.getImageData(0, 0, RES, RES);
+const data = imgData.data;
+
+// 4. Build Depth Maps with PHYSICAL EDGE TAPERING
+const dW = 512, dH = inferCanvas.height;
+const dMinDim = Math.min(dW, dH);
+const dsx = (dW - dMinDim) / 2, dsy = (dH - dMinDim) / 2;
+
+const rawMap = new Float32Array(RES * RES), smmMap = new Float32Array(RES * RES);
+const center = RES / 2, maxRadius = RES / 2;
+
+for (let y = 0; y < RES; y++) {
+for (let x = 0; x < RES; x++) {
+const nu = Math.floor(dsx + (x/RES)*dMinDim);
+const nv = Math.floor(dsy + (y/RES)*dMinDim);
+let d = 1.0 - neuralDepthData[nv * dW + nu];
+if(isNaN(d)) d = 0;
+
+// EDGE TAPERING LOGIC (Prevents steep 'cliffs' at mesh borders)
+const dist = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
+let fade = 1.0;
+if (dist > maxRadius * 0.5) {
+// Taper linearly down to 0 at the extreme edge
+fade = 1.0 - ((dist - maxRadius * 0.5) / (maxRadius * 0.5));
+fade = Math.max(0, fade);
+}
+
+// Taper the physical Z-depth so the geometry flattens out
+rawMap[y * RES + x] = d * fade;
+
+// Taper the alpha transparency so it blends seamlessly
+const i = (y * RES + x) * 4;
+data[i+3] = Math.floor(255 * fade);
+}
+}
+tx.putImageData(imgData, 0, 0);
+
+const k = 2;
+for (let y = 0; y < RES; y++) {
+for (let x = 0; x < RES; x++) {
+let sum = 0, count = 0;
+for (let ky = -k; ky <= k; ky++) {
+for (let kx = -k; kx <= k; kx++) {
+if (y+ky>=0 && y+ky<RES && x+kx>=0 && x+kx<RES) {
+sum += rawMap[(y+ky)*RES + (x+kx)]; count++;
+}
+}
+}
+smmMap[y * RES + x] = sum / count;
+}
+}
+
+// 5. Build Mesh
+const geo = new THREE.PlaneGeometry(2.5, 2.5, RES - 1, RES - 1);
+const texture = new THREE.CanvasTexture(texCanvas);
+const baseMat = new THREE.MeshStandardMaterial({
+<a href="THREE.DoubleSide">map: texture, color: 0xffffff, roughness: 0.8, transparent: true, depthWrite: false, side:</a>
+});
+const mesh = new THREE.Mesh(geo, baseMat);
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.1 });
+const wireMesh = new THREE.Mesh(geo, wireMat); wireMesh.visible = showWireframe; mesh.add(wireMesh);
+
+// 6. Spatial Spawn
+const pivot = new THREE.Group(); pivot.quaternion.copy(camera.quaternion);
+mesh.position.set(0, 0, -RADIUS); pivot.add(mesh); meshGroup.add(pivot);
+capturedFrames.push({ geo: geo, rawMap: rawMap, smmMap: smmMap, mesh: mesh, texture: texture, wireMesh: wireMesh });
+
+UI.lblPts.innerText = `MAPPED FRAMES: ${capturedFrames.length}`;
+updateCalibration();
+
+// Unfreeze UI
+if(navigator.vibrate) navigator.vibrate([100]);
+UI.btnStitch.innerText = "[ STITCH ALIGNED FRAME ]";
+UI.btnStitch.style.pointerEvents = "auto";
+UI.btnStitch.style.borderColor = "var(--cyan)";
+UI.btnStitch.style.color = "var(--cyan)";
+}
+
+function updateCalibration() {
+const scale = parseFloat(UI.slScale.value), smooth = parseFloat(UI.slSmooth.value);
+capturedFrames.forEach(frame => {
+const vertices = frame.geo.attributes.position.array;
+for (let i = 0; i < frame.rawMap.length; i++) {
+const depth = frame.rawMap[i] * (1 - smooth) + frame.smmMap[i] * smooth;
+vertices[i * 3 + 2] = depth * scale * 2.0;
+}
+frame.geo.attributes.position.needsUpdate = true; frame.geo.computeVertexNormals();
+});
+}
+
+UI.slScale.addEventListener('input', () => { UI.valScale.innerText = parseFloat(UI.slScale.value).toFixed(1) + 'x'; updateCalibration(); });
+UI.slSmooth.addEventListener('input', () => { UI.valSmooth.innerText = Math.round(parseFloat(UI.slSmooth.value) * 100) + '%'; updateCalibration(); });
+UI.btnWire.addEventListener('click', () => {
+showWireframe = !showWireframe; capturedFrames.forEach(f => f.wireMesh.visible = showWireframe);
+UI.btnWire.style.backgroundColor = showWireframe ? 'var(--cyan)' : 'transparent'; UI.btnWire.style.color = showWireframe ? '#000' : 'var(--cyan)';
+});
+UI.btnClay.addEventListener('click', () => {
+isClayMode = !isClayMode;
+capturedFrames.forEach(f => {
+f.mesh.material.map = isClayMode ? null : f.texture;
+f.mesh.material.color.setHex(isClayMode ? 0xaaaaaa : 0xffffff); f.mesh.material.needsUpdate = true;
+});
+UI.btnClay.style.backgroundColor = isClayMode ? 'var(--cyan)' : 'transparent'; UI.btnClay.style.color = isClayMode ? '#000' : 'var(--cyan)';
+});
+
+UI.btnTorch.addEventListener('click', async () => {
+if (!videoTrack) return;
+<a href="videoTrack.getCapabilities?.();">const cap =</a>
+if (!cap?.torch) {
+if(!UI.btnTorch.disabled) { logError("Flashlight API not supported."); UI.btnTorch.disabled = true; }
+return;
+}
+isTorchOn = !isTorchOn;
+try {
+await videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
+UI.btnTorch.style.backgroundColor = isTorchOn ? 'var(--amber)' : 'transparent'; UI.btnTorch.style.color = isTorchOn ? '#000' : 'var(--amber)';
+} catch (e) { logError("Failed to access Torch."); }
+});
+
+function buildReviewScene() {
+isLive = false;
+trackCtx.clearRect(0, 0, UI.trackOverlay.width, UI.trackOverlay.height);
+
+UI.lblMode.innerText = "MODE: 3D STUDIO REVIEW";
+camera.position.set(0, 0, RADIUS * 0.2); controls.target.set(0, 0, -RADIUS); controls.enabled = true;
+UI.video.style.display = 'none'; UI.ghost.style.display = 'none'; UI.bgBlack.style.display = 'block';
+UI.arGrid.style.display = 'none'; UI.crosshair.style.display = 'none'; UI.controlsLive.style.display = 'none'; UI.controlsReview.style.display = 'block';
+if (isTorchOn && videoTrack) { videoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(e=>{}); isTorchOn = false; }
+}
+
+function exportFusedOBJ() {
+if (capturedFrames.length === 0) return;
+UI.lblPts.innerText = "CALCULATING MATRICES...";
+let obj = "# P3dK Neural-Studio Export\n"; let vOffset = 0; let vtOffset = 0; const tempVec = new THREE.Vector3();
+capturedFrames.forEach((frame, index) => {
+const mesh = frame.mesh; mesh.updateMatrixWorld(true);
+const pos = frame.geo.attributes.position.array, uvs = frame.geo.attributes.uv.array, idx = frame.geo.index.array;
+obj += `o StitchedFrame_${index}\n`;
+for (let i = 0; i < pos.length; i += 3) {
+tempVec.set(pos[i], pos[i+1], pos[i+2]).applyMatrix4(mesh.matrixWorld);
+obj += `v ${tempVec.x.toFixed(4)} ${tempVec.y.toFixed(4)} ${tempVec.z.toFixed(4)}\n`;
+}
+for (let i = 0; i < uvs.length; i += 2) obj += `vt ${uvs[i].toFixed(4)} ${uvs[i+1].toFixed(4)}\n`;
+for (let i = 0; i < idx.length; i += 3) {
+const a = idx[i] + 1 + vOffset, b = idx[i+1] + 1 + vOffset, c = idx[i+2] + 1 + vOffset;
+const uvA = idx[i] + 1 + vtOffset, uvB = idx[i+1] + 1 + vtOffset, uvC = idx[i+2] + 1 + vtOffset;
+obj += `f ${a}/${uvA} ${b}/${uvB} ${c}/${uvC}\n`;
+}
+vOffset += (pos.length / 3); vtOffset += (uvs.length / 2);
+});
+const blob = new Blob([obj], { type: 'text/plain' }); const link = document.createElement('a');
+link.href = URL.createObjectURL(blob); link.download = 'p3dk_neural_scan.obj'; link.click(); UI.lblPts.innerText = "EXPORT COMPLETE.";
+}
+
+function animate() {
+requestAnimationFrame(animate);
+if (!controls.enabled && deviceQuat.length() > 0) camera.quaternion.copy(deviceQuat);
+if (controls.enabled) controls.update(); renderer.render(scene, camera);
+}
+animate();
+
+// --- INITIALIZATION ---
+UI.btnInit.addEventListener('click', async () => {
+try {
+UI.btnInit.innerText = "WAITING FOR PERMISSIONS...";
+UI.lblErr.innerText = "INITIALIZING SENSORS...";
+
+if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+const perm = await DeviceOrientationEvent.requestPermission();
+if (perm !== 'granted') throw new Error("Gyro permission denied.");
+}
+
+if (!navigator.mediaDevices) throw new Error("Camera API denied. Use HTTPS.");
+const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1080 } } });
+
+UI.video.srcObject = stream;
+videoTrack = stream.getVideoTracks()[0];
+await new Promise(r => { UI.video.onloadedmetadata = r; });
+await UI.video.play();
+
+setupIMU();
+isLive = true;
+
+requestAnimationFrame(trackLoop); // Start Throttled AR Loop
+
+UI.btnInit.style.display = 'none';
+UI.stitchContainer.style.display = 'block';
+UI.lblMode.innerText = "MODE: GHOST-SYNC AUTO";
+UI.lblErr.innerText = "";
+} catch (e) {
+logError(e.message || "Hardware initialization failed.");
+UI.btnInit.innerText = "RETRY HARDWARE INIT";
+}
+});
+
+UI.btnStitch.addEventListener('click', stitchFrame);
+UI.btnDone.addEventListener('click', buildReviewScene);
+document.getElementById('btn-export').addEventListener('click', exportFusedOBJ);
+
+document.getElementById('btn-discard').addEventListener('click', () => {
+capturedFrames.length = 0;
+while(meshGroup.children.length > 0) meshGroup.remove(meshGroup.children[0]);
+controls.enabled = false; camera.position.set(0,0,0);
+
+UI.video.style.display = 'block'; UI.ghost.style.display = 'block'; UI.ghost.style.opacity = 0;
+UI.bgBlack.style.display = 'none'; UI.canvas.style.display = 'block'; UI.arGrid.style.display = 'block';
+UI.crosshair.style.display = 'block'; UI.controlsLive.style.display = 'block'; UI.controlsReview.style.display = 'none';
+UI.lblPts.innerText = "MAPPED FRAMES: 0"; UI.lblMode.innerText = "MODE: GHOST-SYNC AUTO";
+
+isClayMode = false; UI.btnClay.style.backgroundColor = 'transparent'; UI.btnClay.style.color = 'var(--cyan)';
+showWireframe = false; UI.btnWire.style.backgroundColor = 'transparent'; UI.btnWire.style.color = 'var(--cyan)';
+
+isLive = true;
+requestAnimationFrame(trackLoop);
+});
+
+window.addEventListener('resize', () => {
+camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
+UI.trackOverlay.width = window.innerWidth; UI.trackOverlay.height = window.innerHeight;
+});
+
+loadModel(); // Boot AI on load
+</script>
+</body>
+</html>
+
+```
