@@ -346,39 +346,51 @@ function trackLoop(t){
 }
 
 // ── WORKER INIT ───────────────────────────────────────────────────────────────
+let _bakeRetries=0; // retry counter for BAKE when worker busy
 function mkWorker(voxSz,bbMin,dims){
   if(worker)worker.terminate();
   worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
   integBusy=true;
+  // Reset chip to warn during init — will update to ok on ready
+  chip('cTS','warn',`TSDF: init ${dims.join('×')}`);
   worker.onmessage=ev=>{
     const{type}=ev.data;
     if(type==='ready'){
       integBusy=false;
       chip('cTS','ok',`TSDF: ${ev.data.dims.join('×')}`);
+      // Flush any queued integration
+      if(_queuedPts){
+        integBusy=true;
+        worker.postMessage({type:'integrate',data:{pts:_queuedPts}});
+        _queuedPts=null;
+      }
     }
     else if(type==='done'){integBusy=false}
     else if(type==='mesh'){
-      integBusy=false;bakeQ=false;
+      integBusy=false;bakeQ=false;_bakeRetries=0;
       const v=ev.data.verts;
-      if(!v||v.length<9){sts('NO SURFACE — scan more frames');$('bBake').disabled=false;return}
+      if(!v||v.length<9){sts('NO SURFACE — scan more frames, lower ISO');$('bBake').disabled=false;return}
       sts('SMOOTHING...');wkr(`${(v.length/9|0).toLocaleString()} tris`);
       const out=$('cbSm').checked?laplacian(v,4):v;
       sts(`COMPLETE — ${(out.length/9|0).toLocaleString()} triangles`);
       lastMeshVerts=out;$('bBake').disabled=false;
-      // Show mesh in review
       if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose()}
       const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(out,3));
       geo.computeVertexNormals();
       const mat=$('cbWire').checked
         ?new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true})
-        :new THREE.MeshStandardMaterial({color:0x00ccaa,roughness:.5,metalness:.2});
+        :new THREE.MeshStandardMaterial({color:0x00ccaa,roughness:.5,metalness:.2,side:THREE.DoubleSide});
       reviewMesh=new THREE.Mesh(geo,mat);meshGroup.add(reviewMesh);
-      // Download STL
+      // Auto-center camera on baked mesh
+      geo.computeBoundingBox();const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
+      oc.target.copy(bc);cam3.position.copy(bc).add(new THREE.Vector3(0,0,bc.z>0?bc.z*2:3));
       dlSTL(mkSTL(out));
     }
   };
   worker.postMessage({type:'init',data:{nx:dims[0],ny:dims[1],nz:dims[2],sz:voxSz,bb:bbMin}});
 }
+
+let _queuedPts=null; // queued pts when worker busy during init
 
 // ── SENSOR WATERFALL ──────────────────────────────────────────────────────────
 // Spec §1: initialise WebXR + Gyro + Camera simultaneously via Promise.allSettled
@@ -442,6 +454,8 @@ let iCvs=document.createElement('canvas'),iCtx=iCvs.getContext('2d');
 async function stitch(){
   if(!depthPipe)return;
   $('bst').disabled=true;$('bst').textContent='[ PROCESSING... ]';
+  // Fix: remove backdrop-filter during inference — causes GPU stall on mobile Chrome
+  document.querySelectorAll('.pan').forEach(p=>p.style.backdropFilter='none');
   $('fla').style.opacity=.5;setTimeout(()=>$('fla').style.opacity=0,100);
   navigator.vibrate?.([60]);
   try{
@@ -522,13 +536,20 @@ async function stitch(){
     const points=new THREE.Points(ptGeo,ptMat);
     const pivot=new THREE.Group();
     if(hasGyro&&dQ.length()>.01)pivot.quaternion.copy(dQ);
+    // Fix 7: mirror X axis for front camera — front cam is horizontally flipped
+    if(facingMode==='user')points.scale.set(-1,1,1);
     points.position.set(0,0,-RADIUS);pivot.add(points);ptGroup.add(pivot);
     capturedClouds.push({geo:ptGeo,mat:ptMat,pts:rawPts.slice()});
     
     // ── LAYER 2: TSDF integration (background worker) ────────────────────────
+    const ptsF32=new Float32Array(rawPts);
     if(worker&&!integBusy&&!bakeQ){
       integBusy=true;
-      worker.postMessage({type:'integrate',data:{pts:new Float32Array(rawPts)}});
+      worker.postMessage({type:'integrate',data:{pts:ptsF32}});
+      pc+=rawPts.length/3|0;
+    } else if(worker){
+      // Worker busy (init/integrate in flight) — queue pts so nothing is lost
+      _queuedPts=ptsF32;
       pc+=rawPts.length/3|0;
     }
     fc++;
@@ -565,6 +586,8 @@ async function stitch(){
     pKP=null;pDesc=null; // reset ORB so it tracks from new position
     snapTx=0;snapTy=0;$('ghost').style.transform='translate(0px,0px)';
   }catch(e){sts('ERROR: '+e.message.slice(0,50));console.error(e)}
+  // Restore backdrop-filter
+  document.querySelectorAll('.pan').forEach(p=>p.style.backdropFilter='');
   $('bst').textContent='[ ⬤ STITCH FRAME ]';$('bst').disabled=false;
 }
 
@@ -598,36 +621,40 @@ function floodFillDepthMask(dData,W,H,tapX,tapY,tol=0.18){
 }
 
 function enableObjectLock(){
+  // Cancel ROI if active
+  if(roiOn){roiOn=false;document.removeEventListener('pointerdown',roiDown);$('roi').style.display='none';$('roiH').style.display='none';$('broi').style.background='transparent';$('broi').style.color='var(--g)';}
   objLockActive=true;
   $('bobj').style.background='rgba(255,0,255,.2)';
   $('bobj').textContent='◎ TAP OBJECT...';
-  $('vid').style.pointerEvents='auto';
-  wkr('TAP OBJECT IN CAMERA TO LOCK');
-  $('vid').addEventListener('pointerdown',onObjTap,{once:true});
+  wkr('TAP THE OBJECT IN CAMERA VIEW');
+  // Document-level listener captures taps outside vid bounds too
+  document.addEventListener('pointerdown',onObjTap,{once:true});
 }
 function onObjTap(e){
-  const r=$('vid').getBoundingClientRect();
-  const tx=(e.clientX-r.left)/r.width,ty=(e.clientY-r.top)/r.height;
+  // Ignore taps on the bottom panel buttons
+  const panelTop=$('cliv').getBoundingClientRect().top;
+  if(e.clientY>=panelTop){
+    // Re-add since we consumed the event
+    if(objLockActive)document.addEventListener('pointerdown',onObjTap,{once:true});
+    return;
+  }
+  objLockActive=false;
+  const tx=e.clientX/innerWidth,ty=e.clientY/innerHeight;
   if(lastDepthData&&lastDepthW>0){
     objMask=floodFillDepthMask(lastDepthData,lastDepthW,lastDepthH,tx,ty);
     const coverage=objMask.reduce((a,b)=>a+b,0)/(lastDepthW*lastDepthH)*100;
-    objLockActive=false;
-    $('vid').style.pointerEvents='none';
     $('bobj').style.background='rgba(255,0,255,.35)';
     $('bobj').textContent=`◎ LOCKED (${coverage.toFixed(0)}%)`;
-    wkr(`OBJECT LOCK: ${coverage.toFixed(0)}% of frame`);
-    chip('cOR','ok',`ORB+LOCK`);
+    wkr(`OBJECT LOCK: ${coverage.toFixed(0)}% selected`);
+    chip('cOR','ok','ORB+LOCK');
   } else {
-    // No depth data yet — ask user to stitch one frame first
-    wkr('STITCH ONE FRAME FIRST TO CALIBRATE DEPTH');
-    objLockActive=false;
-    $('vid').style.pointerEvents='none';
     $('bobj').style.background='transparent';
     $('bobj').textContent='◎ OBJECT LOCK';
+    wkr('STITCH ONE FRAME FIRST — then tap object');
   }
 }
 $('bobj').addEventListener('click',()=>{
-  if(objMask){// toggle off
+  if(objMask){
     objMask=null;$('bobj').style.background='transparent';$('bobj').textContent='◎ OBJECT LOCK';
     wkr('OBJECT LOCK CLEARED');
   } else enableObjectLock();
@@ -698,7 +725,18 @@ $('bApplyScale').addEventListener('click',()=>{
 // ── BAKE STL ──────────────────────────────────────────────────────────────────
 $('bBake').onclick=()=>{
   if(!worker||fc<2){sts('NOT ENOUGH FRAMES — stitch more');return}
-  if(integBusy){wkr('FINISHING FRAME...');setTimeout(()=>$('bBake').click(),700);return}
+  if(integBusy){
+    _bakeRetries++;
+    if(_bakeRetries>5){
+      // Worker stuck — force reset
+      integBusy=false;bakeQ=false;_bakeRetries=0;
+      wkr('WORKER TIMEOUT — retrying');
+      setTimeout(()=>$('bBake').click(),200);return;
+    }
+    wkr(`FINISHING FRAME... (${_bakeRetries}/5)`);
+    setTimeout(()=>$('bBake').click(),800);return;
+  }
+  _bakeRetries=0;
   sts('MARCHING CUBES...');wkr('building mesh...');
   $('bBake').disabled=true;bakeQ=true;integBusy=true;
   worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:2}});
@@ -737,22 +775,76 @@ $('bexp').onclick=()=>{
 // ── ROI ───────────────────────────────────────────────────────────────────────
 let roiOn=false;
 function toggleROI(){
+  // Cancel Object Lock if active
+  if(objLockActive){objLockActive=false;$('vid').style.pointerEvents='none';$('vid').removeEventListener('pointerdown',onObjTap)}
   roiOn=!roiOn;
-  if(roiOn){$('roiH').style.display='block';$('broi').style.background='var(--g)';$('broi').style.color='#000';$('vid').style.pointerEvents='auto';$('vid').addEventListener('pointerdown',roiDown)}
-  else{$('roiH').style.display='none';$('broi').style.background='transparent';$('broi').style.color='var(--g)';$('vid').style.pointerEvents='none';$('roi').style.display='none';roiRect=null}
+  if(roiOn){
+    $('roiH').style.display='block';$('broi').style.background='var(--g)';$('broi').style.color='#000';
+    // Use document-level overlay instead of vid element — captures drag outside vid bounds
+    $('roi').style.display='none';
+    document.addEventListener('pointerdown',roiDown);
+  }else{
+    $('roiH').style.display='none';$('broi').style.background='transparent';$('broi').style.color='var(--g)';
+    $('roi').style.display='none';roiRect=null;
+    document.removeEventListener('pointerdown',roiDown);
+  }
 }
-function roiDown(e){e.preventDefault();const r=$('vid').getBoundingClientRect();roiStart={x:e.clientX-r.left,y:e.clientY-r.top};roiDrag=true;$('roi').style.display='block';$('roi').style.left=roiStart.x+'px';$('roi').style.top=roiStart.y+'px';$('roi').style.width='0px';$('roi').style.height='0px';$('vid').addEventListener('pointermove',roiMove);$('vid').addEventListener('pointerup',roiUp);}
-function roiMove(e){if(!roiDrag)return;const r=$('vid').getBoundingClientRect(),cx=e.clientX-r.left,cy=e.clientY-r.top;const x=Math.min(cx,roiStart.x),y=Math.min(cy,roiStart.y),w=Math.abs(cx-roiStart.x),h=Math.abs(cy-roiStart.y);$('roi').style.left=x+'px';$('roi').style.top=y+'px';$('roi').style.width=w+'px';$('roi').style.height=h+'px';const vw=$('vid').videoWidth,vh=$('vid').videoHeight,sc=Math.max(innerWidth/vw,innerHeight/vh);roiRect={x:x/sc,y:y/sc,w:w/sc,h:h/sc};}
-function roiUp(){roiDrag=false;$('vid').removeEventListener('pointermove',roiMove);$('vid').removeEventListener('pointerup',roiUp);if(roiRect&&roiRect.w>20){roiOn=false;$('roiH').style.display='none';$('vid').style.pointerEvents='none';$('vid').removeEventListener('pointerdown',roiDown);$('broi').style.background='rgba(0,255,153,.2)';sts('ROI SET — stitch to capture');}else{roiRect=null;$('roi').style.display='none';}}
+function roiDown(e){
+  // Only respond to taps in the camera area (above the bottom panel)
+  const panelTop=$('cliv').getBoundingClientRect().top;
+  if(e.clientY>panelTop)return; // tapped on a button, ignore
+  e.preventDefault();e.stopPropagation();
+  roiStart={x:e.clientX,y:e.clientY};roiDrag=true;
+  $('roi').style.display='block';
+  $('roi').style.left=e.clientX+'px';$('roi').style.top=e.clientY+'px';
+  $('roi').style.width='0px';$('roi').style.height='0px';
+  // Capture pointer for reliable move events outside element
+  document.addEventListener('pointermove',roiMove,{passive:false});
+  document.addEventListener('pointerup',roiUp,{once:true});
+}
+function roiMove(e){
+  if(!roiDrag||!roiStart)return;e.preventDefault();
+  const cx=e.clientX,cy=e.clientY;
+  const x=Math.min(cx,roiStart.x),y=Math.min(cy,roiStart.y);
+  const w=Math.abs(cx-roiStart.x),h=Math.abs(cy-roiStart.y);
+  $('roi').style.left=x+'px';$('roi').style.top=y+'px';
+  $('roi').style.width=w+'px';$('roi').style.height=h+'px';
+  // Convert screen coords to video coords
+  const vw=$('vid').videoWidth,vh=$('vid').videoHeight;
+  const sc=Math.max(innerWidth/vw,innerHeight/vh);
+  const vr=$('vid').getBoundingClientRect();
+  roiRect={x:(x-vr.left)/sc,y:(y-vr.top)/sc,w:w/sc,h:h/sc};
+}
+function roiUp(){
+  roiDrag=false;
+  document.removeEventListener('pointermove',roiMove);
+  document.removeEventListener('pointerdown',roiDown);
+  roiOn=false;$('roiH').style.display='none';
+  if(roiRect&&roiRect.w>15&&roiRect.h>15){
+    $('broi').style.background='rgba(0,255,153,.2)';
+    sts('ROI SET — stitch to capture selected area');
+  }else{
+    roiRect=null;$('roi').style.display='none';
+    $('broi').style.background='transparent';$('broi').style.color='var(--g)';
+  }
+}
 $('broi').addEventListener('click',toggleROI);
 
 // ── CONTROLS ─────────────────────────────────────────────────────────────────
 $('btorch').addEventListener('click',async()=>{
-  if(!vTrack)return;const cap=vTrack.getCapabilities?.();
-  if(!cap?.torch){sts('Torch not supported');return}
-  torchOn=!torchOn;try{await vTrack.applyConstraints({advanced:[{torch:torchOn}]})}catch(e){}
-  $('btorch').style.background=torchOn?'rgba(255,176,0,.3)':'transparent';
-  $('btorch').style.color=torchOn?'var(--a)':'var(--c)';
+  if(!vTrack){sts('Init sensors first');return}
+  torchOn=!torchOn;
+  try{
+    await vTrack.applyConstraints({advanced:[{torch:torchOn}]});
+    $('btorch').style.background=torchOn?'rgba(255,176,0,.4)':'transparent';
+    $('btorch').style.color=torchOn?'var(--a)':'var(--c)';
+    $('btorch').textContent=torchOn?'🔦 ON':'🔦 TORCH';
+    wkr(torchOn?'TORCH ON':'TORCH OFF');
+  }catch(e){
+    torchOn=false;
+    $('btorch').textContent='🔦 TORCH';
+    wkr('TORCH: '+e.message.slice(0,35));
+  }
 });
 $('bcam').addEventListener('click',async()=>{
   facingMode=facingMode==='user'?'environment':'user';
@@ -760,8 +852,19 @@ $('bcam').addEventListener('click',async()=>{
 });
 $('bdone').addEventListener('click',()=>{
   running=false;sts('3D REVIEW');
-  cam3.position.set(0,0,RADIUS*.2);oc.target.set(0,0,-RADIUS);oc.enabled=true;
-  $('glc').style.pointerEvents='auto'; // enable OrbitControls touch
+  // Fix 3: compute actual centroid of all point clouds to center the view
+  let cx=0,cy=0,cz=0,cn=0;
+  ptGroup.children.forEach(pivot=>{
+    pivot.children.forEach(pts=>{
+      const p=pts.geometry.attributes.position.array;
+      for(let i=0;i<p.length;i+=3){cx+=p[i];cy+=p[i+1];cz+=p[i+2];cn++}
+    });
+  });
+  const target=cn>0?new THREE.Vector3(cx/cn,cy/cn,cz/cn):new THREE.Vector3(0,0,-RADIUS);
+  cam3.position.copy(target).add(new THREE.Vector3(0,0,4));
+  oc.target.copy(target);
+  oc.enabled=true;oc.update();
+  $('glc').style.pointerEvents='auto';
   $('vid').style.display='none';$('bgb').style.display='block';
   $('cliv').style.display='none';$('crev').style.display='block';
   $('ghost').style.opacity='0';tovCtx.clearRect(0,0,tov.width,tov.height);
@@ -796,7 +899,20 @@ $('bdisc').addEventListener('click',()=>{
 });
 $('bst').addEventListener('click',stitch);
 $('cbWire').addEventListener('change',()=>{
-  if(reviewMesh){reviewMesh.material.wireframe=$('cbWire').checked}
+  if(reviewMesh){
+    reviewMesh.material.wireframe=$('cbWire').checked;
+    reviewMesh.material.needsUpdate=true;
+  }
+});
+$('cbSm').addEventListener('change',()=>{
+  // Live smooth toggle: reprocess lastMeshVerts and update reviewMesh
+  if(!lastMeshVerts){wkr('BAKE FIRST — then toggle smooth');return}
+  const out=$('cbSm').checked?laplacian(lastMeshVerts,4):lastMeshVerts;
+  if(reviewMesh){
+    reviewMesh.geometry.setAttribute('position',new THREE.BufferAttribute(out.slice(),3));
+    reviewMesh.geometry.computeVertexNormals();
+  }
+  wkr($('cbSm').checked?'SMOOTHED':'RAW MESH');
 });
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
