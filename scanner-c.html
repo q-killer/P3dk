@@ -19,7 +19,7 @@ body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;tou
 #vid{position:absolute;top:0;left:0;width:100vw;height:100vh;object-fit:cover;z-index:1}
 #tov{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:2;pointer-events:none}
 #cvs{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:3;pointer-events:none}
-#glc{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:4;background:transparent}
+#glc{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:4;background:transparent;pointer-events:none}
 #bgb{position:absolute;inset:0;z-index:0;background:#080808;display:none}
 #ghost{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:5;opacity:0;pointer-events:none;mix-blend-mode:screen;transition:opacity .3s}
 #roi{position:absolute;z-index:6;pointer-events:none;border:2px solid var(--a);
@@ -315,15 +315,22 @@ function updateTracking(){
   const kp=fastCorners(_tGray,128,128);
   const desc=kp.map(p=>briefDesc(_tGray,128,128,p.x,p.y));
   let mt=[];
+  const g=$('ghost');
+  const ghostOn=+g.style.opacity>0.05;
   if(pKP&&pKP.length>3&&desc.length>3){
     mt=matchBRIEF(pKP,pDesc,kp,desc);
     if(mt.length>=4){
       const af=ransac(mt);
       if(af){
-        snapTx=snapTx*.7+(-af.tx*(innerWidth/128))*.3;
-        snapTy=snapTy*.7+(-af.ty*(innerHeight/128))*.3;
-        const g=$('ghost');
-        if(+g.style.opacity>0)g.style.transform=`translate(${snapTx.toFixed(1)}px,${snapTy.toFixed(1)}px)`;
+        if(ghostOn){
+          // Only accumulate snap while ghost is visible — prevents drift
+          snapTx=snapTx*.65+(-af.tx*(innerWidth/128))*.35;
+          snapTy=snapTy*.65+(-af.ty*(innerHeight/128))*.35;
+          // Clamp to 40% screen so it can't run off screen
+          snapTx=Math.max(-innerWidth*.4,Math.min(innerWidth*.4,snapTx));
+          snapTy=Math.max(-innerHeight*.4,Math.min(innerHeight*.4,snapTy));
+          g.style.transform=`translate(${snapTx.toFixed(1)}px,${snapTy.toFixed(1)}px)`;
+        }
         chip('cOR','ok',`ORB: ${mt.length}✓`);
       }else chip('cOR','warn',`ORB: ${kp.length}kp`);
     }
@@ -459,15 +466,15 @@ async function stitch(){
     }
     if(!nd)throw new Error('No depth output');
     
-    // Store depth for Object Lock tap-to-segment
-    lastDepthData=nd;lastDepthW=dW;lastDepthH=dH;
-    
     // Apply scale from known measurement or WebXR
     const knownMM=parseFloat($('knownMM').value)||85;
-    scaleFactor=hasXR?1:knownMM/100; // rough: 100 depth units ~ knownMM
+    scaleFactor=hasXR?1:knownMM/100;
     
     const dW=512,dH=iCvs.height,dMin=Math.min(dW,dH);
     const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
+    
+    // Store depth AFTER dW/dH declared (temporal dead zone fix)
+    lastDepthData=nd;lastDepthW=dW;lastDepthH=dH;
     
     // ADAPTIVE depth threshold: cull bottom 8% and top 2% of depth histogram
     // Much better than fixed 0.1 — adapts to each scene's actual depth range
@@ -754,13 +761,14 @@ $('bcam').addEventListener('click',async()=>{
 $('bdone').addEventListener('click',()=>{
   running=false;sts('3D REVIEW');
   cam3.position.set(0,0,RADIUS*.2);oc.target.set(0,0,-RADIUS);oc.enabled=true;
+  $('glc').style.pointerEvents='auto'; // enable OrbitControls touch
   $('vid').style.display='none';$('bgb').style.display='block';
   $('cliv').style.display='none';$('crev').style.display='block';
   $('ghost').style.opacity='0';tovCtx.clearRect(0,0,tov.width,tov.height);
-  updateBboxDisplay(); // show detected dimensions in calibration panel
+  updateBboxDisplay();
 });
 $('bmore').addEventListener('click',()=>{
-  oc.enabled=false;running=true;$('vid').style.display='block';$('bgb').style.display='none';
+  oc.enabled=false;$('glc').style.pointerEvents='none'; // disable OrbitControls during scanrunning=true;$('vid').style.display='block';$('bgb').style.display='none';
   $('cliv').style.display='block';$('crev').style.display='none';
   requestAnimationFrame(trackLoop);sts('SCANNING');
 });
