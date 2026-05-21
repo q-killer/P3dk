@@ -1,305 +1,210 @@
 <!DOCTYPE html>
-<!-- P3dK SCANNER v4 — Neural Depth Edition
-  Uses Depth Anything V2 Small (26MB ONNX via Transformers.js) for monocular
-  depth estimation from the phone camera. No ARCore, no LiDAR, no app store.
-  Works on ANY phone (Android + iPhone) over HTTPS.
-
-  PIPELINE:
-    Camera frame → Depth Anything V2 Small (ONNX/WASM, ~300ms/frame S21U)
-    → per-pixel depth map (384×384 relative depth)
-    → Tron shader overlay (cyan=near orange=far wireframe aesthetic)
-    → multi-frame TSDF accumulation (Web Worker, m→mm)
-    → low-voxel marching cubes → clean low-poly watertight mesh → STL
-
-  INSIGHT: low voxel count + Laplacian smooth = clean CGI-quality topology
-  not noisy photogrammetry. The neural depth is the regularizer.
+<!-- P3dK SCANNER — Definitive Build
+  Spec compliance: Sensor Waterfall · Dual-Layer Pipeline · ORB · ROI · Scale UI
+  Layer 1: THREE.Points colored cloud (instant preview, no Z-fight)
+  Layer 2: TSDF Web Worker + Marching Cubes → watertight STL (printable)
+  Both layers feed from the same depth tensor — zero extra inference cost.
 -->
 <html>
 <head>
 <meta charset=UTF-8>
 <meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <title>P3dK SCANNER</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 <style>
-:root{
-  --gold:#ff9900;--blue:#9999ff;--red:#cc6666;--teal:#33cccc;
-  --peach:#ffcc99;--purple:#cc99cc;--green:#00cc99;--bg:#000008;
-}
-*{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
-html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);
-  font-family:'Courier New',monospace;color:var(--teal)}
-/* Camera feed fills background */
-#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:0;opacity:1}
-/* WebGL canvas: Tron depth overlay on top of camera */
-#cvs{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
-/* CRT scanlines */
-body::after{content:"";position:fixed;inset:0;z-index:2;pointer-events:none;
-  background:repeating-linear-gradient(0deg,rgba(0,0,0,.08) 0px,rgba(0,0,0,.08) 1px,transparent 1px,transparent 3px);
-  opacity:.5}
-/* TOP HUD */
-#top{position:fixed;top:0;left:0;right:0;z-index:300;
-  background:linear-gradient(rgba(0,0,12,.92) 80%,transparent);
-  padding:10px 12px 20px}
-#lcars-bar{display:flex;align-items:center;gap:0;margin-bottom:8px}
-#lpill{background:var(--gold);border-radius:20px 0 0 20px;
-  padding:7px 16px;font-size:12px;font-weight:bold;color:#000;letter-spacing:3px;flex-shrink:0}
-#lline{flex:1;height:5px;background:linear-gradient(90deg,var(--gold),var(--blue))}
-#lsq{width:32px;height:32px;background:var(--blue);flex-shrink:0}
-#sts{font-size:18px;font-weight:bold;color:var(--teal);letter-spacing:1px;min-height:22px}
-#prg{font-size:14px;color:var(--gold);min-height:18px;margin-top:3px;font-weight:bold}
-#chips{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
-.chip{border:1px solid rgba(153,153,255,.4);padding:3px 10px;
-  font-size:13px;color:var(--blue);font-weight:bold;letter-spacing:.5px}
-#dst{font-size:15px;font-weight:bold;margin-top:5px;min-height:18px}
-#pbar-wrap{height:5px;background:rgba(255,255,255,.08);border-radius:3px;margin-top:8px}
-#pbar{height:100%;width:0%;background:linear-gradient(90deg,var(--teal),var(--blue));border-radius:3px;transition:width .3s}
-#wkr{font-size:14px;color:var(--purple);font-weight:bold;margin-top:5px;min-height:18px}
-/* Model load progress */
-#loadBar{position:fixed;top:0;left:0;height:3px;background:var(--gold);z-index:100;transition:width .3s;width:0%}
-
-/* BOTTOM PANEL */
-#bot{position:fixed;bottom:0;left:0;right:0;z-index:300;
-  background:linear-gradient(transparent,rgba(0,0,12,.95) 30%);
-  padding:12px}
-.lrow{display:flex;gap:0;margin-bottom:8px;height:52px}
-.lrow .ll{display:flex;align-items:center;justify-content:center;
-  padding:0 10px;font-size:10px;font-weight:bold;letter-spacing:1px;
-  color:#000;flex-shrink:0;min-width:52px}
-.lrow .ll.rnd{border-radius:18px 0 0 18px}
-.btn{flex:1;border:none;font:bold 12px 'Courier New';letter-spacing:2px;
-  cursor:pointer;transition:background .12s;padding:0 8px;
-  background:rgba(10,15,30,.8)}
-.btn:active{color:#000!important}
-.btn:disabled{opacity:.3;cursor:not-allowed}
-.lrow .le{width:16px;flex-shrink:0;align-self:stretch}
-.r2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
-
-/* SETTINGS DRAWER */
-#sets{background:rgba(0,0,20,.99);border-top:2px solid var(--gold);
-  padding:12px;margin-bottom:10px;display:none;
-  position:relative;z-index:300}
-#sets.open{display:block}
-.sr{display:flex;align-items:center;gap:8px;margin:7px 0}
-.sl{font-size:13px;color:var(--peach);width:110px;flex-shrink:0}
-.sr input[type=range]{flex:1;accent-color:var(--gold);cursor:pointer;height:18px}
-.sv{width:42px;text-align:right;color:var(--gold);font-size:14px;font-weight:bold;flex-shrink:0}
-.sr label{font-size:13px;color:var(--peach);display:flex;align-items:center;gap:6px;cursor:pointer}
-.sr input[type=checkbox]{accent-color:var(--gold);width:16px;height:16px}
-
-/* OVERLAYS — sit above camera/canvas but below HUD panels */
-.ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;
-  background:rgba(0,0,20,.97);z-index:250;overflow-y:auto;
-  -webkit-overflow-scrolling:touch}
-.ov.on{display:flex;flex-direction:column}
-.ov-h{background:var(--gold);color:#000;padding:12px 16px;font-size:15px;font-weight:bold;
-  letter-spacing:3px;flex-shrink:0}
-.ov-h.grn{background:var(--green)}
-.ov-b{padding:16px;flex:1;display:flex;flex-direction:column;overflow-y:auto;
-  padding-bottom:120px}
-.ov-b p,.ov-b li{font-size:14px;color:var(--peach);line-height:2;margin:2px 0}
-.ov-b ul{padding-left:20px;margin:8px 0}
-.ov-b b{color:#fff}
-.ob2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px;
-  position:fixed;bottom:0;left:0;right:0;padding:12px;
-  background:rgba(0,0,20,.99);z-index:350}
-
-/* TARGETING RETICLE */
-#reticle{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  z-index:5;pointer-events:none;display:none}
-#reticle.on{display:block}
+:root{--c:#0ff;--a:#ffb000;--m:#f0f;--g:#0f9;--bg:#050505}
+*{box-sizing:border-box;user-select:none;margin:0;padding:0;overflow:hidden}
+body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;touch-action:none}
+#vid{position:absolute;top:0;left:0;width:100vw;height:100vh;object-fit:cover;z-index:1}
+#tov{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:2;pointer-events:none}
+#cvs{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:3;pointer-events:none}
+#glc{position:absolute;top:0;left:0;width:100vw;height:100vh;z-index:4;background:transparent;pointer-events:none}
+#bgb{position:absolute;inset:0;z-index:0;background:#080808;display:none}
+#ghost{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:5;opacity:0;pointer-events:none;mix-blend-mode:screen;transition:opacity .3s}
+#roi{position:absolute;z-index:6;pointer-events:none;border:2px solid var(--a);
+  display:none;box-shadow:0 0 0 9999px rgba(0,0,0,.4)}
+#lb{position:fixed;top:0;left:0;height:3px;background:var(--a);z-index:200;transition:width .3s;width:0%}
+#fla{position:fixed;inset:0;background:#fff;z-index:100;opacity:0;pointer-events:none;transition:opacity .08s}
+/* UI — highly transparent per spec */
+#ui{position:absolute;top:0;left:0;right:0;bottom:0;z-index:10;
+  display:flex;flex-direction:column;justify-content:space-between;padding:10px;pointer-events:none}
+.pan{background:rgba(0,10,10,.18);border:1px solid rgba(0,255,255,.3);
+  padding:10px;backdrop-filter:blur(4px);pointer-events:auto}
+.sys{font-size:12px;font-weight:bold;line-height:1.7}
+.btn{background:rgba(0,20,20,.25);color:var(--c);border:1px solid rgba(0,255,255,.45);
+  padding:13px;font:bold 13px 'Courier New';cursor:pointer;text-transform:uppercase;
+  width:100%;margin-top:8px;transition:.1s;pointer-events:auto}
+.btn:active{background:var(--c);color:#000}
+.btn:disabled{opacity:.35;pointer-events:none;border-color:#333;color:#555}
+#bst{height:72px;font-size:16px;border-width:2px;background:rgba(0,255,255,.06)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sr{display:flex;align-items:center;gap:6px;margin-top:7px}
+.sl{font-size:11px;color:#ccc;width:90px;flex-shrink:0}
+.sr input[type=range]{flex:1;accent-color:var(--a);cursor:pointer}
+.sv{width:36px;text-align:right;color:var(--a);font-size:12px;font-weight:bold}
+.sr input[type=checkbox]{accent-color:var(--a);width:14px;height:14px}
+#crev{display:none}
+/* Sensor waterfall status chips */
+#sensors{display:flex;gap:6px;margin-top:5px;flex-wrap:wrap}
+.chip{font-size:9px;padding:2px 6px;border-radius:2px;font-weight:bold;letter-spacing:.5px}
+.chip.ok{background:rgba(0,255,153,.2);color:var(--g);border:1px solid rgba(0,255,153,.4)}
+.chip.off{background:rgba(80,80,80,.2);color:#666;border:1px solid #333}
+.chip.warn{background:rgba(255,176,0,.2);color:var(--a);border:1px solid rgba(255,176,0,.4)}
+/* Scale input */
+#scaleUI{display:none;margin-top:8px;padding:8px;background:rgba(255,176,0,.08);
+  border:1px solid rgba(255,176,0,.3)}
+/* ROI hint */
+#roiH{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:11;font-size:14px;color:var(--a);text-align:center;
+  pointer-events:none;display:none;text-shadow:0 0 8px #000;line-height:2}
 </style>
 </head>
 <body>
-
-<!-- Camera background -->
+<div id=bgb></div>
 <video id=vid autoplay playsinline muted></video>
-<!-- Ghost overlay: previous captured frame shown as cyan-tinted guide for alignment -->
-<img id=ghost style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;
-  opacity:0;pointer-events:none;mix-blend-mode:screen;
-  filter:sepia(100%) hue-rotate(150deg) saturate(300%);transition:opacity .5s">
-<!-- Subtle AR grid clipped to a circle in the scan zone -->
-<div id=argrid style="position:fixed;inset:0;z-index:2;pointer-events:none;
-  background:linear-gradient(rgba(0,255,255,.05) 1px,transparent 1px),
-             linear-gradient(90deg,rgba(0,255,255,.05) 1px,transparent 1px);
-  background-size:50px 50px;clip-path:circle(38% at 50% 50%);
-  opacity:0;transition:opacity .6s"></div>
-<!-- White flash on frame capture -->
-<div id=flash style="position:fixed;inset:0;background:#fff;z-index:50;
-  opacity:0;pointer-events:none;transition:opacity .08s"></div>
-<!-- WebGL overlay for Tron depth effect -->
-<canvas id=cvs></canvas>
-<!-- Model loading progress bar -->
-<div id=loadBar></div>
+<canvas id=tov></canvas><!-- ORB keypoint HUD dots -->
+<canvas id=glc></canvas><!-- Three.js point cloud + review -->
+<div id=lb></div>
+<div id=fla></div>
+<img id=ghost style="position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:5;opacity:0;pointer-events:none;mix-blend-mode:screen;transition:opacity .3s" src="">
+<div id=roi></div>
+<div id=roiH>TAP & DRAG TO SELECT OBJECT<br><span style="font-size:10px;color:var(--c)">Only this area will be scanned + tracked</span></div>
 
-<!-- TOP LCARS HUD -->
-<div id=top>
-  <div id=lcars-bar>
-    <div id=lpill>P3dK SCANNER</div>
-    <div id=lline></div>
-    <div id=lsq></div>
+<!-- Camera controls: zoom + focus — shown via 📷 button or long press -->
+<div id=camCtrl style="position:fixed;bottom:260px;left:10px;right:10px;z-index:15;
+  background:rgba(0,15,15,.92);border:1px solid rgba(0,255,255,.35);padding:10px;
+  display:none;pointer-events:auto">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    <span style="font-size:10px;color:var(--a);font-weight:bold">📷 CAMERA CONTROLS</span>
+    <button style="background:none;border:none;color:#888;font-size:14px;cursor:pointer;padding:0 4px" onclick="$('camCtrl').style.display='none'">✕</button>
   </div>
-  <div id=sts>LOADING NEURAL ENGINE...</div>
-  <div id=prg></div>
-  <div id=chips>
-    <div class=chip id=cW>W: —</div>
-    <div class=chip id=cH>H: —</div>
-    <div class=chip id=cD>D: —</div>
-    <div class=chip id=cP>PTS: 0</div>
+  <div style="display:flex;align-items:center;gap:6px;margin:4px 0">
+    <span style="font-size:10px;color:#ccc;width:48px;flex-shrink:0">ZOOM</span>
+    <input type=range id=slZoom min=1 max=8 step=0.1 value=1 style="flex:1;accent-color:var(--a)"
+      oninput="$('vZoom').textContent=parseFloat(this.value).toFixed(1)+'×';window.applyCamZoom(+this.value)">
+    <span id=vZoom style="color:var(--a);font-size:11px;width:30px;text-align:right">1×</span>
   </div>
-  <div id=dst></div>
-  <div id=pbar-wrap><div id=pbar></div></div>
-  <div id=wkr></div>
-</div>
-
-<!-- LCARS targeting reticle -->
-<div id=reticle>
-  <svg width=220 height=220 viewBox="0 0 220 220">
-    <path d="M110,12 A98,98 0 0,1 208,110" fill=none stroke="var(--gold)" stroke-width=3.5 opacity=.8/>
-    <path d="M208,110 A98,98 0 0,1 110,208" fill=none stroke="var(--blue)" stroke-width=3.5 opacity=.8/>
-    <path d="M110,208 A98,98 0 0,1 12,110" fill=none stroke="var(--teal)" stroke-width=3.5 opacity=.8/>
-    <path d="M12,110 A98,98 0 0,1 110,12" fill=none stroke="var(--purple)" stroke-width=3.5 opacity=.8/>
-    <circle cx=110 cy=110 r=56 fill=none stroke="rgba(51,204,204,.4)" stroke-width=1.5 stroke-dasharray="5 4"/>
-    <rect x=10 y=10 width=26 height=5 fill="var(--gold)"/>
-    <rect x=10 y=10 width=5 height=26 fill="var(--gold)"/>
-    <rect x=184 y=10 width=26 height=5 fill="var(--blue)"/>
-    <rect x=205 y=10 width=5 height=26 fill="var(--blue)"/>
-    <rect x=10 y=205 width=26 height=5 fill="var(--teal)"/>
-    <rect x=10 y=184 width=5 height=26 fill="var(--teal)"/>
-    <rect x=184 y=205 width=26 height=5 fill="var(--purple)"/>
-    <rect x=205 y=184 width=5 height=26 fill="var(--purple)"/>
-    <line x1=110 y1=96 x2=110 y2=108 stroke="var(--teal)" stroke-width=2/>
-    <line x1=110 y1=112 x2=110 y2=124 stroke="var(--teal)" stroke-width=2/>
-    <line x1=96 y1=110 x2=108 y2=110 stroke="var(--teal)" stroke-width=2/>
-    <line x1=112 y1=110 x2=124 y2=110 stroke="var(--teal)" stroke-width=2/>
-    <text x=110 y=162 text-anchor=middle fill="rgba(51,204,204,.6)"
-      font-size="9" font-family="Courier New" letter-spacing="2">NEURAL DEPTH</text>
-  </svg>
-</div>
-
-<!-- BOTTOM PANEL -->
-<div id=bot>
-  <div id=sets>
-    <div class=sr><span class=sl>VOXEL mm</span>
-      <input type=range id=sVox min=3 max=20 step=1 value=8
-        oninput="document.getElementById('sVoxV').textContent=this.value">
-      <span class=sv id=sVoxV>8</span></div>
-    <div class=sr><span class=sl>FRAMES</span>
-      <input type=range id=sFr min=10 max=100 step=5 value=40
-        oninput="document.getElementById('sFrV').textContent=this.value">
-      <span class=sv id=sFrV>40</span></div>
-    <div class=sr><span class=sl>ISO LEVEL</span>
-      <input type=range id=sIso min=-10 max=10 step=1 value=0
-        oninput="document.getElementById('sIsoV').textContent=this.value">
-      <span class=sv id=sIsoV>0</span></div>
-    <div class=sr><span class=sl>DEPTH SCALE</span>
-      <input type=range id=sScale min=50 max=500 step=10 value=200
-        oninput="document.getElementById('sScaleV').textContent=this.value+'mm'">
-      <span class=sv id=sScaleV>200mm</span></div>
-    <div class=sr><span class=sl>INFER EVERY</span>
-      <input type=range id=sEvery min=1 max=10 step=1 value=3
-        oninput="document.getElementById('sEveryV').textContent=this.value+'fr'">
-      <span class=sv id=sEveryV>3fr</span></div>
-    <div class=sr>
-      <label><input type=checkbox id=sSm checked> SMOOTH MESH</label>
-      <label style="margin-left:12px"><input type=checkbox id=sTron checked> TRON OVERLAY</label>
-      <label style="margin-left:12px"><input type=checkbox id=sSd> →P3dK</label>
-    </div>
-    <div class=sr style="margin-top:8px;gap:6px">
-      <button class=btn id=bTorch style="height:44px;color:var(--gold);border:2px solid var(--gold);flex:1"
-        onclick="window.togTorch()">🔦 TORCH</button>
-      <button class=btn id=bExportObj style="height:44px;color:var(--gold);border:2px solid var(--gold);flex:1"
-        onclick="window.exportOBJ()" disabled>↓ OBJ</button>
-    </div>
-  </div>
-
-  <!-- START -->
-  <div class=lrow>
-    <div class=ll rnd style="background:var(--green)">SCN</div>
-    <button class=btn id=bStart style="color:var(--green);border:2px solid var(--green)">
-      [ 📷 START SCAN ]</button>
-    <div class=le style="background:var(--green);border-radius:0 18px 18px 0"></div>
-  </div>
-  <!-- STOP + CONFIG + TORCH -->
-  <div class=r2>
-    <div class=lrow style="margin-bottom:0">
-      <div class=ll rnd style="background:var(--red)">HLT</div>
-      <button class=btn id=bStop disabled style="color:var(--red);border:2px solid var(--red)">STOP</button>
-      <div class=le style="background:var(--red);border-radius:0 18px 18px 0"></div>
-    </div>
-    <div class=lrow style="margin-bottom:0">
-      <div class=ll rnd style="background:var(--blue)">CFG</div>
-      <button class=btn id=bCfg style="color:var(--blue);border:2px solid var(--blue)"
-        onclick="window.togCfg()">CONFIG</button>
-      <div class=le style="background:var(--blue);border-radius:0 18px 18px 0"></div>
-    </div>
-  </div>
-  <!-- BAKE -->
-  <div class=lrow>
-    <div class=ll rnd style="background:var(--purple)">MCB</div>
-    <button class=btn id=bBake disabled style="color:var(--purple);border:2px solid var(--purple)">
-      [ ∴ BAKE → STL ]</button>
-    <div class=le style="background:var(--purple);border-radius:0 18px 18px 0"></div>
+  <div style="display:flex;gap:6px;margin-top:6px">
+    <button class=btn id=bFocNear style="padding:8px;font-size:10px;margin:0;flex:1" onclick="window.setFocus('manual',0)">NEAR</button>
+    <button class=btn id=bFocAuto style="padding:8px;font-size:10px;margin:0;flex:1" onclick="window.setFocus('continuous')">AUTO</button>
+    <button class=btn id=bFocFar style="padding:8px;font-size:10px;margin:0;flex:1" onclick="window.setFocus('manual',1)">FAR</button>
   </div>
 </div>
 
-<!-- Tips -->
-<div class=ov id=tipOv>
-  <div class=ov-h>NEURAL SCAN PROTOCOL</div>
-  <div class=ov-b>
-    <ul>
-      <li>No ARCore needed — works on <b>any phone</b></li>
-      <li>Hold object <b>20–60cm</b> from camera</li>
-      <li>Move <b>slowly</b> around it — all angles</li>
-      <li>Good <b>lighting</b> = better depth</li>
-      <li>Low voxel count = <b>clean CGI-quality</b> mesh</li>
-      <li>Increase voxel mm for smoother results</li>
-      <li>STL saves to <b>Downloads</b></li>
-    </ul>
-    <div class=ob2>
-      <button class=btn id=bTipStart
-        style="height:48px;color:var(--green);border:2px solid var(--green)"
-        onclick="hideTips();document.getElementById('bStart').click()">[ ▶ ENGAGE ]</button>
-      <button class=btn style="height:48px;color:var(--teal);border:2px solid var(--teal)"
-        onclick="hideTips()">[ SKIP ]</button>
+<div id=ui>
+  <header>
+    <div class=pan>
+      <div class=sys>
+        <div id=lm>MODE: INITIALISING...</div>
+        <div id=lp style="color:var(--c)">FRAMES: 0  PTS: 0</div>
+        <div id=lw style="color:var(--m);font-size:11px">WORKER: IDLE</div>
+      </div>
+      <!-- Sensor waterfall status -->
+      <div id=sensors>
+        <span class="chip off" id=cXR>WebXR: —</span>
+        <span class="chip off" id=cGY>Gyro: —</span>
+        <span class="chip off" id=cCA>CAM: —</span>
+        <span class="chip off" id=cOR>ORB: —</span>
+        <span class="chip off" id=cTS>TSDF: —</span>
+      </div>
+      <!-- Scale input shown when WebXR unavailable -->
+      <div id=scaleUI>
+        <div style="font-size:10px;color:var(--a);margin-bottom:4px">⚠ NO METRIC SCALE — WebXR unavailable</div>
+        <div class=sr>
+          <span class=sl>KNOWN WIDTH</span>
+          <input type=number id=knownMM value=85 min=5 max=2000 step=1
+            style="width:60px;background:rgba(0,20,20,.5);border:1px solid var(--a);color:var(--a);font:bold 12px monospace;padding:3px 5px">
+          <span style="font-size:11px;color:var(--a)">mm</span>
+        </div>
+        <div style="font-size:9px;color:#888;margin-top:3px">Point a known object at camera (e.g. credit card = 85mm)</div>
+      </div>
     </div>
-  </div>
+  </header>
+
+  <footer>
+    <div id=cliv class=pan>
+      <button class=btn id=bin disabled>WAITING FOR NEURAL ENGINE...</button>
+      <div id=scon style=display:none>
+        <div style="font-size:10px;color:rgba(0,255,204,.6);text-align:center;margin-bottom:2px">
+          MOVE CAMERA AROUND OBJECT · TAP TO CAPTURE</div>
+        <button class=btn id=bst>[ ⬤ STITCH FRAME ]</button>
+        <div class=g2>
+          <button class=btn id=btorch style="border-color:var(--a);color:var(--a)">🔦 TORCH</button>
+          <button class=btn id=broi style="border-color:var(--g);color:var(--g)">⬚ ROI</button>
+        </div>
+        <div class=g2>
+          <!-- Object Lock: tap object in camera to depth-segment it -->
+          <button class=btn id=bobj style="border-color:var(--m);color:var(--m)">◎ OBJECT LOCK</button>
+          <button class=btn id=broom style="border-color:#888;color:#888">⊞ ROOM SCAN</button>
+        </div>
+        <div class=g2>
+          <button class=btn id=bcam style="border-color:var(--a);color:var(--a)">⇄ FLIP CAM</button>
+          <button class=btn id=bcamctl style="border-color:var(--c);color:var(--c)" onclick="$('camCtrl').style.display=$('camCtrl').style.display==='none'?'block':'none'">📷 CAM</button>
+        </div>
+        <button class=btn id=bdone>REVIEW 3D →</button>
+      </div>
+    </div>
+    <div id=crev class=pan>
+      <div style="font-size:11px;color:var(--a);font-weight:bold;margin-bottom:6px">CALIBRATION</div>
+      <div class=sr><span class=sl>DEPTH SCALE</span>
+        <input type=range id=slsc min=0.1 max=4 step=0.1 value=1
+          oninput="$('vsc').textContent=parseFloat(this.value).toFixed(1)+'x';calibFast()">
+        <span class=sv id=vsc>1.0x</span></div>
+      <div class=sr><span class=sl>POINT SIZE</span>
+        <input type=range id=slps min=0.005 max=0.06 step=0.005 value=0.02
+          oninput="$('vps').textContent=this.value;calibFast()">
+        <span class=sv id=vps>0.02</span></div>
+      <div class=sr><span class=sl>ISO LEVEL</span>
+        <input type=range id=sliso min=-10 max=10 step=1 value=0
+          oninput="$('viso').textContent=this.value">
+        <span class=sv id=viso>0</span></div>
+      <div class=sr>
+        <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px">
+          <input type=checkbox id=cbSm checked> SMOOTH MESH</label>
+        <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:8px">
+          <input type=checkbox id=cbWire> WIREFRAME</label>
+      </div>
+      <div class=g2 style=margin-top:6px>
+        <button class=btn id=bBake disabled style="border-color:var(--m);color:var(--m)">∴ BAKE STL</button>
+        <button class=btn id=bexp style="border-color:var(--a);color:var(--a)">↓ POINT OBJ</button>
+      </div>
+      <!-- V29: Fabrication calibration — specify known real-world dimensions -->
+      <div style="margin-top:10px;padding:8px;background:rgba(255,176,0,.07);border:1px solid rgba(255,176,0,.25)">
+        <div style="font-size:10px;color:var(--a);margin-bottom:6px;font-weight:bold">FABRICATION SCALE — enter known dimension to calibrate</div>
+        <div id=bboxDisplay style="font-size:9px;color:#888;margin-bottom:6px">DETECTED: W—  H—  D—</div>
+        <div class=sr><span class=sl>SPECIFY X mm</span>
+          <input type=number id=specX placeholder="—" min=1 max=5000
+            style="width:64px;background:rgba(0,20,20,.6);border:1px solid rgba(255,176,0,.4);color:var(--a);font:bold 12px monospace;padding:3px 5px;text-align:right">
+          <span style="font-size:10px;color:#666">mm</span></div>
+        <div class=sr><span class=sl>SPECIFY Y mm</span>
+          <input type=number id=specY placeholder="—" min=1 max=5000
+            style="width:64px;background:rgba(0,20,20,.6);border:1px solid rgba(255,176,0,.4);color:var(--a);font:bold 12px monospace;padding:3px 5px;text-align:right">
+          <span style="font-size:10px;color:#666">mm</span></div>
+        <div class=sr><span class=sl>SPECIFY Z mm</span>
+          <input type=number id=specZ placeholder="—" min=1 max=5000
+            style="width:64px;background:rgba(0,20,20,.6);border:1px solid rgba(255,176,0,.4);color:var(--a);font:bold 12px monospace;padding:3px 5px;text-align:right">
+          <span style="font-size:10px;color:#666">mm</span></div>
+        <button class=btn id=bApplyScale style="margin-top:6px;border-color:var(--a);color:var(--a);padding:8px;font-size:11px">APPLY SCALE → RESCALE MESH</button>
+      </div>
+      <div class=g2>
+        <button class=btn id=bdisc style="border-color:#444;color:#888">DISCARD</button>
+        <button class=btn id=bmore>+ MORE FRAMES</button>
+      </div>
+    </div>
+  </footer>
 </div>
 
-<!-- Download confirm -->
-<div class=ov id=dlOv>
-  <div class=ov-h grn>TRANSFER COMPLETE</div>
-  <div class=ov-b>
-    <p>Saved to <b>Downloads</b>:</p>
-    <p id=dlName style="color:var(--gold);word-break:break-all;margin:8px 0;font-size:13px"></p>
-    <p>Chrome <b>⋮ → Downloads</b> to find it</p>
-    <div class=ob2>
-      <button class=btn style="height:52px;color:var(--teal);border:2px solid var(--teal)"
-        onclick="document.getElementById('dlOv').classList.remove('on')">[ OK ]</button>
-      <button class=btn style="height:52px;color:var(--green);border:2px solid var(--green)"
-        onclick="document.getElementById('dlOv').classList.remove('on');
-                 document.getElementById('bBake').click()">[ ↺ RE-BAKE ]</button>
-    </div>
-  </div>
-</div>
-
-<!-- Load Transformers.js from CDN (ONNX runtime for browser) -->
 <script type=module>
-import {pipeline,env} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+import{pipeline,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+env.allowLocalModels=false;env.useBrowserCache=true;
 
-// ── CONFIG ────────────────────────────────────────────────────────────────────
-env.allowLocalModels=false;
-env.useBrowserCache=true; // cache model after first download
-
-// ── DOM ───────────────────────────────────────────────────────────────────────
 const $=id=>document.getElementById(id);
-const sts=t=>{$('sts').textContent=t};
-const wkr=t=>{$('wkr').textContent=t};
-const prg=t=>{$('prg').textContent=t};
-function hideTips(){$('tipOv').classList.remove('on');sessionStorage.setItem('st','1')}
-window.hideTips=hideTips;
+const sts=t=>{$('lm').textContent=t};
+const wkr=t=>{$('lw').textContent='WORKER: '+t};
+const chip=(id,state,txt)=>{const e=$(id);e.className='chip '+state;e.textContent=txt};
 
 // ── TSDF WORKER ───────────────────────────────────────────────────────────────
-// Same proven TSDF + marching cubes worker from v3, but now receives
-// neural depth maps instead of ARCore depth data
 const WC=`
 let nx=0,ny=0,nz=0,sz=0,bb={x:0,y:0,z:0},sd=null,wt=null,rdy=false;
 const TR=60;
@@ -308,10 +213,7 @@ self.onmessage=function(e){
   const{type,data}=e;
   if(type==='init'){
     nx=data.nx;ny=data.ny;nz=data.nz;sz=data.sz;bb=data.bb;
-    const N=nx*ny*nz;
-    sd=new Float32Array(N).fill(TR);
-    wt=new Float32Array(N);
-    rdy=true;
+    const N=nx*ny*nz;sd=new Float32Array(N).fill(TR);wt=new Float32Array(N);rdy=true;
     self.postMessage({type:'ready',dims:[nx,ny,nz]});
   }
   else if(type==='integrate'){
@@ -319,38 +221,24 @@ self.onmessage=function(e){
     const p=data.pts;
     for(let i=0;i<p.length;i+=3){
       const px=p[i],py=p[i+1],pz=p[i+2];
-      const vx=Math.floor((px-bb.x)/sz)|0;
-      const vy=Math.floor((py-bb.y)/sz)|0;
-      const vz=Math.floor((pz-bb.z)/sz)|0;
+      const vx=Math.floor((px-bb.x)/sz)|0,vy=Math.floor((py-bb.y)/sz)|0,vz=Math.floor((pz-bb.z)/sz)|0;
       const bv=Math.ceil(TR/sz)+1;
       for(let dz2=-bv;dz2<=bv;dz2++){
-        const zi=vz+dz2;
-        if(vx<0||vy<0||zi<0||vx>=nx||vy>=ny||zi>=nz)continue;
-        const idx=vi(vx,vy,zi);
-        const s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
-        const w=wt[idx];
-        sd[idx]=(sd[idx]*w+s)/(w+1);
-        wt[idx]=Math.min(w+1,255);
+        const zi=vz+dz2;if(vx<0||vy<0||zi<0||vx>=nx||vy>=ny||zi>=nz)continue;
+        const idx=vi(vx,vy,zi),s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
+        const w=wt[idx];sd[idx]=(sd[idx]*w+s)/(w+1);wt[idx]=Math.min(w+1,255);
       }
     }
     self.postMessage({type:'done'});
   }
   else if(type==='march'){
     if(!rdy){self.postMessage({type:'mesh',verts:new Float32Array(0)});return}
-    const iso=data.iso||0,minW=data.minW||2;
-    const verts=[];
-    const ip=(p1,p2,v1,v2)=>{
-      const t=(iso-v1)/((v2-v1)||.0001);
-      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
-    };
+    const iso=data.iso||0,minW=data.minW||2,verts=[];
+    const ip=(p1,p2,v1,v2)=>{const t=(iso-v1)/((v2-v1)||.0001);return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t]};
     const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
     for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
-      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
-               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
-      const vals=c.map(([x,y,z])=>{
-        const idx=vi(Math.min(nx-1,x),Math.min(ny-1,y),Math.min(nz-1,z));
-        return wt[idx]<minW?TR:sd[idx];
-      });
+      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],[ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+      const vals=c.map(([x,y,z])=>{const idx=vi(Math.min(nx-1,x),Math.min(ny-1,y),Math.min(nz-1,z));return wt[idx]<minW?TR:sd[idx]});
       const pos=c.map(([x,y,z])=>[bb.x+x*sz+sz*.5,bb.y+y*sz+sz*.5,bb.z+z*sz+sz*.5]);
       for(const[a,b,cc,d]of tets){
         const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
@@ -358,1217 +246,818 @@ self.onmessage=function(e){
         if(!bit||bit===15)continue;
         const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
         for(const[ea,eb]of edges)if(ins[ea]!==ins[eb])cuts.push(ip(sp[ea],sp[eb],sv[ea],sv[eb]));
-        if(cuts.length>=3){
-          verts.push(...cuts[0],...cuts[1],...cuts[2]);
-          if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3]);
-        }
+        if(cuts.length>=3){verts.push(...cuts[0],...cuts[1],...cuts[2]);if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3])}
       }
     }
-    const arr=new Float32Array(verts);
-    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
+    const arr=new Float32Array(verts);self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
   }
 };`;
 
+// ── THREE.JS ──────────────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+const cam3=new THREE.PerspectiveCamera(50,innerWidth/innerHeight,.1,100);
+cam3.position.set(0,0,0);
+const glc=$('glc');
+const rend=new THREE.WebGLRenderer({canvas:glc,antialias:true,alpha:true});
+rend.setSize(innerWidth,innerHeight);
+const oc=new THREE.OrbitControls(cam3,rend.domElement);
+oc.enableDamping=true;oc.enabled=false;
+scene.add(new THREE.AmbientLight(0xffffff,.5));
+const dl=new THREE.DirectionalLight(0x00ffff,.4);dl.position.set(3,5,3);scene.add(dl);
+const ptGroup=new THREE.Group(),meshGroup=new THREE.Group();
+scene.add(ptGroup);scene.add(meshGroup);
+const RADIUS=3,RES=80; // 80x80 = 6400 pts per frame, fast enough
+let reviewMesh=null;
+
 // ── STATE ─────────────────────────────────────────────────────────────────────
-let depthPipe=null; // Depth Anything V2 pipeline
-let worker=null;
-let running=false,integBusy=false,bakeQ=false;
-let fc=0,pc=0,framesBaked=0;
+let depthPipe=null,worker=null;
+let running=false,integBusy=false,bakeQ=false,adapted=false;
+let fc=0,pc=0;
 let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-let adapted=false,bs=0,bl={x:0,y:0,z:0};
-let lastPts=[]; // for Tron overlay
-let rafId=null;
+let bs=0,bl={x:0,y:0,z:0};
+let capturedClouds=[]; // for point cloud preview + OBJ export
+let lastMeshVerts=null;
+const dQ=new THREE.Quaternion(); // device orientation
+let vTrack=null,torchOn=false;
+let facingMode=(/Mobi|Android/i.test(navigator.userAgent))?'environment':'user';
+let roiRect=null,roiDrag=false,roiStart=null;
+let hasXR=false,hasGyro=false;
+let scaleFactor=1; // set from knownMM or WebXR metric scale
 
-// ── WEBGL OVERLAY ─────────────────────────────────────────────────────────────
-// Tron-style depth overlay: renders depth map as colored points over camera feed
-// near=cyan, mid=white, far=orange — vectorized aesthetic
-let gl=null,ovProg=null,ovBuf=null,ovCount=0;
+// ── ORB (persistent allocations) ────────────────────────────────────────────
+const _tCvs=document.createElement('canvas');_tCvs.width=_tCvs.height=128;
+const _tCtx=_tCvs.getContext('2d',{willReadFrequently:true});
+const _tGray=new Uint8Array(128*128);
+const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};let s=42;for(let i=0;i<256;i++)p.push(r(),r(),r(),r());return p})();
+function briefDesc(g,W,H,cx,cy){const d=new Uint32Array(8);for(let i=0;i<256;i++){const b=i*4,x1=Math.max(0,Math.min(W-1,cx+BP[b])),y1=Math.max(0,Math.min(H-1,cy+BP[b+1])),x2=Math.max(0,Math.min(W-1,cx+BP[b+2])),y2=Math.max(0,Math.min(H-1,cy+BP[b+3]));if(g[y1*W+x1]>g[y2*W+x2])d[i>>5]|=1<<(i&31)}return d;}
+function hamming(a,b){let h=0;for(let i=0;i<8;i++){let x=a[i]^b[i];x=x-((x>>1)&0x55555555);x=(x&0x33333333)+((x>>2)&0x33333333);h+=((x+(x>>4)&0xF0F0F0F)*0x1010101)>>24}return h}
+function matchBRIEF(kA,dA,kB,dB){const m=[];for(let i=0;i<kA.length;i++){let b=52,bi=-1;for(let j=0;j<kB.length;j++){const h=hamming(dA[i],dB[j]);if(h<b){b=h;bi=j}}if(bi>=0)m.push({ax:kA[i].x,ay:kA[i].y,bx:kB[bi].x,by:kB[bi].y})}return m;}
+function ransac(m){if(m.length<4)return null;let best=null,bn=0;for(let it=0;it<80;it++){const a=m[Math.random()*m.length|0],b=m[Math.random()*m.length|0];if(a===b)continue;const tx=a.bx-a.ax,ty=a.by-a.ay,dx1=b.ax-a.ax,dy1=b.ay-a.ay,dx2=b.bx-a.bx,dy2=b.by-a.by;const sc=Math.hypot(dx2,dy2)/(Math.hypot(dx1,dy1)||1),ag=Math.atan2(dy2,dx2)-Math.atan2(dy1,dx1);const cos=sc*Math.cos(ag),sin=sc*Math.sin(ag);let n=0;for(const p of m){const px=p.ax*cos-p.ay*sin+tx,py=p.ax*sin+p.ay*cos+ty;if(Math.hypot(px-p.bx,py-p.by)<4)n++}if(n>bn){bn=n;best={tx,ty}}}return bn>3?best:null;}
+function fastCorners(g,W,H){const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];const raw=[];for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){const c=g[y*W+x];let br=0,dk=0;for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+18)br++;else if(v<c-18)dk++}if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)})}raw.sort((a,b)=>b.s-a.s);const kept=[],minD=12;for(const p of raw){if(kept.length>=30)break;if(!kept.some(k=>Math.abs(k.x-p.x)<minD&&Math.abs(k.y-p.y)<minD))kept.push(p)}return kept;}
+let pKP=null,pDesc=null,snapTx=0,snapTy=0;
+let _hudKP=[],_hudMT=[],_hudAge=0;
+let lastTrack=0;
 
-function initGL(){
-  const cvs=$('cvs');cvs.width=innerWidth;cvs.height=innerHeight;
-  gl=cvs.getContext('webgl2',{alpha:true,premultipliedAlpha:false,antialias:false})
-    ||cvs.getContext('webgl',{alpha:true,premultipliedAlpha:false,antialias:false});
-  if(!gl)return;
-  const mk=(vs,fs)=>{
-    const p=gl.createProgram();
-    [[gl.VERTEX_SHADER,vs],[gl.FRAGMENT_SHADER,fs]].forEach(([t,src])=>{
-      const s=gl.createShader(t);gl.shaderSource(s,src);gl.compileShader(s);gl.attachShader(p,s);
-    });
-    gl.linkProgram(p);return p;
-  };
-  // Point shader: screen-space (x,y in NDC) + depth value → Tron color
-  ovProg=mk(
-    `attribute vec2 aXY;attribute float aD;varying float vD;
-     void main(){vD=aD;gl_PointSize=3.0;gl_Position=vec4(aXY,0.,1.);}`,
-    `precision mediump float;varying float vD;
-     void main(){
-       vec2 c=gl_PointCoord*2.-1.;if(dot(c,c)>1.)discard;
-       // Tron: near=cyan(0,1,1) mid=white(1,1,1) far=orange(1,.5,.1)
-       float t=clamp(vD,0.,1.);
-       vec3 col=t<.5?mix(vec3(0.,1.,1.),vec3(1.,1.,1.),t*2.)
-                    :mix(vec3(1.,1.,1.),vec3(1.,.5,.1),(t-.5)*2.);
-       gl_FragColor=vec4(col,.85*(1.-dot(c,c)*.4));}`
-  );
-  ovBuf=gl.createBuffer();
-}
+// ── TRACKING HUD (persistent dots, 60fps RAF) ─────────────────────────────────
+const tov=$('tov');const tovCtx=tov.getContext('2d');
+tov.width=innerWidth;tov.height=innerHeight;
+function drawHUD(){
+  tovCtx.clearRect(0,0,tov.width,tov.height);
+  if(!running||!$('vid').videoWidth)return;
+  const vw=$('vid').videoWidth,vh=$('vid').videoHeight;
+  const sc=Math.max(innerWidth/vw,innerHeight/vh);
+  const dw=vw*sc,dh=vh*sc,ox=(innerWidth-dw)/2,oy=(innerHeight-dh)/2;
+  const mD=Math.min(vw,vh),sx=(vw-mD)/2,sy=(vh-mD)/2;
+  const ms=(px,py)=>({x:ox+(sx+(px/128)*mD)*sc,y:oy+(sy+(py/128)*mD)*sc});
+  const age=Math.max(0,1-_hudAge/50);
 
-function renderOverlay(depthData,W,H){
-  if(!gl||!$('sTron').checked)return;
-  // depthData: Float32Array of HxW normalized 0..1 depth values
-  // Convert to screen-space NDC points for overlay
-  const step=Math.max(1,Math.floor(W/80)); // ~80 columns of points
-  const pts=[];
-  for(let y=0;y<H;y+=step)for(let x=0;x<W;x+=step){
-    const d=depthData[y*W+x];
-    if(!isFinite(d))continue;
-    // NDC: x = (px/W)*2-1, y = inverted for WebGL
-    pts.push((x/W)*2-1, 1-(y/H)*2, d);
+  // FROZEN stitch points (cyan squares) — these are the exact keypoints
+  // captured at the moment STITCH was tapped. Persist permanently.
+  // They DON'T follow the object because they're screen-space snapshots.
+  for(const p of _stitchKP){
+    const pt=ms(p.x,p.y);
+    tovCtx.strokeStyle='rgba(0,220,255,0.9)';tovCtx.lineWidth=2;
+    tovCtx.strokeRect(pt.x-5,pt.y-5,10,10);
+    // Small cross inside
+    tovCtx.beginPath();tovCtx.moveTo(pt.x-3,pt.y);tovCtx.lineTo(pt.x+3,pt.y);
+    tovCtx.moveTo(pt.x,pt.y-3);tovCtx.lineTo(pt.x,pt.y+3);tovCtx.stroke();
   }
-  if(!pts.length)return;
-  const fa=new Float32Array(pts);
-  gl.bindBuffer(gl.ARRAY_BUFFER,ovBuf);
-  gl.bufferData(gl.ARRAY_BUFFER,fa,gl.DYNAMIC_DRAW);
-  const cvs=$('cvs');
-  gl.viewport(0,0,cvs.width,cvs.height);
-  gl.clearColor(0,0,0,0);
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  gl.useProgram(ovProg);
-  const aXY=gl.getAttribLocation(ovProg,'aXY');
-  const aD=gl.getAttribLocation(ovProg,'aD');
-  gl.enableVertexAttribArray(aXY);gl.enableVertexAttribArray(aD);
-  gl.vertexAttribPointer(aXY,2,gl.FLOAT,false,12,0);
-  gl.vertexAttribPointer(aD,1,gl.FLOAT,false,12,8);
-  gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-  gl.drawArrays(gl.POINTS,0,pts.length/3);
-  gl.disable(gl.BLEND);
-  ovCount=pts.length/3;
+
+  // LIVE corners (magenta squares) — current frame detections, fade out
+  tovCtx.fillStyle=`rgba(255,0,255,${age*.7+.15})`;
+  for(const p of _hudKP){const pt=ms(p.x,p.y);tovCtx.fillRect(pt.x-3,pt.y-3,6,6)}
+
+  // RANSAC-confirmed matches (green outline) while ghost visible
+  if(_hudMT.length>1&&+$('ghost').style.opacity>0.05){
+    tovCtx.strokeStyle=`rgba(0,255,153,${age*.8+.1})`;tovCtx.lineWidth=1.5;
+    for(const m of _hudMT){const pt=ms(m.bx,m.by);tovCtx.strokeRect(pt.x-6,pt.y-6,12,12)}
+  }
+
+  // ROI dashed border
+  if(roiRect){
+    const rx=ox+roiRect.x*sc,ry=oy+roiRect.y*sc,rw=roiRect.w*sc,rh=roiRect.h*sc;
+    tovCtx.strokeStyle='rgba(255,176,0,.7)';tovCtx.lineWidth=2;tovCtx.setLineDash([6,4]);
+    tovCtx.strokeRect(rx,ry,rw,rh);tovCtx.setLineDash([]);
+  }
+  _hudAge++;
+}
+(function hudLoop(){requestAnimationFrame(hudLoop);drawHUD()})();
+
+function updateTracking(){
+  const vid=$('vid');if(!vid.videoWidth)return;
+  const w=vid.videoWidth,h=vid.videoHeight,mD=Math.min(w,h),sx=(w-mD)/2,sy=(h-mD)/2;
+  _tCtx.drawImage(vid,sx,sy,mD,mD,0,0,128,128);
+  const td=_tCtx.getImageData(0,0,128,128).data;
+  for(let i=0;i<td.length;i+=4)_tGray[i>>2]=(td[i]*0.299+td[i+1]*0.587+td[i+2]*0.114)|0;
+  const kp=fastCorners(_tGray,128,128);
+  const desc=kp.map(p=>briefDesc(_tGray,128,128,p.x,p.y));
+  let mt=[];
+  const g=$('ghost');
+  const ghostOn=+g.style.opacity>0.05;
+  if(pKP&&pKP.length>3&&desc.length>3){
+    mt=matchBRIEF(pKP,pDesc,kp,desc);
+    if(mt.length>=4){
+      const af=ransac(mt);
+      if(af){
+        if(ghostOn){
+          // Only accumulate snap while ghost is visible — prevents drift
+          snapTx=snapTx*.65+(-af.tx*(innerWidth/128))*.35;
+          snapTy=snapTy*.65+(-af.ty*(innerHeight/128))*.35;
+          // Clamp to 40% screen so it can't run off screen
+          snapTx=Math.max(-innerWidth*.4,Math.min(innerWidth*.4,snapTx));
+          snapTy=Math.max(-innerHeight*.4,Math.min(innerHeight*.4,snapTy));
+          g.style.transform=`translate(${snapTx.toFixed(1)}px,${snapTy.toFixed(1)}px)`;
+        }
+        chip('cOR','ok',`ORB: ${mt.length}✓`);
+      }else chip('cOR','warn',`ORB: ${kp.length}kp`);
+    }
+  }else chip('cOR','warn',`ORB: ${kp.length>0?kp.length+'kp':'scan'}`);
+  _hudKP=kp;_hudMT=mt;_hudAge=0;
+  pKP=kp;pDesc=desc;
+}
+let _trackT=0;
+function trackLoop(t){
+  if(!running)return;
+  if(t-_trackT>50){_trackT=t;updateTracking()}
+  requestAnimationFrame(trackLoop);
 }
 
 // ── WORKER INIT ───────────────────────────────────────────────────────────────
+let _bakeRetries=0; // retry counter for BAKE when worker busy
 function mkWorker(voxSz,bbMin,dims){
   if(worker)worker.terminate();
   worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
   integBusy=true;
+  // Reset chip to warn during init — will update to ok on ready
+  chip('cTS','warn',`TSDF: init ${dims.join('×')}`);
   worker.onmessage=ev=>{
     const{type}=ev.data;
     if(type==='ready'){
       integBusy=false;
-      wkr(`TSDF: ${ev.data.dims.join('×')} voxels`);
+      chip('cTS','ok',`TSDF: ${ev.data.dims.join('×')}`);
+      // Flush any queued integration
+      if(_queuedPts){
+        integBusy=true;
+        worker.postMessage({type:'integrate',data:{pts:_queuedPts}});
+        _queuedPts=null;
+      }
     }
     else if(type==='done'){integBusy=false}
     else if(type==='mesh'){
-      integBusy=false;bakeQ=false;
+      integBusy=false;bakeQ=false;_bakeRetries=0;
       const v=ev.data.verts;
-      if(!v||v.length<9){
-        sts('NO SURFACE — try more frames or lower voxel size');
-        wkr('Tip: move phone more, better lighting');
-        $('bBake').disabled=false;return;
-      }
-      sts('SMOOTHING...');wkr((v.length/9|0).toLocaleString()+' triangles');
-      const out=$('sSm').checked?laplacian(v,4):v;
-      sts('COMPLETE — '+(out.length/9|0).toLocaleString()+' triangles');
-      lastMeshVerts=out; // store for OBJ export
-      $('bExportObj').disabled=false;
-      $('bStart').disabled=false;$('bBake').disabled=false;
-      const stl=mkSTL(out);
-      if($('sSd').checked)sendP3dK(stl);else dlSTL(stl);
+      if(!v||v.length<9){sts('NO SURFACE — scan more frames, lower ISO');$('bBake').disabled=false;return}
+      sts('SMOOTHING...');wkr(`${(v.length/9|0).toLocaleString()} tris`);
+      const out=$('cbSm').checked?laplacian(v,4):v;
+      sts(`COMPLETE — ${(out.length/9|0).toLocaleString()} triangles`);
+      lastMeshVerts=out;$('bBake').disabled=false;
+      if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose()}
+      const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(out,3));
+      geo.computeVertexNormals();
+      const mat=$('cbWire').checked
+        ?new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true})
+        :new THREE.MeshStandardMaterial({color:0x00ccaa,roughness:.5,metalness:.2,side:THREE.DoubleSide});
+      reviewMesh=new THREE.Mesh(geo,mat);meshGroup.add(reviewMesh);
+      // Auto-center camera on baked mesh
+      geo.computeBoundingBox();const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
+      oc.target.copy(bc);cam3.position.copy(bc).add(new THREE.Vector3(0,0,bc.z>0?bc.z*2:3));
+      dlSTL(mkSTL(out));
     }
   };
   worker.postMessage({type:'init',data:{nx:dims[0],ny:dims[1],nz:dims[2],sz:voxSz,bb:bbMin}});
 }
 
-// ── LOAD DEPTH ANYTHING V2 ────────────────────────────────────────────────────
-// 26MB quantized ONNX model, cached in browser after first download
-async function loadModel(){
-  sts('LOADING NEURAL ENGINE...');
-  prg('Depth Anything V2 Small (26MB — cached after first use)');
-  $('loadBar').style.width='10%';
+let _queuedPts=null; // queued pts when worker busy during init
+
+// ── SENSOR WATERFALL ──────────────────────────────────────────────────────────
+// Spec §1: initialise WebXR + Gyro + Camera simultaneously via Promise.allSettled
+// Tier 1: WebXR — metric scale + 6DoF (ideal, blocked on iOS Safari)
+// Tier 2: IMU/Gyro — 3DoF rotation only
+// Tier 3: getUserMedia — universal fallback
+async function sensorWaterfall(){
+  chip('cXR','warn','WebXR: checking');chip('cGY','warn','Gyro: checking');chip('cCA','warn','CAM: checking');
+  const [xrResult, gyroResult, camResult] = await Promise.allSettled([
+    // Tier 1: WebXR
+    (async()=>{
+      if(!navigator.xr)throw new Error('no XR');
+      const ok=await navigator.xr.isSessionSupported('immersive-ar');
+      if(!ok)throw new Error('AR not supported');
+      hasXR=true;chip('cXR','ok','WebXR: ✔');$('scaleUI').style.display='none';
+      return true;
+    })(),
+    // Tier 2: Gyro
+    (async()=>{
+      if(typeof DeviceOrientationEvent==='undefined')throw new Error('no DevOri');
+      if(typeof DeviceOrientationEvent.requestPermission==='function'){
+        const p=await DeviceOrientationEvent.requestPermission();
+        if(p!=='granted')throw new Error('denied');
+      }
+      hasGyro=true;chip('cGY','ok','Gyro: ✔');
+      window.addEventListener('deviceorientation',e=>{
+        if(!e.alpha&&!e.beta&&!e.gamma)return;
+        const a=e.alpha?THREE.MathUtils.degToRad(e.alpha):0;
+        const b=e.beta?THREE.MathUtils.degToRad(e.beta):0;
+        const g2=e.gamma?THREE.MathUtils.degToRad(e.gamma):0;
+        const ori=window.orientation?THREE.MathUtils.degToRad(window.orientation):0;
+        dQ.setFromEuler(new THREE.Euler(b,a,-g2,'YXZ'));
+        dQ.multiply(new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)));
+        dQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-ori));
+      });
+      return true;
+    })(),
+    // Tier 3: Camera (required)
+    startCamera()
+  ]);
+  
+  if(xrResult.status==='rejected')chip('cXR','off','WebXR: ✗');
+  if(gyroResult.status==='rejected')chip('cGY','off','Gyro: ✗');
+  if(camResult.status==='rejected')throw new Error('Camera failed: '+camResult.reason?.message);
+  chip('cCA','ok','CAM: ✔');
+  
+  // Show scale UI if no WebXR metric scale
+  if(!hasXR)$('scaleUI').style.display='block';
+}
+
+async function startCamera(){
+  if($('vid').srcObject){$('vid').srcObject.getTracks().forEach(t=>t.stop());$('vid').srcObject=null;await new Promise(r=>setTimeout(r,200))}
+  // Request torch at init time if already on — more reliable than applyConstraints later
+  const constraints={video:{facingMode,width:{ideal:1080}}};
+  if(torchOn&&facingMode==='environment')constraints.video.torch=true;
+  const stream=await navigator.mediaDevices.getUserMedia(constraints);
+  $('vid').srcObject=stream;vTrack=stream.getVideoTracks()[0];
+  await new Promise((res,rej)=>{$('vid').onloadedmetadata=()=>$('vid').play().then(res).catch(rej);$('vid').onerror=rej});
+  // Update cam controls UI (zoom range, torch availability)
+  setTimeout(updateCamControls,500); // slight delay for capabilities to populate
+}
+function releaseCamera(){if($('vid').srcObject){$('vid').srcObject.getTracks().forEach(t=>t.stop());$('vid').srcObject=null}vTrack=null;}
+
+// ── NEURAL DEPTH (on-demand) ──────────────────────────────────────────────────
+let iCvs=document.createElement('canvas'),iCtx=iCvs.getContext('2d');
+// Snapshot of ORB keypoints at the exact moment stitch is tapped
+// These persist in the HUD so user can see which points were captured
+let _stitchKP=[];
+
+async function stitch(){
+  if(!depthPipe)return;
+  $('bst').disabled=true;$('bst').textContent='[ PROCESSING... ]';
+
+  // Snapshot current keypoints — freeze them at this exact moment
+  // These show which points were on the object when shutter was pressed
+  _stitchKP=_hudKP.slice();
+
+  // Animate progress bar across screen during inference (~300-800ms)
+  const lb=$('lb');
+  lb.style.transition='none';lb.style.width='0%';
+  requestAnimationFrame(()=>{
+    lb.style.transition='width 0.8s ease-out';
+    lb.style.width='85%'; // races to 85%, jumps to 100% on complete
+  });
+
+  document.querySelectorAll('.pan').forEach(p=>p.style.backdropFilter='none');
+  $('fla').style.opacity=.4;setTimeout(()=>$('fla').style.opacity=0,80);
+  navigator.vibrate?.([60]);
   try{
-    // Use the quantized small model — best speed/quality tradeoff for mobile
-    depthPipe=await pipeline(
-      'depth-estimation',
-      'onnx-community/depth-anything-v2-small',
-      {
-        progress_callback:(p)=>{
-          if(p.status==='downloading'||p.status==='loading'){
-            const pct=p.progress??(p.loaded&&p.total?(p.loaded/p.total*100):50);
-            $('loadBar').style.width=Math.round(10+pct*.85)+'%';
-            prg(`LOADING ${p.file||'model'}... ${Math.round(pct)}%`);
-          }
+    const vid=$('vid'),w=vid.videoWidth,h=vid.videoHeight;
+    iCvs.width=512;iCvs.height=Math.round(512*(h/w));
+    if(roiRect){
+      const vsc=w/iCvs.width;
+      iCtx.drawImage(vid,roiRect.x*vsc,roiRect.y*vsc,roiRect.w*vsc,roiRect.h*vsc,0,0,iCvs.width,iCvs.height);
+    }else{
+      iCtx.drawImage(vid,0,0,iCvs.width,iCvs.height);
+    }
+    const result=await depthPipe(iCvs);
+    let nd=null;
+    if(result.predicted_depth){
+      const t=result.predicted_depth;
+      const dd=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
+      let mn=Infinity,mx=-Infinity;
+      for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
+      const rng=(mx-mn)||1,norm=new Float32Array(dd.length);
+      for(let i=0;i<dd.length;i++)norm[i]=(dd[i]-mn)/rng;
+      nd=norm;
+    }
+    if(!nd)throw new Error('No depth output');
+    
+    // Apply scale from known measurement or WebXR
+    const knownMM=parseFloat($('knownMM').value)||85;
+    scaleFactor=hasXR?1:knownMM/100;
+    
+    const dW=512,dH=iCvs.height,dMin=Math.min(dW,dH);
+    const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
+    
+    // Store depth AFTER dW/dH declared (temporal dead zone fix)
+    lastDepthData=nd;lastDepthW=dW;lastDepthH=dH;
+    
+    // ADAPTIVE depth threshold: cull bottom 8% and top 2% of depth histogram
+    // Much better than fixed 0.1 — adapts to each scene's actual depth range
+    const sorted=Array.from(nd).sort((a,b)=>a-b);
+    const p08=sorted[Math.floor(sorted.length*.08)];
+    const p98=sorted[Math.floor(sorted.length*.98)];
+    
+    // ── LAYER 1: Point cloud preview (instant display) ────────────────────────
+    const vid2=$('vid'),minV=Math.min(vid2.videoWidth,vid2.videoHeight);
+    const cCvs=document.createElement('canvas');cCvs.width=cCvs.height=RES;
+    const cCtx=cCvs.getContext('2d',{willReadFrequently:true});
+    cCtx.drawImage(vid2,(vid2.videoWidth-minV)/2,(vid2.videoHeight-minV)/2,minV,minV,0,0,RES,RES);
+    const colorData=cCtx.getImageData(0,0,RES,RES).data;
+    const ptGeo=new THREE.BufferGeometry();
+    const pos=[],cols=[],rawPts=[]; // rawPts for TSDF
+    const spacing=2.5/RES,offX=-1.25,offY=1.25;
+    for(let y=0;y<RES;y++)for(let x=0;x<RES;x++){
+      const nu=Math.floor(dsx+(x/RES)*dMin),nv=Math.floor(dsy+(y/RES)*dMin);
+      const dv=1-(nd[nv*dW+nu]||0);
+      if(isNaN(dv))continue;
+      // Room scan mode: skip all culling, keep everything
+      if(!roomScanMode){
+        if(dv<p08||dv>p98)continue; // adaptive background cull
+        // Object lock mask: only keep pixels within the flood-filled object region
+        if(objMask){
+          const mx=Math.floor((nu-dsx)/dMin*RES),my=Math.floor((nv-dsy)/dMin*RES);
+          const mi=Math.min(lastDepthH-1,my)*lastDepthW+Math.min(lastDepthW-1,mx);
+          if(!objMask[mi])continue;
         }
       }
-    );
-    $('loadBar').style.width='100%';
-    setTimeout(()=>{$('loadBar').style.width='0%'},1000);
-    sts('NEURAL ENGINE READY');
-    prg('Depth Anything V2 Small — 26M params');
-    $('bStart').disabled=false;
-    if(!sessionStorage.getItem('st'))$('tipOv').classList.add('on');
-  }catch(err){
-    sts('MODEL LOAD FAILED');
-    prg(err.message.slice(0,60));
-    console.error('Model load error:',err);
-  }
-}
-
-// ── START SCAN ────────────────────────────────────────────────────────────────
-$('bStart').onclick=async()=>{
-  if(!depthPipe){sts('MODEL NOT READY YET');return}
-  // Reset state
-  fc=0;pc=0;adapted=false;bs=0;bl={x:0,y:0,z:0};
-  bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-  $('pbar').style.width='0%';
-  $('cW').textContent='W: —';$('cH').textContent='H: —';$('cD').textContent='D: —';
-  $('cP').textContent='PTS: 0';
-  // Init TSDF grid
-  const vSz=+$('sVox').value;
-  const range=120*vSz;
-  mkWorker(vSz,{x:-range/2,y:-range/2,z:0},[120,120,120]);
-  // Stop any existing camera stream first
-  const vid=$('vid');
-  if(vid.srcObject){
-    vid.srcObject.getTracks().forEach(t=>t.stop());
-    vid.srcObject=null;
-    await new Promise(r=>setTimeout(r,200));
-  }
-  // Start camera
-  try{
-    const stream=await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'environment',width:{ideal:1280},height:{ideal:720}}
-    });
-    vid.srcObject=stream;
-    videoTrack=stream.getVideoTracks()[0]; // store for torch API
-    await new Promise((res,rej)=>{
-      vid.onloadedmetadata=()=>vid.play().then(res).catch(rej);
-      vid.onerror=rej;
-    });
-  }catch(err){sts('CAMERA FAILED: '+err.message.slice(0,50));return}
-
-  // iOS Safari: request DeviceOrientation permission (needed for future gyro use)
-  if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
-    try{await DeviceOrientationEvent.requestPermission()}catch(e){}
-  }
-  running=true;
-  $('bStart').disabled=true;$('bStop').disabled=false;$('bBake').disabled=true;
-  $('reticle').classList.add('on');
-  showGrid(true);
-  hideTips();
-  sts('SCANNING...');
-  loop();
-};
-
-// ── MAIN LOOP ─────────────────────────────────────────────────────────────────
-let loopFrame=0;
-async function loop(){
-  if(!running)return;
-  loopFrame++;
-  // Run neural depth every N frames (configurable — balance speed vs coverage)
-  const every=+$('sEvery').value;
-  if(loopFrame%every===0){
-    await inferAndIntegrate();
-  }
-  rafId=requestAnimationFrame(loop);
-}
-
-// Offscreen canvas for grabbing video frames to feed to the pipeline
-let inferCanvas=null,inferCtx=null;
-
-async function inferAndIntegrate(){
-  const vid=$('vid');
-  if(vid.readyState<2||!depthPipe||!running)return;
-  try{
-    // Transformers.js depth pipeline needs a canvas/image, not a raw video element.
-    // Draw current video frame to an offscreen canvas first.
-    if(!inferCanvas){
-      inferCanvas=document.createElement('canvas');
-      // Use a fixed inference resolution — smaller = faster, 512 is a good balance
-      inferCanvas.width=512;
-      inferCanvas.height=Math.round(512*(vid.videoHeight/vid.videoWidth)||512);
-      inferCtx=inferCanvas.getContext('2d');
+      const px=offX+(x*spacing),py=offY-(y*spacing);
+      pos.push(px,py,dv*scaleFactor);
+      const i=(y*RES+x)*4;
+      cols.push(colorData[i]/255,colorData[i+1]/255,colorData[i+2]/255);
+      // For TSDF: convert to mm-scale 3D
+      rawPts.push(px*100,py*100,dv*scaleFactor*100);
+      // Update bbox
+      if(px*100<bbox.minX)bbox.minX=px*100;if(px*100>bbox.maxX)bbox.maxX=px*100;
+      if(py*100<bbox.minY)bbox.minY=py*100;if(py*100>bbox.maxY)bbox.maxY=py*100;
+      if(dv*100<bbox.minZ)bbox.minZ=dv*100;if(dv*100>bbox.maxZ)bbox.maxZ=dv*100;
     }
-    // Update canvas size if video dimensions changed
-    const newH=Math.round(512*(vid.videoHeight/vid.videoWidth||1));
-    if(inferCanvas.height!==newH){inferCanvas.height=newH}
-    inferCtx.drawImage(vid,0,0,inferCanvas.width,inferCanvas.height);
-
-    // Run Depth Anything V2 on the canvas element — this is the supported input type
-    const result=await depthPipe(inferCanvas);
-    // Transformers.js v3 depth-estimation returns:
-    //   result.predicted_depth: Tensor {data: Float32Array, dims: [1,H,W]}
-    //   result.depth: RawImage (for visualization only, uint8)
-    // We want the raw float depth tensor for precision.
-    let dData,dW,dH;
-    if(result.predicted_depth){
-      // v3 API: Tensor with dims [1, H, W] or [H, W]
-      const t=result.predicted_depth;
-      const dims=t.dims||t.shape;
-      dH=dims[dims.length-2];
-      dW=dims[dims.length-1];
-      dData=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
-      // Normalize to 0..1 for overlay (min=near=1, max=far=0 convention)
-      let mn=Infinity,mx=-Infinity;
-      for(let i=0;i<dData.length;i++){if(dData[i]<mn)mn=dData[i];if(dData[i]>mx)mx=dData[i]}
-      const range=(mx-mn)||1;
-      const norm=new Float32Array(dData.length);
-      for(let i=0;i<dData.length;i++)norm[i]=(dData[i]-mn)/range;
-      dData=norm; // now 0=far, 1=near
-    } else if(result.depth){
-      // v2 fallback: RawImage
-      const depthMap=result.depth;
-      dW=depthMap.width; dH=depthMap.height;
-      // RawImage.data is Uint8ClampedArray — normalize to 0..1
-      const raw=depthMap.data;
-      dData=new Float32Array(raw.length/depthMap.channels);
-      const ch=depthMap.channels||1;
-      for(let i=0;i<dData.length;i++)dData[i]=raw[i*ch]/255;
-    } else {
-      wkr('UNEXPECTED MODEL OUTPUT FORMAT');return;
+    ptGeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    ptGeo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+    const ptMat=new THREE.PointsMaterial({size:parseFloat($('slps').value),vertexColors:true,sizeAttenuation:true,transparent:true,opacity:.85});
+    const points=new THREE.Points(ptGeo,ptMat);
+    const pivot=new THREE.Group();
+    if(hasGyro&&dQ.length()>.01)pivot.quaternion.copy(dQ);
+    // Fix 7: mirror X axis for front camera — front cam is horizontally flipped
+    if(facingMode==='user')points.scale.set(-1,1,1);
+    points.position.set(0,0,-RADIUS);pivot.add(points);ptGroup.add(pivot);
+    capturedClouds.push({geo:ptGeo,mat:ptMat,pts:rawPts.slice()});
+    
+    // ── LAYER 2: TSDF integration (background worker) ────────────────────────
+    const ptsF32=new Float32Array(rawPts);
+    if(worker&&!integBusy&&!bakeQ){
+      integBusy=true;
+      worker.postMessage({type:'integrate',data:{pts:ptsF32}});
+      pc+=rawPts.length/3|0;
+    } else if(worker){
+      // Worker busy (init/integrate in flight) — queue pts so nothing is lost
+      _queuedPts=ptsF32;
+      pc+=rawPts.length/3|0;
     }
-
-    // Render Tron overlay
-    renderOverlay(dData,dW,dH);
-
-    // Motion stability check + scan guidance
-    const stability=checkMotionStability(dData,dW,dH);
-
-    if(integBusy||bakeQ)return; // skip integration if worker busy
-
-    // ── Convert depth map to 3D point cloud ─────────────────────────────────
-    // DA2 normalized depth: 1=near, 0=far
-    // depthScale maps the full 0-1 range to millimeters
-    const depthScale=+$('sScale').value;
-    const fovRad=60*Math.PI/180;
-    const fx=dW/(2*Math.tan(fovRad/2));
-    const fy=dH/(2*Math.tan(fovRad/2));
-    const cx2=dW/2,cy2=dH/2;
-    const pts=[];
-    let nd=Infinity,validCount=0,totalSampled=0;
-    const step=Math.max(2,Math.floor(dW/40));
-    for(let v=0;v<dH;v+=step)for(let u=0;u<dW;u+=step){
-      totalSampled++;
-      const rawD=dData[v*dW+u];
-      if(!isFinite(rawD))continue;
-      // rawD: 1=near 0=far — convert to distance in mm
-      // Use rawD directly as depth proportion, scale to range
-      const d=rawD*depthScale; // 1=near → full depthScale mm
-      if(d<5)continue; // skip essentially-zero depth (far background)
-      validCount++;
-      if(d<nd)nd=d;
-      const X=(u-cx2)/fx*d;
-      const Y=-(v-cy2)/fy*d;
-      const Z=d;
-      if(!isFinite(X)||!isFinite(Y)||!isFinite(Z))continue;
-      pts.push(X,Y,Z);
-      if(X<bbox.minX)bbox.minX=X;if(X>bbox.maxX)bbox.maxX=X;
-      if(Y<bbox.minY)bbox.minY=Y;if(Y>bbox.maxY)bbox.maxY=Y;
-      if(Z<bbox.minZ)bbox.minZ=Z;if(Z>bbox.maxZ)bbox.maxZ=Z;
-    }
-    // Debug: show inference diagnostics so we can see what's happening
-    wkr(`DEPTH ${dW}×${dH} · ${validCount}/${totalSampled} valid · fc:${fc}`);
-    if(!pts.length){
-      prg('No pts from depth — check DEPTH SCALE setting');return;
-    }
-    pc+=pts.length/3|0;
     fc++;
-
-    // Scan guidance (motion + distance)
-    updateGuidance(stability,nd,depthScale);
-
-    // Ghost image every 10 frames so user can see coverage
-    if(fc%10===1){captureGhost()}
-    // Flash every 25 frames as frame-capture feedback
-    if(fc%25===0){triggerFlash()}
-
-    // Always send to TSDF
-    integBusy=true;
-    worker.postMessage({type:'integrate',data:{pts:new Float32Array(pts)}});
-    // Update HUD — always visible
-    const bboxOk=bbox.minX<1e8;
-    $('cW').textContent='W: '+(bboxOk?((bbox.maxX-bbox.minX)|0)+'mm':'—');
-    $('cH').textContent='H: '+(bboxOk?((bbox.maxY-bbox.minY)|0)+'mm':'—');
-    $('cD').textContent='D: '+(bboxOk?((bbox.maxZ-bbox.minZ)|0)+'mm':'—');
-    $('cP').textContent='PTS: '+(pc/1000).toFixed(1)+'k';
-    // Progress bar
-    const tgt=+$('sFr').value;
-    $('pbar').style.width=Math.min(100,fc/tgt*100)+'%';
-    prg(`⬤ ${fc}fr · ${(pc/1000).toFixed(1)}k pts · ${pts.length/3|0} this frame`);
-    // Adapt TSDF to real bbox after 8 frames
-    if(fc===8&&bboxOk&&!adapted&&pc>50){
+    // Adapt TSDF grid after 4th frame (fc is now 4, bbox has 4 frames of data)
+    // BUG WAS: check was fc===5 BEFORE fc++ so it fired on the 6th frame
+    // Also removed pc>30 guard — bbox is populated regardless of worker state
+    if(fc===4&&!adapted){
       adapted=true;
-      const vSz=+$('sVox').value,pad=vSz*8;
-      const dx=bbox.maxX-bbox.minX,dy=bbox.maxY-bbox.minY,dz=bbox.maxZ-bbox.minZ;
-      const nvx=Math.min(120,Math.max(20,Math.ceil((dx+pad*2)/vSz)));
-      const nvy=Math.min(120,Math.max(20,Math.ceil((dy+pad*2)/vSz)));
-      const nvz=Math.min(120,Math.max(20,Math.ceil((dz+pad*2)/vSz)));
-      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nvx,nvy,nvz]);
-      wkr('GRID ADAPTED: '+nvx+'×'+nvy+'×'+nvz);
+      const vSz=8,pad=vSz*12;
+      const dx=Math.max(50,bbox.maxX-bbox.minX),dy=Math.max(50,bbox.maxY-bbox.minY),dz=Math.max(50,bbox.maxZ-bbox.minZ);
+      const nx=Math.min(100,Math.max(20,Math.ceil((dx+pad*2)/vSz)));
+      const ny=Math.min(100,Math.max(20,Math.ceil((dy+pad*2)/vSz)));
+      const nz=Math.min(100,Math.max(20,Math.ceil((dz+pad*2)/vSz)));
+      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nx,ny,nz]);
+      wkr(`GRID ADAPTED ${nx}×${ny}×${nz}`);
     }
-    // Auto-stop: bbox stable
-    if(bboxOk){
-      const sx=(bbox.maxX-bbox.minX)|0,sy=(bbox.maxY-bbox.minY)|0,sz=(bbox.maxZ-bbox.minZ)|0;
-      const grew=Math.abs(sx-bl.x)+Math.abs(sy-bl.y)+Math.abs(sz-bl.z);
-      bl={x:sx,y:sy,z:sz};
-      if(grew<5)bs++;else bs=0;
+    $('bBake').disabled=false;
+    // Fix pts display: show raw count when < 1000, k when >= 1000
+    const ptsStr=pc<1000?pc.toString():(pc/1000).toFixed(1)+'k';
+    $('lp').textContent=`FRAMES: ${fc}  PTS: ${ptsStr}`;
+    
+    // Ghost overlay
+    const gW=320,gH=Math.round(320*$('vid').videoHeight/$('vid').videoWidth);
+    const gCvs=document.createElement('canvas');gCvs.width=gW;gCvs.height=gH;
+    const gCtx=gCvs.getContext('2d');
+    gCtx.drawImage($('vid'),0,0,gW,gH);
+    gCtx.fillStyle='rgba(0,50,50,.35)';gCtx.fillRect(0,0,gW,gH);
+    gCvs.toBlob(b=>{
+      const url=URL.createObjectURL(b),g=$('ghost');
+      const old=g._burl;g.src=url;g._burl=url;
+      if(old)URL.revokeObjectURL(old);
+    },'image/jpeg',.65);
+    $('ghost').style.opacity='.45';
+    pKP=null;pDesc=null; // reset ORB so it tracks from new position
+    snapTx=0;snapTy=0;$('ghost').style.transform='translate(0px,0px)';
+  }catch(e){sts('ERROR: '+e.message.slice(0,50));console.error(e)}
+  // Complete progress bar
+  $('lb').style.transition='width 0.15s';$('lb').style.width='100%';
+  setTimeout(()=>{$('lb').style.transition='none';$('lb').style.width='0%';},400);
+  document.querySelectorAll('.pan').forEach(p=>p.style.backdropFilter='');
+  $('bst').textContent='[ ⬤ STITCH FRAME ]';$('bst').disabled=false;
+}
+
+// ── OBJECT LOCK — V29: depth-based flood fill, no extra model needed ──────────
+// User taps the object → we find depth at that pixel → mask all pixels
+// within ±depthTol of that depth value → only those pixels feed TSDF + ORB
+// Pure JS ~2ms, works on any device, no 40MB SAM model needed
+let objMask=null; // Float32Array same size as depth map, 1=keep 0=cull
+let objLockActive=false;
+let roomScanMode=false; // when true: skip depth culling, scan full environment
+let lastDepthData=null,lastDepthW=0,lastDepthH=0;
+
+function floodFillDepthMask(dData,W,H,tapX,tapY,tol=0.18){
+  // tapX/tapY are in 0..1 normalized screen coordinates
+  const px=Math.floor(tapX*W),py=Math.floor(tapY*H);
+  const seedDepth=dData[py*W+px];
+  const mask=new Uint8Array(W*H);
+  // BFS flood fill from tap point — only expand to pixels within tol of seed depth
+  const queue=[py*W+px];mask[py*W+px]=1;
+  const dirs=[-1,1,-W,W,-W-1,-W+1,W-1,W+1];
+  let head=0;
+  while(head<queue.length){
+    const idx=queue[head++];
+    for(const d of dirs){
+      const ni=idx+d;
+      if(ni<0||ni>=W*H||mask[ni])continue;
+      if(Math.abs(dData[ni]-seedDepth)<tol){mask[ni]=1;queue.push(ni)}
     }
-    if(fc>=tgt||(bs>15&&fc>15)){
-      sts('SCAN STABLE — TAP BAKE MESH');
-      prg('ready · '+fc+' frames · '+(pc/1000).toFixed(0)+'k pts');
-      stopScan();
-    }
-  }catch(err){
-    console.error('Inference error:',err);
-    wkr('INFERENCE ERR: '+err.message.slice(0,40));
   }
+  return mask;
 }
 
-// ── STOP ─────────────────────────────────────────────────────────────────────
-function stopScan(){
-  running=false;
-  if(rafId){cancelAnimationFrame(rafId);rafId=null}
-  $('bStart').disabled=false;$('bStop').disabled=true;
-  $('reticle').classList.remove('on');
-  showGrid(false);
-  $('ghost').style.opacity='0';
-  if(fc>3)$('bBake').disabled=false;
-  const vid=$('vid');
-  if(vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null}
-  if(torchOn&&videoTrack){videoTrack.applyConstraints({advanced:[{torch:false}]}).catch(()=>{});torchOn=false}
+function enableObjectLock(){
+  // Cancel ROI if active
+  if(roiOn){roiOn=false;document.removeEventListener('pointerdown',roiDown);$('roi').style.display='none';$('roiH').style.display='none';$('broi').style.background='transparent';$('broi').style.color='var(--g)';}
+  objLockActive=true;
+  $('bobj').style.background='rgba(255,0,255,.2)';
+  $('bobj').textContent='◎ TAP OBJECT...';
+  wkr('TAP THE OBJECT IN CAMERA VIEW');
+  // Document-level listener captures taps outside vid bounds too
+  document.addEventListener('pointerdown',onObjTap,{once:true});
 }
-window.stopScan=stopScan;
-window.togCfg=()=>{
-  const s=$('sets');
-  $('tipOv').classList.remove('on');$('dlOv').classList.remove('on');
-  s.classList.toggle('open');
-};
-$('bStop').onclick=()=>{stopScan();sts('SCAN STOPPED')};
-
-// ── TORCH ─────────────────────────────────────────────────────────────────────
-let torchOn=false,videoTrack=null;
-window.togTorch=async()=>{
-  if(!videoTrack){wkr('START SCAN FIRST');return}
-  const cap=videoTrack.getCapabilities?.();
-  if(!cap?.torch){wkr('TORCH NOT SUPPORTED ON THIS DEVICE');return}
-  torchOn=!torchOn;
-  try{
-    await videoTrack.applyConstraints({advanced:[{torch:torchOn}]});
-    $('bTorch').style.background=torchOn?'var(--gold)':'transparent';
-    $('bTorch').style.color=torchOn?'#000':'var(--gold)';
-  }catch(e){wkr('TORCH ERR: '+e.message.slice(0,30))}
-};
-
-// ── GHOST IMAGE + FLASH (Gemini's best idea) ──────────────────────────────────
-// After each inference frame, store a ghost of the camera for alignment guidance.
-// User can see where previous frames were captured to help fill coverage gaps.
-let ghostCanvas=document.createElement('canvas'),ghostCtx=ghostCanvas.getContext('2d');
-function captureGhost(){
-  const vid=$('vid');
-  if(vid.videoWidth<10)return;
-  ghostCanvas.width=vid.videoWidth;ghostCanvas.height=vid.videoHeight;
-  ghostCtx.drawImage(vid,0,0);
-  $('ghost').src=ghostCanvas.toDataURL('image/jpeg',0.5);
-  // Show briefly then fade
-  $('ghost').style.opacity='0.3';
-  setTimeout(()=>$('ghost').style.opacity='0',2000);
-}
-function triggerFlash(){
-  const f=$('flash');f.style.opacity='0.7';
-  setTimeout(()=>f.style.opacity='0',120);
-  navigator.vibrate?.([40,20]);
-}
-
-// ── AR GRID during scan ───────────────────────────────────────────────────────
-function showGrid(on){$('argrid').style.opacity=on?'1':'0'}
-
-// ── OBJ EXPORT (in addition to STL) ──────────────────────────────────────────
-let lastMeshVerts=null;
-window.exportOBJ=()=>{
-  if(!lastMeshVerts||lastMeshVerts.length<9){wkr('NO MESH — BAKE FIRST');return}
-  const v=lastMeshVerts;const n=v.length/9|0;
-  let obj='# P3dK Neural Scanner\n# '+n+' triangles\n';
-  for(let i=0;i<v.length;i+=3)obj+=`v ${v[i].toFixed(4)} ${v[i+1].toFixed(4)} ${v[i+2].toFixed(4)}\n`;
-  for(let i=0;i<n;i++){const b=i*3+1;obj+=`f ${b} ${b+1} ${b+2}\n`}
-  const a=document.createElement('a');
-  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
-  a.download='p3dk-'+ts+'.obj';
-  a.href=URL.createObjectURL(new Blob([obj],{type:'text/plain'}));a.click();
-  wkr('OBJ EXPORTED');
-};
-
-// ── SCAN GUIDANCE ─────────────────────────────────────────────────────────────
-// Compare consecutive depth maps to detect motion blur / fast movement
-let lastDepthSnapshot=null;
-function checkMotionStability(dData,dW,dH){
-  if(!lastDepthSnapshot||lastDepthSnapshot.length!==dData.length){
-    lastDepthSnapshot=dData.slice();return 1;
-  }
-  let diff=0;const step=Math.max(1,Math.floor(dW*dH/1000));
-  for(let i=0;i<dData.length;i+=step)diff+=Math.abs(dData[i]-lastDepthSnapshot[i]);
-  lastDepthSnapshot=dData.slice();
-  return 1-(diff/(dData.length/step)); // 0=lots of motion, 1=stable
-}
-
-let guidanceCooldown=0;
-function updateGuidance(stability,nd,depthScale){
-  if(Date.now()<guidanceCooldown)return;
-  if(stability<0.4){
-    $('dst').textContent='⚠ MOVING TOO FAST — SLOW DOWN';
-    $('dst').style.color='var(--red)';guidanceCooldown=Date.now()+1200;return;
-  }
-  if(nd<20){$('dst').textContent='⚠ TOO CLOSE — BACK AWAY';$('dst').style.color='var(--gold)';return}
-  if(nd>depthScale*.8){$('dst').textContent='⚠ MOVE CLOSER TO OBJECT';$('dst').style.color='var(--gold)';return}
-  $('dst').textContent='◎ RANGE OK  '+nd.toFixed(0)+'mm';$('dst').style.color='var(--green)';
-}
-
-// ── BAKE ──────────────────────────────────────────────────────────────────────
-$('bBake').onclick=()=>{
-  if(!worker||fc<3){sts('NOT ENOUGH DATA — scan first');return}
-  if(integBusy){
-    wkr('FINISHING LAST FRAME...');
-    setTimeout(()=>{if(!integBusy&&!bakeQ)$('bBake').click()},800);
+function onObjTap(e){
+  // Ignore taps on the bottom panel buttons
+  const panelTop=$('cliv').getBoundingClientRect().top;
+  if(e.clientY>=panelTop){
+    // Re-add since we consumed the event
+    if(objLockActive)document.addEventListener('pointerdown',onObjTap,{once:true});
     return;
   }
-  $('reticle').classList.remove('on');
-  sts('MARCHING CUBES...');prg('');wkr('building mesh...');
-  $('bBake').disabled=true;
-  bakeQ=true;integBusy=true;
-  worker.postMessage({type:'march',data:{iso:+$('sIso').value,minW:2}});
+  objLockActive=false;
+  const tx=e.clientX/innerWidth,ty=e.clientY/innerHeight;
+  if(lastDepthData&&lastDepthW>0){
+    objMask=floodFillDepthMask(lastDepthData,lastDepthW,lastDepthH,tx,ty);
+    const coverage=objMask.reduce((a,b)=>a+b,0)/(lastDepthW*lastDepthH)*100;
+    $('bobj').style.background='rgba(255,0,255,.35)';
+    $('bobj').textContent=`◎ LOCKED (${coverage.toFixed(0)}%)`;
+    wkr(`OBJECT LOCK: ${coverage.toFixed(0)}% selected`);
+    chip('cOR','ok','ORB+LOCK');
+  } else {
+    $('bobj').style.background='transparent';
+    $('bobj').textContent='◎ OBJECT LOCK';
+    wkr('STITCH ONE FRAME FIRST — then tap object');
+  }
+}
+$('bobj').addEventListener('click',()=>{
+  if(objMask){
+    objMask=null;$('bobj').style.background='transparent';$('bobj').textContent='◎ OBJECT LOCK';
+    wkr('OBJECT LOCK CLEARED');
+  } else enableObjectLock();
+});
+
+// ── ROOM SCANNER MODE ──────────────────────────────────────────────────────────
+$('broom').addEventListener('click',()=>{
+  roomScanMode=!roomScanMode;
+  $('broom').style.background=roomScanMode?'rgba(128,128,128,.3)':'transparent';
+  $('broom').style.borderColor=roomScanMode?'var(--c)':'#888';
+  $('broom').style.color=roomScanMode?'var(--c)':'#888';
+  $('broom').textContent=roomScanMode?'⊞ ROOM: ON':'⊞ ROOM SCAN';
+  if(roomScanMode){objMask=null;$('bobj').style.background='transparent';$('bobj').textContent='◎ OBJECT LOCK';}
+  wkr(roomScanMode?'ROOM MODE: full depth, no culling':'OBJECT MODE: depth culling on');
+});
+
+// ── NATIVE CAMERA CONTROLS (zoom + focus via MediaStreamTrack) ────────────────
+window.applyCamZoom=async v=>{
+  if(!vTrack)return;
+  try{await vTrack.applyConstraints({advanced:[{zoom:v}]})}
+  catch(e){wkr('Zoom: '+e.message.slice(0,30))}
+};
+window.setFocus=async(mode,dist)=>{
+  if(!vTrack)return;
+  try{
+    const c={advanced:[{focusMode:mode}]};
+    if(mode==='manual'&&dist!==undefined)c.advanced[0].focusDistance=dist;
+    await vTrack.applyConstraints(c);
+    $('bFocNear').style.background=mode==='manual'&&dist===0?'rgba(0,255,255,.2)':'transparent';
+    $('bFocFar').style.background=mode==='manual'&&dist===1?'rgba(0,255,255,.2)':'transparent';
+    $('bFocAuto').style.background=mode==='continuous'?'rgba(0,255,255,.2)':'transparent';
+  }catch(e){wkr('Focus: '+e.message.slice(0,30))}
+};
+function updateCamControls(){
+  if(!vTrack)return;
+  try{
+    const cap=vTrack.getCapabilities?.()??{};
+    if(cap.zoom){$('slZoom').min=cap.zoom.min??1;$('slZoom').max=cap.zoom.max??8;$('slZoom').step=cap.zoom.step??0.1;}
+    // Hide torch button if hardware doesn't support it
+    if(cap.torch===false||cap.torch===undefined){
+      $('btorch').style.opacity='.3';$('btorch').style.pointerEvents='none';
+      $('btorch').title='Torch not available on this device';
+    }else{$('btorch').style.opacity='';$('btorch').style.pointerEvents='';}
+  }catch(e){}
+}
+
+function calibFast(){
+  const sc=parseFloat($('slsc').value),ps=parseFloat($('slps').value);
+  capturedClouds.forEach(c=>{
+    c.mat.size=ps;
+    const v=c.geo.attributes.position.array;
+    for(let i=0;i<c.pts.length/3;i++)v[i*3+2]=c.pts[i*3+2]/100*sc;
+    c.geo.attributes.position.needsUpdate=true;
+  });
+}
+
+// ── V29: XYZ FABRICATION SCALE ────────────────────────────────────────────────
+// User inputs known real-world dimension → compute stretch ratio → rescale mesh
+function updateBboxDisplay(){
+  const dx=bbox.maxX-bbox.minX,dy=bbox.maxY-bbox.minY,dz=bbox.maxZ-bbox.minZ;
+  if(dx>0){
+    $('bboxDisplay').textContent=`DETECTED: W${dx.toFixed(1)}  H${dy.toFixed(1)}  D${dz.toFixed(1)} (raw units)`;
+    // Pre-fill inputs with detected values so user sees what to override
+    if(!$('specX').value)$('specX').placeholder=dx.toFixed(1);
+    if(!$('specY').value)$('specY').placeholder=dy.toFixed(1);
+    if(!$('specZ').value)$('specZ').placeholder=dz.toFixed(1);
+  }
+}
+
+$('bApplyScale').addEventListener('click',()=>{
+  const dx=bbox.maxX-bbox.minX,dy=bbox.maxY-bbox.minY,dz=bbox.maxZ-bbox.minZ;
+  if(dx<=0){wkr('NO BBOX — stitch frames first');return}
+  const sx=$('specX').value?parseFloat($('specX').value)/dx:1;
+  const sy=$('specY').value?parseFloat($('specY').value)/dy:1;
+  const sz=$('specZ').value?parseFloat($('specZ').value)/dz:1;
+  if(!isFinite(sx)||!isFinite(sy)||!isFinite(sz)){wkr('INVALID SCALE VALUES');return}
+  wkr(`SCALE: X×${sx.toFixed(3)} Y×${sy.toFixed(3)} Z×${sz.toFixed(3)}`);
+  // Rescale point cloud preview
+  capturedClouds.forEach(c=>{
+    const v=c.geo.attributes.position.array;
+    for(let i=0;i<v.length;i+=3){v[i]*=sx;v[i+1]*=sy;v[i+2]*=sz}
+    c.geo.attributes.position.needsUpdate=true;
+  });
+  // Rescale baked mesh if present
+  if(reviewMesh){
+    const v=reviewMesh.geometry.attributes.position.array;
+    for(let i=0;i<v.length;i+=3){v[i]*=sx;v[i+1]*=sy;v[i+2]*=sz}
+    reviewMesh.geometry.attributes.position.needsUpdate=true;
+    reviewMesh.geometry.computeVertexNormals();
+  }
+  // Rescale lastMeshVerts for STL export
+  if(lastMeshVerts){
+    for(let i=0;i<lastMeshVerts.length;i+=3){lastMeshVerts[i]*=sx;lastMeshVerts[i+1]*=sy;lastMeshVerts[i+2]*=sz}
+  }
+  sts(`SCALED: X${sx.toFixed(2)} Y${sy.toFixed(2)} Z${sz.toFixed(2)}`);
+});
+
+// ── BAKE STL ──────────────────────────────────────────────────────────────────
+$('bBake').onclick=()=>{
+  if(!worker||fc<2){sts('NOT ENOUGH FRAMES — stitch more');return}
+  if(integBusy){
+    _bakeRetries++;
+    if(_bakeRetries>5){
+      // Worker stuck — force reset
+      integBusy=false;bakeQ=false;_bakeRetries=0;
+      wkr('WORKER TIMEOUT — retrying');
+      setTimeout(()=>$('bBake').click(),200);return;
+    }
+    wkr(`FINISHING FRAME... (${_bakeRetries}/5)`);
+    setTimeout(()=>$('bBake').click(),800);return;
+  }
+  _bakeRetries=0;
+  sts('MARCHING CUBES...');wkr('building mesh...');
+  $('bBake').disabled=true;bakeQ=true;integBusy=true;
+  worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:2}});
 };
 
-// ── LAPLACIAN SMOOTH ──────────────────────────────────────────────────────────
+// ── LAPLACIAN + STL ───────────────────────────────────────────────────────────
 function laplacian(v,n){
   const cnt=v.length/3|0,adj=new Map();
   for(let i=0;i<cnt;i++)adj.set(i,new Set());
-  for(let i=0;i<cnt;i+=3){
-    adj.get(i).add(i+1);adj.get(i).add(i+2);
-    adj.get(i+1).add(i);adj.get(i+1).add(i+2);
-    adj.get(i+2).add(i);adj.get(i+2).add(i+1);
-  }
+  for(let i=0;i<cnt;i+=3){adj.get(i).add(i+1);adj.get(i).add(i+2);adj.get(i+1).add(i);adj.get(i+1).add(i+2);adj.get(i+2).add(i);adj.get(i+2).add(i+1)}
   const p=new Float32Array(v);
-  for(let k=0;k<n;k++){
-    const np=new Float32Array(p.length);
-    for(let i=0;i<cnt;i++){
-      const nb=adj.get(i);
-      if(!nb?.size){np[i*3]=p[i*3];np[i*3+1]=p[i*3+1];np[i*3+2]=p[i*3+2];continue}
-      let cx=0,cy=0,cz=0;
-      for(const j of nb){cx+=p[j*3];cy+=p[j*3+1];cz+=p[j*3+2]}
-      const f=1/nb.size;
-      np[i*3]=p[i*3]+(cx*f-p[i*3])*.5;
-      np[i*3+1]=p[i*3+1]+(cy*f-p[i*3+1])*.5;
-      np[i*3+2]=p[i*3+2]+(cz*f-p[i*3+2])*.5;
-    }
-    p.set(np);
-  }
+  for(let k=0;k<n;k++){const np=new Float32Array(p.length);for(let i=0;i<cnt;i++){const nb=adj.get(i);if(!nb?.size){np[i*3]=p[i*3];np[i*3+1]=p[i*3+1];np[i*3+2]=p[i*3+2];continue}let cx=0,cy=0,cz=0;for(const j of nb){cx+=p[j*3];cy+=p[j*3+1];cz+=p[j*3+2]}const f=1/nb.size;np[i*3]=p[i*3]+(cx*f-p[i*3])*.5;np[i*3+1]=p[i*3+1]+(cy*f-p[i*3+1])*.5;np[i*3+2]=p[i*3+2]+(cz*f-p[i*3+2])*.5}p.set(np)}
   return p;
 }
+function mkSTL(v){const n=v.length/9|0,buf=new ArrayBuffer(84+n*50),dv=new DataView(buf);const h=new TextEncoder().encode('P3dK Scanner');for(let i=0;i<Math.min(80,h.length);i++)dv.setUint8(i,h[i]);dv.setUint32(80,n,true);let o=84;for(let i=0;i<n;i++){const b=i*9,ax=v[b],ay=v[b+1],az=v[b+2],bx=v[b+3],by=v[b+4],bz=v[b+5],cx=v[b+6],cy=v[b+7],cz=v[b+8];const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;const qx=uy*vz-uz*vy,qy=uz*vx-ux*vz,qz=ux*vy-uy*vx,ql=Math.hypot(qx,qy,qz)||1;dv.setFloat32(o,qx/ql,true);dv.setFloat32(o+4,qy/ql,true);dv.setFloat32(o+8,qz/ql,true);o+=12;dv.setFloat32(o,ax,true);dv.setFloat32(o+4,ay,true);dv.setFloat32(o+8,az,true);o+=12;dv.setFloat32(o,bx,true);dv.setFloat32(o+4,by,true);dv.setFloat32(o+8,bz,true);o+=12;dv.setFloat32(o,cx,true);dv.setFloat32(o+4,cy,true);dv.setFloat32(o+8,cz,true);o+=12;dv.setUint16(o,0,true);o+=2}return buf;}
+function dlSTL(buf){const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));a.download='p3dk-'+ts+'.stl';a.click();sts('STL SAVED TO DOWNLOADS');}
 
-// ── STL BINARY ────────────────────────────────────────────────────────────────
-function mkSTL(v){
-  const n=v.length/9|0,buf=new ArrayBuffer(84+n*50),dv=new DataView(buf);
-  const h=new TextEncoder().encode('P3dK Neural Scan v4');
-  for(let i=0;i<Math.min(80,h.length);i++)dv.setUint8(i,h[i]);
-  dv.setUint32(80,n,true);let o=84;
-  for(let i=0;i<n;i++){
-    const b=i*9,ax=v[b],ay=v[b+1],az=v[b+2],bx=v[b+3],by=v[b+4],bz=v[b+5],cx=v[b+6],cy=v[b+7],cz=v[b+8];
-    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz2=cz-az;
-    const qx=uy*vz2-uz*vy,qy=uz*vx-ux*vz2,qz=ux*vy-uy*vx,ql=Math.hypot(qx,qy,qz)||1;
-    dv.setFloat32(o,qx/ql,true);dv.setFloat32(o+4,qy/ql,true);dv.setFloat32(o+8,qz/ql,true);o+=12;
-    dv.setFloat32(o,ax,true);dv.setFloat32(o+4,ay,true);dv.setFloat32(o+8,az,true);o+=12;
-    dv.setFloat32(o,bx,true);dv.setFloat32(o+4,by,true);dv.setFloat32(o+8,bz,true);o+=12;
-    dv.setFloat32(o,cx,true);dv.setFloat32(o+4,cy,true);dv.setFloat32(o+8,cz,true);o+=12;
-    dv.setUint16(o,0,true);o+=2;
-  }
-  return buf;
-}
-function dlSTL(buf){
-  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
-  const nm='p3dk-neural-'+ts+'.stl';
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
-  a.download=nm;a.click();
-  $('dlName').textContent=nm;$('dlOv').classList.add('on');
-  navigator.vibrate?.(30);
-}
-function sendP3dK(buf){
-  try{const bc=new BroadcastChannel('p3dk');bc.postMessage({type:'scan-mesh',stl:buf});bc.close()}catch(e){}
-  if(window.opener)try{window.opener.postMessage({type:'p3dk-scan-mesh',stl:buf},'*')}catch(e){}
-  dlSTL(buf);
-}
-
-// ── RESIZE ────────────────────────────────────────────────────────────────────
-window.onresize=()=>{const c=$('cvs');if(c&&gl){c.width=innerWidth;c.height=innerHeight}};
-
-// ── BOOT ──────────────────────────────────────────────────────────────────────
-initGL();
-loadModel(); // starts downloading/loading the 26MB model immediately
-</script>
-</body>
-</html>
-
-
-----
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>P3dK // On-Demand Engine</title>
-<!-- Three.js -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
-<style>
-:root { --cyan: #0ff; --amber: #ffb000; --magenta: #f0f; --bg: #050505; --font: 'Courier New', monospace; }
-* { box-sizing: border-box; user-select: none; margin: 0; padding: 0; overflow: hidden; }
-body { background: var(--bg); color: var(--cyan); font-family: var(--font); touch-action: none; }
-
-#video-feed { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover; z-index: 1; opacity: 1.0; }
-#track-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 2; pointer-events: none; }
-#glcanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; background: transparent; }
-#bg-black { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; background: #080808; display: none;}
-
-#ghost-overlay {
-position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; object-fit: cover;
-z-index: 4; opacity: 0; pointer-events: none; transition: opacity 0.2s;
-}
-
-.ar-grid {
-position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;
-background: linear-gradient(rgba(0, 255, 255, 0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.05) 1px, transparent 1px);
-background-size: 50px 50px; pointer-events: none; clip-path: circle(35% at 50% 50%);
-}
-
-#ui-layer {
-position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 10;
-display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; padding: 15px;
-}
-
-.panel {
-background: rgba(0, 15, 15, 0.85); border: 1px solid var(--cyan); padding: 12px;
-backdrop-filter: blur(8px); pointer-events: auto;
-}
-
-.sys-text { font-size: 11px; font-weight: bold; line-height: 1.5; text-shadow: 0 0 5px #000; }
-.amber { color: var(--amber); }
-.sys-err { color: var(--magenta); margin-top: 5px; white-space: pre-wrap; font-size: 10px; text-shadow: none; max-height: 45px; overflow: hidden;}
-
-.btn {
-background: rgba(0, 40, 40, 0.8); color: var(--cyan); border: 1px solid var(--cyan);
-padding: 15px; font-family: var(--font); font-size: 14px; font-weight: bold;
-cursor: pointer; text-transform: uppercase; width: 100%; margin-top: 10px; transition: 0.1s;
-pointer-events: auto;
-}
-.btn:active { background: var(--cyan); color: #000; }
-.btn:disabled { opacity: 0.5; pointer-events: none; border-color: #555; color: #aaa; }
-
-#btn-stitch {
-height: 80px; font-size: 18px; border-width: 2px; border-color: var(--cyan);
-background: rgba(0, 255, 255, 0.1);
-}
-#btn-stitch:active { background: var(--cyan); color: #000; }
-
-#controls-review { display: none; }
-.btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-
-.slider-group { margin-top: 10px; }
-.slider-label { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 5px; color: #ccc;}
-input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin-bottom: 5px; pointer-events: auto; }
-input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: var(--cyan); cursor: pointer; margin-top: -6px; }
-input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; background: rgba(0, 255, 255, 0.2); border-radius: 2px; }
-
-#flash {
-position: absolute; top: 0; left: 0; width: 100vw; height: 100vh;
-background: #fff; z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.1s;
-}
-
-#loadBar { position: fixed; top: 0; left: 0; height: 3px; background: var(--amber); z-index: 200; transition: width 0.3s; width: 0%; }
-
-.crosshair {
-position: absolute; top: 50%; left: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%);
-border: 2px solid var(--amber); border-radius: 50%; z-index: 6; pointer-events: none; opacity: 0.5;
-}
-</style>
-</head>
-<body>
-
-<div id="bg-black"></div>
-<video id="video-feed" autoplay playsinline muted></video>
-<canvas id="track-overlay"></canvas>
-<img id="ghost-overlay" src="" />
-<canvas id="glcanvas"></canvas>
-<div id="loadBar"></div>
-
-<div class="ar-grid" id="ar-grid"></div>
-<div class="crosshair" id="crosshair"></div>
-<div id="flash"></div>
-
-<div id="ui-layer">
-<header>
-<div class="panel">
-<div class="sys-text">
-<div id="lbl-mode">MODE: NEURAL INIT...</div>
-<div id="lbl-pts" class="cyan">MAPPED FRAMES: 0</div>
-<div id="lbl-imu" class="amber">GYRO: OFFLINE</div>
-<div style="color:var(--magenta);" id="lbl-orb">ORB: WAIT</div>
-<div id="lbl-err" class="sys-err"></div>
-</div>
-</div>
-</header>
-
-<footer>
-<div id="controls-live" class="panel">
-<button class="btn" id="btn-init" disabled>WAITING FOR AI MODEL...</button>
-<div id="stitch-container" style="display:none;">
-<div class="sys-text amber" style="text-align:center; margin-bottom:5px;">GHOST ALIGNS AUTOMATICALLY VIA ORB</div>
-<button class="btn" id="btn-stitch">[ STITCH ALIGNED FRAME ]</button>
-<div class="btn-grid">
-<button class="btn" id="btn-torch" style="border-color: var(--amber); color: var(--amber);">🔦 ILLUMINATE</button>
-<button class="btn" id="btn-done">REVIEW 3D</button>
-</div>
-</div>
-</div>
-
-<div id="controls-review" class="panel">
-<div class="sys-text amber" style="margin-bottom: 10px;">STUDIO CALIBRATION</div>
-
-<div class="slider-group">
-<div class="slider-label"><span>EXTRUSION DEPTH</span> <span id="val-scale">0.5x</span></div>
-<input type="range" id="sl-scale" min="0.0" max="3.0" step="0.1" value="0.5">
-</div>
-
-<div class="slider-group">
-<div class="slider-label"><span>SURFACE SMOOTHING</span> <span id="val-smooth">50%</span></div>
-<input type="range" id="sl-smooth" min="0" max="1" step="0.05" value="0.5">
-</div>
-
-<div class="btn-grid" style="margin-top: 10px;">
-<button class="btn" id="btn-clay">CLAY RENDER</button>
-<button class="btn" id="btn-wire">WIREFRAME</button>
-</div>
-
-<div class="btn-grid">
-<button class="btn" id="btn-discard" style="border-color: #555; color: #aaa;">DISCARD</button>
-<button class="btn" id="btn-export" style="border-color: var(--amber); color: var(--amber);">EXPORT .OBJ</button>
-</div>
-</div>
-</footer>
-</div>
-
-<script type="module">
-import {pipeline, env} from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
-
-env.allowLocalModels = false;
-env.useBrowserCache = true;
-
-const UI = {
-video: document.getElementById('video-feed'), ghost: document.getElementById('ghost-overlay'),
-canvas: document.getElementById('glcanvas'), bgBlack: document.getElementById('bg-black'),
-trackOverlay: document.getElementById('track-overlay'),
-arGrid: document.getElementById('ar-grid'), crosshair: document.getElementById('crosshair'),
-lblMode: document.getElementById('lbl-mode'), lblPts: document.getElementById('lbl-pts'),
-lblImu: document.getElementById('lbl-imu'), lblOrb: document.getElementById('lbl-orb'),
-lblErr: document.getElementById('lbl-err'), controlsLive: document.getElementById('controls-live'),
-stitchContainer: document.getElementById('stitch-container'), controlsReview: document.getElementById('controls-review'),
-btnInit: document.getElementById('btn-init'), btnStitch: document.getElementById('btn-stitch'),
-btnDone: document.getElementById('btn-done'), btnTorch: document.getElementById('btn-torch'),
-flash: document.getElementById('flash'), slScale: document.getElementById('sl-scale'),
-slSmooth: document.getElementById('sl-smooth'), valScale: document.getElementById('val-scale'),
-valSmooth: document.getElementById('val-smooth'), btnWire: document.getElementById('btn-wire'),
-btnClay: document.getElementById('btn-clay'), loadBar: document.getElementById('loadBar')
+// ── OBJ EXPORT (fixed: clone geometry, no O(N²) indexOf) ─────────────────────
+$('bexp').onclick=()=>{
+  if(!capturedClouds.length)return;
+  let obj='# P3dK Point Cloud\n';
+  capturedClouds.forEach((c,i)=>{
+    // Clone positions to avoid mutating original
+    const gClone=c.geo.clone();
+    gClone.applyMatrix4(ptGroup.children[i]?.matrixWorld||new THREE.Matrix4());
+    const pos=gClone.attributes.position.array;
+    const col=c.geo.attributes.color.array;
+    for(let j=0;j<pos.length;j+=3)
+      obj+=`v ${pos[j].toFixed(4)} ${pos[j+1].toFixed(4)} ${pos[j+2].toFixed(4)} ${(col[j]||0).toFixed(3)} ${(col[j+1]||0).toFixed(3)} ${(col[j+2]||0).toFixed(3)}\n`;
+    gClone.dispose();
+  });
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([obj],{type:'text/plain'}));
+  a.download='p3dk-cloud.obj';a.click();sts('POINT CLOUD OBJ SAVED');
 };
 
-const trackCtx = UI.trackOverlay.getContext('2d');
-UI.trackOverlay.width = window.innerWidth;
-UI.trackOverlay.height = window.innerHeight;
-
-// Prevent error log from expanding endlessly and covering screen
-let errCount = 0;
-function logError(msg) {
-if (errCount > 2) return;
-UI.lblErr.innerText = `[!] ${msg}`;
-errCount++;
-console.error(msg);
+// ── ROI ───────────────────────────────────────────────────────────────────────
+let roiOn=false;
+function toggleROI(){
+  // Cancel Object Lock if active
+  if(objLockActive){objLockActive=false;$('vid').style.pointerEvents='none';$('vid').removeEventListener('pointerdown',onObjTap)}
+  roiOn=!roiOn;
+  if(roiOn){
+    $('roiH').style.display='block';$('broi').style.background='var(--g)';$('broi').style.color='#000';
+    // Use document-level overlay instead of vid element — captures drag outside vid bounds
+    $('roi').style.display='none';
+    document.addEventListener('pointerdown',roiDown);
+  }else{
+    $('roiH').style.display='none';$('broi').style.background='transparent';$('broi').style.color='var(--g)';
+    $('roi').style.display='none';roiRect=null;
+    document.removeEventListener('pointerdown',roiDown);
+  }
 }
-
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 0, 0);
-const renderer = new THREE.WebGLRenderer({ canvas: UI.canvas, antialias: true, alpha: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-const controls = new THREE.OrbitControls(camera, renderer.domElement);
-controls.enableDamping = true; controls.enabled = false;
-
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.4); scene.add(ambientLight);
-const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.6); dirLight1.position.set(5, 5, 5); scene.add(dirLight1);
-const dirLight2 = new THREE.DirectionalLight(0x00ffff, 0.3); dirLight2.position.set(-5, -5, -5); scene.add(dirLight2);
-
-const meshGroup = new THREE.Group(); scene.add(meshGroup);
-
-let depthPipe = null;
-let capturedFrames = [];
-let showWireframe = false, isClayMode = false, isTorchOn = false;
-let videoTrack = null;
-let isLive = false;
-
-const RES = 160;
-const RADIUS = 3.0;
-const deviceQuat = new THREE.Quaternion();
-
-async function loadModel() {
-try {
-depthPipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
-progress_callback: (p) => {
-if(p.status === 'downloading' || p.status === 'loading') {
-const pct = p.progress ?? (p.loaded && p.total ? (p.loaded/p.total*100) : 50);
-UI.loadBar.style.width = pct + '%';
+function roiDown(e){
+  // Only respond to taps in the camera area (above the bottom panel)
+  const panelTop=$('cliv').getBoundingClientRect().top;
+  if(e.clientY>panelTop)return; // tapped on a button, ignore
+  e.preventDefault();e.stopPropagation();
+  roiStart={x:e.clientX,y:e.clientY};roiDrag=true;
+  $('roi').style.display='block';
+  $('roi').style.left=e.clientX+'px';$('roi').style.top=e.clientY+'px';
+  $('roi').style.width='0px';$('roi').style.height='0px';
+  // Capture pointer for reliable move events outside element
+  document.addEventListener('pointermove',roiMove,{passive:false});
+  document.addEventListener('pointerup',roiUp,{once:true});
 }
+function roiMove(e){
+  if(!roiDrag||!roiStart)return;e.preventDefault();
+  const cx=e.clientX,cy=e.clientY;
+  const x=Math.min(cx,roiStart.x),y=Math.min(cy,roiStart.y);
+  const w=Math.abs(cx-roiStart.x),h=Math.abs(cy-roiStart.y);
+  $('roi').style.left=x+'px';$('roi').style.top=y+'px';
+  $('roi').style.width=w+'px';$('roi').style.height=h+'px';
+  // Convert screen coords to video coords
+  const vw=$('vid').videoWidth,vh=$('vid').videoHeight;
+  const sc=Math.max(innerWidth/vw,innerHeight/vh);
+  const vr=$('vid').getBoundingClientRect();
+  roiRect={x:(x-vr.left)/sc,y:(y-vr.top)/sc,w:w/sc,h:h/sc};
 }
+function roiUp(){
+  roiDrag=false;
+  document.removeEventListener('pointermove',roiMove);
+  document.removeEventListener('pointerdown',roiDown);
+  roiOn=false;$('roiH').style.display='none';
+  if(roiRect&&roiRect.w>15&&roiRect.h>15){
+    $('broi').style.background='rgba(0,255,153,.2)';
+    sts('ROI SET — stitch to capture selected area');
+  }else{
+    roiRect=null;$('roi').style.display='none';
+    $('broi').style.background='transparent';$('broi').style.color='var(--g)';
+  }
+}
+$('broi').addEventListener('click',toggleROI);
+
+// ── CONTROLS ─────────────────────────────────────────────────────────────────
+$('btorch').addEventListener('click',async()=>{
+  if(!vTrack){sts('Init sensors first');return}
+  torchOn=!torchOn;
+  try{
+    await vTrack.applyConstraints({advanced:[{torch:torchOn}]});
+    $('btorch').style.background=torchOn?'rgba(255,176,0,.4)':'transparent';
+    $('btorch').style.color=torchOn?'var(--a)':'var(--c)';
+    $('btorch').textContent=torchOn?'🔦 ON':'🔦 TORCH';
+    wkr(torchOn?'TORCH ON':'TORCH OFF');
+  }catch(e){
+    torchOn=false;
+    $('btorch').textContent='🔦 TORCH';
+    wkr('TORCH: '+e.message.slice(0,35));
+  }
 });
-UI.loadBar.style.width = '100%';
-setTimeout(() => UI.loadBar.style.width = '0%', 1000);
-UI.btnInit.innerText = "1. INIT SENSORS";
-UI.btnInit.disabled = false;
-UI.lblMode.innerText = "MODE: NEURAL READY";
-} catch (e) { logError("Model load failed. Reload page."); }
-}
-
-function setupIMU() {
-window.addEventListener('deviceorientation', (event) => {
-if (!event.alpha && !event.beta && !event.gamma) return;
-UI.lblImu.innerText = "GYRO: SYNCED"; UI.lblImu.className = "cyan";
-
-const alpha = event.alpha ? THREE.MathUtils.degToRad(event.alpha) : 0;
-const beta = event.beta ? THREE.MathUtils.degToRad(event.beta) : 0;
-const gamma = event.gamma ? THREE.MathUtils.degToRad(event.gamma) : 0;
-const orient = window.orientation ? THREE.MathUtils.degToRad(window.orientation) : 0;
-
-const euler = new THREE.Euler(beta, alpha, -gamma, 'YXZ');
-deviceQuat.setFromEuler(euler);
-const q1 = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
-deviceQuat.multiply(q1);
-const q0 = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -orient);
-deviceQuat.multiply(q0);
+$('bcam').addEventListener('click',async()=>{
+  facingMode=facingMode==='user'?'environment':'user';
+  try{pKP=null;pDesc=null;await startCamera();$('bcam').textContent=facingMode==='user'?'⇄ REAR CAM':'⇄ FRONT CAM';}catch(e){sts('Cam flip: '+e.message)}
 });
-}
-
-// --- ORB MATH ---
-const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};let s=42;for(let i=0;i<256;i++)p.push(r(),r(),r(),r());return p})();
-function briefDesc(g,W,H,cx,cy){
-const d=new Uint32Array(8);
-for(let i=0;i<256;i++){const b=i*4,x1=Math.max(0,Math.min(W-1,cx+BP[b])),y1=Math.max(0,Math.min(H-1,cy+BP[b+1])),x2=Math.max(0,Math.min(W-1,cx+BP[b+2])),y2=Math.max(0,Math.min(H-1,cy+BP[b+3]));if(g[y1*W+x1]>g[y2*W+x2])d[i>>5]|=1<<(i&31)}
-return d;
-}
-function hamming(a,b){let h=0;for(let i=0;i<8;i++){let x=a[i]^b[i];x=x-((x>>1)&0x55555555);x=(x&0x33333333)+((x>>2)&0x33333333);h+=((x+(x>>4)&0xF0F0F0F)*0x1010101)>>24}return h}
-function matchBRIEF(kA,dA,kB,dB,th=52){
-const m=[];
-for(let i=0;i<kA.length;i++){let b=th+1,bi=-1;for(let j=0;j<kB.length;j++){const h=hamming(dA[i],dB[j]);if(h<b){b=h;bi=j}}if(bi>=0)m.push({ax:kA[i].x,ay:kA[i].y,bx:kB[bi].x,by:kB[bi].y})}
-return m;
-}
-function ransacAffine(m,N=80,th=4){
-if(m.length<4)return null;
-let best=null,bn=0;
-for(let it=0;it<N;it++){
-const a=m[Math.random()*m.length|0],b=m[Math.random()*m.length|0];
-if(a===b)continue;
-const tx=a.bx-a.ax,ty=a.by-a.ay;
-const dx1=b.ax-a.ax,dy1=b.ay-a.ay,dx2=b.bx-a.bx,dy2=b.by-a.by;
-const sc=Math.hypot(dx2,dy2)/(Math.hypot(dx1,dy1)||1);
-const ag=Math.atan2(dy2,dx2)-Math.atan2(dy1,dx1);
-const cos=sc*Math.cos(ag),sin=sc*Math.sin(ag);
-let n=0;for(const p of m){const px=p.ax*cos-p.ay*sin+tx,py=p.ax*sin+p.ay*cos+ty;if(Math.hypot(px-p.bx,py-p.by)<th)n++}
-if(n>bn){bn=n;best={tx,ty,sc,ag}}
-}
-return bn>3?best:null;
-}
-function fastCorners(g,W,H,th=18,mx=30){
-const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
-const raw=[];
-for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){
-const c=g[y*W+x];let br=0,dk=0;
-for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+th)br++;else if(v<c-th)dk++}
-if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)});
-}
-raw.sort((a,b)=>b.s-a.s);
-const kept=[],minD=12;
-for(const p of raw){
-if(kept.length>=mx)break;
-if(!kept.some(k=>Math.abs(k.x-p.x)<minD&&Math.abs(k.y-p.y)<minD))kept.push(p);
-}
-return kept;
-}
-
-function drawTrackingHUD(kp, mt) {
-trackCtx.clearRect(0, 0, UI.trackOverlay.width, UI.trackOverlay.height);
-if (!isLive) return;
-
-const vw = UI.video.videoWidth, vh = UI.video.videoHeight;
-if (!vw) return;
-
-const sw = window.innerWidth, sh = window.innerHeight;
-const scale = Math.max(sw / vw, sh / vh);
-const dw = vw * scale, dh = vh * scale;
-const offX = (sw - dw) / 2, offY = (sh - dh) / 2;
-const minDim = Math.min(vw, vh);
-const sx = (vw - minDim) / 2, sy = (vh - minDim) / 2;
-
-function mapToScreen(px, py) {
-return { x: offX + (sx + (px / 128) * minDim) * scale, y: offY + (sy + (py / 128) * minDim) * scale };
-}
-
-trackCtx.fillStyle = 'rgba(255, 0, 255, 0.7)';
-for (let p of kp) {
-const pt = mapToScreen(p.x, p.y);
-trackCtx.fillRect(pt.x - 2, pt.y - 2, 4, 4);
-}
-
-if (mt && mt.length > 0 && +UI.ghost.style.opacity > 0) {
-trackCtx.fillStyle = '#0ff'; trackCtx.strokeStyle = 'rgba(0, 255, 255, 0.4)';
-trackCtx.lineWidth = 1; trackCtx.beginPath();
-for (let m of mt) {
-const pt = mapToScreen(m.bx, m.by);
-trackCtx.fillRect(pt.x - 4, pt.y - 4, 8, 8);
-if (m === mt[0]) trackCtx.moveTo(pt.x, pt.y); else trackCtx.lineTo(pt.x, pt.y);
-}
-trackCtx.closePath(); trackCtx.stroke();
-}
-}
-
-let pGray=null, pKP=null, pDesc=null, snapTx=0, snapTy=0;
-function updateTracking(gray, dW, dH) {
-const kp = fastCorners(gray, dW, dH);
-const desc = kp.map(p => briefDesc(gray, dW, dH, p.x, p.y));
-let mt = [];
-
-if(pKP && pKP.length > 3 && desc.length > 3) {
-mt = matchBRIEF(pKP, pDesc, kp, desc);
-if(mt.length >= 4) {
-const af = ransacAffine(mt);
-if(af) {
-const sx = window.innerWidth / dW, sy = window.innerHeight / dH;
-snapTx = snapTx * 0.7 + (-af.tx * sx) * 0.3;
-snapTy = snapTy * 0.7 + (-af.ty * sy) * 0.3;
-if(+UI.ghost.style.opacity > 0) {
-UI.ghost.style.transform = `translate(${snapTx.toFixed(1)}px, ${snapTy.toFixed(1)}px)`;
-}
-UI.lblOrb.innerText = `ORB: ${mt.length}✓/${kp.length}kp`;
-} else { UI.lblOrb.innerText = `ORB: ${kp.length}kp (aligning)`; }
-}
-} else { if(kp.length > 0) UI.lblOrb.innerText = `ORB: ${kp.length}kp (acquiring)`; }
-
-drawTrackingHUD(kp, mt);
-pGray = gray; pKP = kp; pDesc = desc;
-}
-
-// --- OPTIMIZED AR TRACKING LOOP ---
-let lastTrack = 0;
-function trackLoop(time) {
-if (!isLive) return;
-
-// THROTTLE: Run at 20 FPS instead of 60 FPS. Saves massive CPU, stops thermal throttling.
-if (time - lastTrack > 50) {
-lastTrack = time;
-try {
-const w = UI.video.videoWidth, h = UI.video.videoHeight;
-if (w > 10) {
-const minDim = Math.min(w, h);
-const sx = (w - minDim) / 2, sy = (h - minDim) / 2;
-const trackCanvas = document.createElement('canvas'); trackCanvas.width=128; trackCanvas.height=128;
-const trackCtx = trackCanvas.getContext('2d', {willReadFrequently:true});
-trackCtx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, 128, 128);
-const tData = trackCtx.getImageData(0,0,128,128).data;
-const gray = new Uint8Array(128*128);
-for(let i=0; i<tData.length; i+=4) gray[i/4] = (tData[i]*0.299 + tData[i+1]*0.587 + tData[i+2]*0.114)|0;
-updateTracking(gray, 128, 128);
-}
-} catch(e) {}
-}
-requestAnimationFrame(trackLoop);
-}
-
-// --- ON-DEMAND STITCHING (NO MORE BACKGROUND AI) ---
-let inferCanvas = document.createElement('canvas'), inferCtx = inferCanvas.getContext('2d');
-
-async function stitchFrame() {
-if (!depthPipe) return;
-
-// Freeze UI
-UI.btnStitch.innerText = "[ PROCESSING AI DEPTH... ]";
-UI.btnStitch.style.pointerEvents = "none";
-UI.btnStitch.style.borderColor = "var(--amber)";
-UI.btnStitch.style.color = "var(--amber)";
-
-UI.flash.style.opacity = 0.5; setTimeout(() => UI.flash.style.opacity = 0, 100);
-
-// 1. RUN NEURAL INFERENCE ON-DEMAND
-let neuralDepthData = null;
-try {
-const w = UI.video.videoWidth, h = UI.video.videoHeight;
-inferCanvas.width = 512; inferCanvas.height = Math.round(512*(h/w));
-inferCtx.drawImage(UI.video, 0, 0, inferCanvas.width, inferCanvas.height);
-
-const result = await depthPipe(inferCanvas);
-
-if(result.predicted_depth) {
-const t = result.predicted_depth;
-const dData = t.data instanceof Float32Array ? t.data : new Float32Array(t.data);
-let mn = Infinity, mx = -Infinity;
-for(let i=0; i<dData.length; i++) { if(dData[i]<mn) mn=dData[i]; if(dData[i]>mx) mx=dData[i]; }
-const range = (mx-mn)||1;
-const norm = new Float32Array(dData.length);
-for(let i=0; i<dData.length; i++) norm[i] = (dData[i]-mn)/range;
-neuralDepthData = norm;
-}
-} catch(e) {
-logError("Inference failed.");
-UI.btnStitch.innerText = "[ STITCH ALIGNED FRAME ]";
-UI.btnStitch.style.pointerEvents = "auto";
-UI.btnStitch.style.borderColor = "var(--cyan)";
-UI.btnStitch.style.color = "var(--cyan)";
-return;
-}
-
-// 2. Prepare new Ghost Image
-const fullCanvas = document.createElement('canvas');
-fullCanvas.width = UI.video.videoWidth; fullCanvas.height = UI.video.videoHeight;
-const gCtx = fullCanvas.getContext('2d');
-gCtx.drawImage(UI.video, 0, 0);
-gCtx.fillStyle = "rgba(0, 255, 255, 0.35)";
-gCtx.fillRect(0, 0, fullCanvas.width, fullCanvas.height);
-
-UI.ghost.src = fullCanvas.toDataURL('image/jpeg', 0.5);
-UI.ghost.style.opacity = 0.6;
-snapTx = 0; snapTy = 0; UI.ghost.style.transform = `translate(0px, 0px)`;
-
-// 3. Process Color Image
-const minDim = Math.min(UI.video.videoWidth, UI.video.videoHeight);
-const sx = (UI.video.videoWidth - minDim) / 2, sy = (UI.video.videoHeight - minDim) / 2;
-const texCanvas = document.createElement('canvas'); texCanvas.width=RES; texCanvas.height=RES;
-const tx = texCanvas.getContext('2d');
-tx.drawImage(UI.video, sx, sy, minDim, minDim, 0, 0, RES, RES);
-const imgData = tx.getImageData(0, 0, RES, RES);
-const data = imgData.data;
-
-// 4. Build Depth Maps with PHYSICAL EDGE TAPERING
-const dW = 512, dH = inferCanvas.height;
-const dMinDim = Math.min(dW, dH);
-const dsx = (dW - dMinDim) / 2, dsy = (dH - dMinDim) / 2;
-
-const rawMap = new Float32Array(RES * RES), smmMap = new Float32Array(RES * RES);
-const center = RES / 2, maxRadius = RES / 2;
-
-for (let y = 0; y < RES; y++) {
-for (let x = 0; x < RES; x++) {
-const nu = Math.floor(dsx + (x/RES)*dMinDim);
-const nv = Math.floor(dsy + (y/RES)*dMinDim);
-let d = 1.0 - neuralDepthData[nv * dW + nu];
-if(isNaN(d)) d = 0;
-
-// EDGE TAPERING LOGIC (Prevents steep 'cliffs' at mesh borders)
-const dist = Math.sqrt(Math.pow(x - center, 2) + Math.pow(y - center, 2));
-let fade = 1.0;
-if (dist > maxRadius * 0.5) {
-// Taper linearly down to 0 at the extreme edge
-fade = 1.0 - ((dist - maxRadius * 0.5) / (maxRadius * 0.5));
-fade = Math.max(0, fade);
-}
-
-// Taper the physical Z-depth so the geometry flattens out
-rawMap[y * RES + x] = d * fade;
-
-// Taper the alpha transparency so it blends seamlessly
-const i = (y * RES + x) * 4;
-data[i+3] = Math.floor(255 * fade);
-}
-}
-tx.putImageData(imgData, 0, 0);
-
-const k = 2;
-for (let y = 0; y < RES; y++) {
-for (let x = 0; x < RES; x++) {
-let sum = 0, count = 0;
-for (let ky = -k; ky <= k; ky++) {
-for (let kx = -k; kx <= k; kx++) {
-if (y+ky>=0 && y+ky<RES && x+kx>=0 && x+kx<RES) {
-sum += rawMap[(y+ky)*RES + (x+kx)]; count++;
-}
-}
-}
-smmMap[y * RES + x] = sum / count;
-}
-}
-
-// 5. Build Mesh
-const geo = new THREE.PlaneGeometry(2.5, 2.5, RES - 1, RES - 1);
-const texture = new THREE.CanvasTexture(texCanvas);
-const baseMat = new THREE.MeshStandardMaterial({
-<a href="THREE.DoubleSide">map: texture, color: 0xffffff, roughness: 0.8, transparent: true, depthWrite: false, side:</a>
+$('bdone').addEventListener('click',()=>{
+  running=false;sts('3D REVIEW');
+  // Fix 3: compute actual centroid of all point clouds to center the view
+  let cx=0,cy=0,cz=0,cn=0;
+  ptGroup.children.forEach(pivot=>{
+    pivot.children.forEach(pts=>{
+      const p=pts.geometry.attributes.position.array;
+      for(let i=0;i<p.length;i+=3){cx+=p[i];cy+=p[i+1];cz+=p[i+2];cn++}
+    });
+  });
+  const target=cn>0?new THREE.Vector3(cx/cn,cy/cn,cz/cn):new THREE.Vector3(0,0,-RADIUS);
+  cam3.position.copy(target).add(new THREE.Vector3(0,0,4));
+  oc.target.copy(target);
+  oc.enabled=true;oc.update();
+  $('glc').style.pointerEvents='auto';
+  $('vid').style.display='none';$('bgb').style.display='block';
+  $('cliv').style.display='none';$('crev').style.display='block';
+  $('ghost').style.opacity='0';tovCtx.clearRect(0,0,tov.width,tov.height);
+  updateBboxDisplay();
 });
-const mesh = new THREE.Mesh(geo, baseMat);
-const wireMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true, transparent: true, opacity: 0.1 });
-const wireMesh = new THREE.Mesh(geo, wireMat); wireMesh.visible = showWireframe; mesh.add(wireMesh);
-
-// 6. Spatial Spawn
-const pivot = new THREE.Group(); pivot.quaternion.copy(camera.quaternion);
-mesh.position.set(0, 0, -RADIUS); pivot.add(mesh); meshGroup.add(pivot);
-capturedFrames.push({ geo: geo, rawMap: rawMap, smmMap: smmMap, mesh: mesh, texture: texture, wireMesh: wireMesh });
-
-UI.lblPts.innerText = `MAPPED FRAMES: ${capturedFrames.length}`;
-updateCalibration();
-
-// Unfreeze UI
-if(navigator.vibrate) navigator.vibrate([100]);
-UI.btnStitch.innerText = "[ STITCH ALIGNED FRAME ]";
-UI.btnStitch.style.pointerEvents = "auto";
-UI.btnStitch.style.borderColor = "var(--cyan)";
-UI.btnStitch.style.color = "var(--cyan)";
-}
-
-function updateCalibration() {
-const scale = parseFloat(UI.slScale.value), smooth = parseFloat(UI.slSmooth.value);
-capturedFrames.forEach(frame => {
-const vertices = frame.geo.attributes.position.array;
-for (let i = 0; i < frame.rawMap.length; i++) {
-const depth = frame.rawMap[i] * (1 - smooth) + frame.smmMap[i] * smooth;
-vertices[i * 3 + 2] = depth * scale * 2.0;
-}
-frame.geo.attributes.position.needsUpdate = true; frame.geo.computeVertexNormals();
+$('bmore').addEventListener('click',async()=>{
+  oc.enabled=false;
+  $('glc').style.pointerEvents='none';
+  running=true; // was eaten by comment in previous version
+  $('vid').style.display='block';$('bgb').style.display='none';
+  $('cliv').style.display='block';$('crev').style.display='none';
+  // Restart camera — was blank because stream was stopped when entering review
+  try{await startCamera();}catch(e){sts('Cam error: '+e.message)}
+  requestAnimationFrame(trackLoop);
+  sts('SCANNING — stitch more frames');
 });
-}
-
-UI.slScale.addEventListener('input', () => { UI.valScale.innerText = parseFloat(UI.slScale.value).toFixed(1) + 'x'; updateCalibration(); });
-UI.slSmooth.addEventListener('input', () => { UI.valSmooth.innerText = Math.round(parseFloat(UI.slSmooth.value) * 100) + '%'; updateCalibration(); });
-UI.btnWire.addEventListener('click', () => {
-showWireframe = !showWireframe; capturedFrames.forEach(f => f.wireMesh.visible = showWireframe);
-UI.btnWire.style.backgroundColor = showWireframe ? 'var(--cyan)' : 'transparent'; UI.btnWire.style.color = showWireframe ? '#000' : 'var(--cyan)';
+$('bdisc').addEventListener('click',()=>{
+  capturedClouds.forEach(c=>{if(c._burl)URL.revokeObjectURL(c._burl)});
+  capturedClouds.length=0;
+  while(ptGroup.children.length)ptGroup.remove(ptGroup.children[0]);
+  if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh=null}
+  oc.enabled=false;cam3.position.set(0,0,0);
+  fc=0;pc=0;adapted=false;bs=0;lastMeshVerts=null;
+  bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+  pKP=null;pDesc=null;_hudKP=[];_hudMT=[];_stitchKP=[];roiRect=null;$('roi').style.display='none';
+  // Reset V29 modes
+  objMask=null;objLockActive=false;roomScanMode=false;lastDepthData=null;
+  $('bobj').style.background='transparent';$('bobj').textContent='◎ OBJECT LOCK';
+  $('broom').style.background='transparent';$('broom').style.borderColor='#888';
+  $('broom').style.color='#888';$('broom').textContent='⊞ ROOM SCAN';
+  $('specX').value='';$('specY').value='';$('specZ').value='';
+  $('vid').style.display='block';$('bgb').style.display='none';
+  $('cliv').style.display='block';$('crev').style.display='none';
+  $('lp').textContent='FRAMES: 0  PTS: 0';$('bBake').disabled=true;
+  // Init fresh TSDF worker
+  const vSz=8,r=100*vSz;mkWorker(vSz,{x:-r/2,y:-r/2,z:0},[100,100,100]);
+  running=true;requestAnimationFrame(trackLoop);sts('READY — stitch frames');
 });
-UI.btnClay.addEventListener('click', () => {
-isClayMode = !isClayMode;
-capturedFrames.forEach(f => {
-f.mesh.material.map = isClayMode ? null : f.texture;
-f.mesh.material.color.setHex(isClayMode ? 0xaaaaaa : 0xffffff); f.mesh.material.needsUpdate = true;
+$('bst').addEventListener('click',stitch);
+$('cbWire').addEventListener('change',()=>{
+  if(reviewMesh){
+    reviewMesh.material.wireframe=$('cbWire').checked;
+    reviewMesh.material.needsUpdate=true;
+  }
 });
-UI.btnClay.style.backgroundColor = isClayMode ? 'var(--cyan)' : 'transparent'; UI.btnClay.style.color = isClayMode ? '#000' : 'var(--cyan)';
+$('cbSm').addEventListener('change',()=>{
+  // Live smooth toggle: reprocess lastMeshVerts and update reviewMesh
+  if(!lastMeshVerts){wkr('BAKE FIRST — then toggle smooth');return}
+  const out=$('cbSm').checked?laplacian(lastMeshVerts,4):lastMeshVerts;
+  if(reviewMesh){
+    reviewMesh.geometry.setAttribute('position',new THREE.BufferAttribute(out.slice(),3));
+    reviewMesh.geometry.computeVertexNormals();
+  }
+  wkr($('cbSm').checked?'SMOOTHED':'RAW MESH');
 });
 
-UI.btnTorch.addEventListener('click', async () => {
-if (!videoTrack) return;
-<a href="videoTrack.getCapabilities?.();">const cap =</a>
-if (!cap?.torch) {
-if(!UI.btnTorch.disabled) { logError("Flashlight API not supported."); UI.btnTorch.disabled = true; }
-return;
-}
-isTorchOn = !isTorchOn;
-try {
-await videoTrack.applyConstraints({ advanced: [{ torch: isTorchOn }] });
-UI.btnTorch.style.backgroundColor = isTorchOn ? 'var(--amber)' : 'transparent'; UI.btnTorch.style.color = isTorchOn ? '#000' : 'var(--amber)';
-} catch (e) { logError("Failed to access Torch."); }
+// ── INIT ─────────────────────────────────────────────────────────────────────
+$('bin').addEventListener('click',async()=>{
+  $('bin').disabled=true;$('bin').textContent='INITIALISING SENSORS...';
+  try{
+    await sensorWaterfall(); // WebXR + Gyro + Camera simultaneously
+    // Init TSDF
+    const vSz=8,r=100*vSz;mkWorker(vSz,{x:-r/2,y:-r/2,z:0},[100,100,100]);
+    chip('cTS','warn','TSDF: init');
+    running=true;requestAnimationFrame(trackLoop);
+    $('bin').style.display='none';$('scon').style.display='block';
+    sts('SCANNING — stitch frames to build model');
+  }catch(e){
+    sts('INIT FAILED: '+e.message.slice(0,40));
+    $('bin').disabled=false;$('bin').textContent='RETRY';
+  }
 });
 
-function buildReviewScene() {
-isLive = false;
-trackCtx.clearRect(0, 0, UI.trackOverlay.width, UI.trackOverlay.height);
-
-UI.lblMode.innerText = "MODE: 3D STUDIO REVIEW";
-camera.position.set(0, 0, RADIUS * 0.2); controls.target.set(0, 0, -RADIUS); controls.enabled = true;
-UI.video.style.display = 'none'; UI.ghost.style.display = 'none'; UI.bgBlack.style.display = 'block';
-UI.arGrid.style.display = 'none'; UI.crosshair.style.display = 'none'; UI.controlsLive.style.display = 'none'; UI.controlsReview.style.display = 'block';
-if (isTorchOn && videoTrack) { videoTrack.applyConstraints({ advanced: [{ torch: false }] }).catch(e=>{}); isTorchOn = false; }
+// ── MODEL LOAD ────────────────────────────────────────────────────────────────
+async function loadModel(){
+  try{
+    depthPipe=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{
+      progress_callback:p=>{
+        if(p.status==='downloading'||p.status==='loading')
+          $('lb').style.width=(p.progress??(p.loaded&&p.total?p.loaded/p.total*100:50))+'%';
+      }
+    });
+    $('lb').style.width='100%';setTimeout(()=>$('lb').style.width='0%',1000);
+    $('bin').textContent='1. INIT SENSORS';$('bin').disabled=false;
+    sts('NEURAL ENGINE READY');
+  }catch(e){sts('MODEL FAILED — reload');console.error(e)}
 }
 
-function exportFusedOBJ() {
-if (capturedFrames.length === 0) return;
-UI.lblPts.innerText = "CALCULATING MATRICES...";
-let obj = "# P3dK Neural-Studio Export\n"; let vOffset = 0; let vtOffset = 0; const tempVec = new THREE.Vector3();
-capturedFrames.forEach((frame, index) => {
-const mesh = frame.mesh; mesh.updateMatrixWorld(true);
-const pos = frame.geo.attributes.position.array, uvs = frame.geo.attributes.uv.array, idx = frame.geo.index.array;
-obj += `o StitchedFrame_${index}\n`;
-for (let i = 0; i < pos.length; i += 3) {
-tempVec.set(pos[i], pos[i+1], pos[i+2]).applyMatrix4(mesh.matrixWorld);
-obj += `v ${tempVec.x.toFixed(4)} ${tempVec.y.toFixed(4)} ${tempVec.z.toFixed(4)}\n`;
-}
-for (let i = 0; i < uvs.length; i += 2) obj += `vt ${uvs[i].toFixed(4)} ${uvs[i+1].toFixed(4)}\n`;
-for (let i = 0; i < idx.length; i += 3) {
-const a = idx[i] + 1 + vOffset, b = idx[i+1] + 1 + vOffset, c = idx[i+2] + 1 + vOffset;
-const uvA = idx[i] + 1 + vtOffset, uvB = idx[i+1] + 1 + vtOffset, uvC = idx[i+2] + 1 + vtOffset;
-obj += `f ${a}/${uvA} ${b}/${uvB} ${c}/${uvC}\n`;
-}
-vOffset += (pos.length / 3); vtOffset += (uvs.length / 2);
-});
-const blob = new Blob([obj], { type: 'text/plain' }); const link = document.createElement('a');
-link.href = URL.createObjectURL(blob); link.download = 'p3dk_neural_scan.obj'; link.click(); UI.lblPts.innerText = "EXPORT COMPLETE.";
-}
-
-function animate() {
-requestAnimationFrame(animate);
-if (!controls.enabled && deviceQuat.length() > 0) camera.quaternion.copy(deviceQuat);
-if (controls.enabled) controls.update(); renderer.render(scene, camera);
+// ── THREE RENDER ──────────────────────────────────────────────────────────────
+function animate(){
+  requestAnimationFrame(animate);
+  if(!oc.enabled&&hasGyro&&dQ.length()>.01)cam3.quaternion.copy(dQ);
+  if(oc.enabled)oc.update();
+  rend.render(scene,cam3);
 }
 animate();
-
-// --- INITIALIZATION ---
-UI.btnInit.addEventListener('click', async () => {
-try {
-UI.btnInit.innerText = "WAITING FOR PERMISSIONS...";
-UI.lblErr.innerText = "INITIALIZING SENSORS...";
-
-if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-const perm = await DeviceOrientationEvent.requestPermission();
-if (perm !== 'granted') throw new Error("Gyro permission denied.");
-}
-
-if (!navigator.mediaDevices) throw new Error("Camera API denied. Use HTTPS.");
-const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment", width: { ideal: 1080 } } });
-
-UI.video.srcObject = stream;
-videoTrack = stream.getVideoTracks()[0];
-await new Promise(r => { UI.video.onloadedmetadata = r; });
-await UI.video.play();
-
-setupIMU();
-isLive = true;
-
-requestAnimationFrame(trackLoop); // Start Throttled AR Loop
-
-UI.btnInit.style.display = 'none';
-UI.stitchContainer.style.display = 'block';
-UI.lblMode.innerText = "MODE: GHOST-SYNC AUTO";
-UI.lblErr.innerText = "";
-} catch (e) {
-logError(e.message || "Hardware initialization failed.");
-UI.btnInit.innerText = "RETRY HARDWARE INIT";
-}
+window.addEventListener('resize',()=>{
+  cam3.aspect=innerWidth/innerHeight;cam3.updateProjectionMatrix();
+  rend.setSize(innerWidth,innerHeight);
+  tov.width=innerWidth;tov.height=innerHeight;
 });
 
-UI.btnStitch.addEventListener('click', stitchFrame);
-UI.btnDone.addEventListener('click', buildReviewScene);
-document.getElementById('btn-export').addEventListener('click', exportFusedOBJ);
-
-document.getElementById('btn-discard').addEventListener('click', () => {
-capturedFrames.length = 0;
-while(meshGroup.children.length > 0) meshGroup.remove(meshGroup.children[0]);
-controls.enabled = false; camera.position.set(0,0,0);
-
-UI.video.style.display = 'block'; UI.ghost.style.display = 'block'; UI.ghost.style.opacity = 0;
-UI.bgBlack.style.display = 'none'; UI.canvas.style.display = 'block'; UI.arGrid.style.display = 'block';
-UI.crosshair.style.display = 'block'; UI.controlsLive.style.display = 'block'; UI.controlsReview.style.display = 'none';
-UI.lblPts.innerText = "MAPPED FRAMES: 0"; UI.lblMode.innerText = "MODE: GHOST-SYNC AUTO";
-
-isClayMode = false; UI.btnClay.style.backgroundColor = 'transparent'; UI.btnClay.style.color = 'var(--cyan)';
-showWireframe = false; UI.btnWire.style.backgroundColor = 'transparent'; UI.btnWire.style.color = 'var(--cyan)';
-
-isLive = true;
-requestAnimationFrame(trackLoop);
-});
-
-window.addEventListener('resize', () => {
-camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);
-UI.trackOverlay.width = window.innerWidth; UI.trackOverlay.height = window.innerHeight;
-});
-
-loadModel(); // Boot AI on load
+loadModel();
 </script>
 </body>
 </html>
-
-```
