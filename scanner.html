@@ -437,8 +437,14 @@ function mkWorker(voxSz,bbMin,dims,ptsToReplay){
         ?new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true})
         :new THREE.MeshStandardMaterial({color:0x00ccaa,roughness:.5,metalness:.2,side:THREE.DoubleSide});
       reviewMesh=new THREE.Mesh(geo,mat);meshGroup.add(reviewMesh);
-      geo.computeBoundingBox();const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
-      oc.target.copy(bc);cam3.position.copy(bc).add(new THREE.Vector3(0,0,Math.max(3,bc.z*1.5+2)));
+      geo.computeBoundingBox();
+      const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
+      const bsz=new THREE.Vector3();geo.boundingBox.getSize(bsz);
+      const dist=Math.max(50,Math.max(bsz.x,bsz.y,bsz.z)*2);
+      oc.target.copy(bc);
+      cam3.position.set(bc.x,bc.y,bc.z+dist);
+      cam3.lookAt(bc);
+      if(oc.enabled)oc.update();
       dlSTL(mkSTL(out));
     }
   };
@@ -601,10 +607,7 @@ async function stitch(){
       cols.push(colorData[i]/255,colorData[i+1]/255,colorData[i+2]/255);
       // For TSDF: convert to mm-scale 3D (camera-local coords)
       rawPts.push(px*100,py*100,dv*scaleFactor*100);
-      // Update bbox
-      if(px*100<bbox.minX)bbox.minX=px*100;if(px*100>bbox.maxX)bbox.maxX=px*100;
-      if(py*100<bbox.minY)bbox.minY=py*100;if(py*100>bbox.maxY)bbox.maxY=py*100;
-      if(dv*100<bbox.minZ)bbox.minZ=dv*100;if(dv*100>bbox.maxZ)bbox.maxZ=dv*100;
+      // bbox is now updated from worldPts below — don't update here
     }
     ptGeo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
     ptGeo.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
@@ -616,16 +619,20 @@ async function stitch(){
     points.position.set(0,0,-RADIUS);pivot.add(points);ptGroup.add(pivot);
 
     // Apply gyro rotation to TSDF pts so all frames are in world space
-    // Without this, every frame's pts are in camera-local coordinates
-    // and the TSDF sees them all stacked at the same position → card deck
     let worldPts=rawPts;
     if(hasGyro&&dQ.length()>.01){
       worldPts=[];
-      const v=new THREE.Vector3();
+      const v3=new THREE.Vector3();
       for(let i=0;i<rawPts.length;i+=3){
-        v.set(rawPts[i],rawPts[i+1],rawPts[i+2]).applyQuaternion(dQ);
-        worldPts.push(v.x,v.y,v.z);
+        v3.set(rawPts[i],rawPts[i+1],rawPts[i+2]).applyQuaternion(dQ);
+        worldPts.push(v3.x,v3.y,v3.z);
       }
+    }
+    // Update bbox from worldPts (not rawPts) so TSDF grid is positioned correctly
+    for(let i=0;i<worldPts.length;i+=3){
+      if(worldPts[i]<bbox.minX)bbox.minX=worldPts[i];if(worldPts[i]>bbox.maxX)bbox.maxX=worldPts[i];
+      if(worldPts[i+1]<bbox.minY)bbox.minY=worldPts[i+1];if(worldPts[i+1]>bbox.maxY)bbox.maxY=worldPts[i+1];
+      if(worldPts[i+2]<bbox.minZ)bbox.minZ=worldPts[i+2];if(worldPts[i+2]>bbox.maxZ)bbox.maxZ=worldPts[i+2];
     }
     capturedClouds.push({geo:ptGeo,mat:ptMat,pts:worldPts.slice()});
 
@@ -1054,7 +1061,7 @@ $('bin').addEventListener('click',async()=>{
     await sensorWaterfall(); // WebXR + Gyro + Camera simultaneously
     // Init TSDF
     const vSz=8,r=100*vSz;mkWorker(vSz,{x:-r/2,y:-r/2,z:0},[100,100,100]);
-    chip('cTS','warn','TSDF: init');
+    // chip update happens automatically in mkWorker's ready handler — don't override it here
     running=true;requestAnimationFrame(trackLoop);
     $('bin').style.display='none';$('scon').style.display='block';
     sts('SCANNING — stitch frames to build model');
