@@ -156,9 +156,9 @@ body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;tou
           oninput="$('vps').textContent=this.value;calibFast()">
         <span class=sv id=vps>0.02</span></div>
       <div class=sr><span class=sl>ISO LEVEL</span>
-        <input type=range id=sliso min=-10 max=10 step=1 value=0
+        <input type=range id=sliso min=-10 max=10 step=1 value=-2
           oninput="$('viso').textContent=this.value">
-        <span class=sv id=viso>0</span></div>
+        <span class=sv id=viso>-2</span></div>
       <div class=sr>
         <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px">
           <input type=checkbox id=cbSm checked> SMOOTH MESH</label>
@@ -383,44 +383,62 @@ function trackLoop(t){
 }
 
 // ── WORKER INIT ───────────────────────────────────────────────────────────────
+let _replayBusy=false; // true during grid replay — bake must wait
 let _bakeRetries=0; // retry counter for BAKE when worker busy
-function mkWorker(voxSz,bbMin,dims){
+function mkWorker(voxSz,bbMin,dims,ptsToReplay){
   if(worker)worker.terminate();
   worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
   integBusy=true;
-  // Reset chip to warn during init — will update to ok on ready
   chip('cTS','warn',`TSDF: init ${dims.join('×')}`);
   worker.onmessage=ev=>{
     const{type}=ev.data;
     if(type==='ready'){
-      integBusy=false;
       chip('cTS','ok',`TSDF: ${ev.data.dims.join('×')}`);
-      // Flush any queued integration
-      if(_queuedPts){
-        integBusy=true;
-        worker.postMessage({type:'integrate',data:{pts:_queuedPts}});
-        _queuedPts=null;
-      }
+      integBusy=false;
+      const replay=async()=>{
+        _replayBusy=true;
+        const all=ptsToReplay||[];
+        for(const pts of all){
+          await new Promise(res=>{const ck=()=>integBusy?setTimeout(ck,30):res();ck()});
+          if(!worker)break;
+          integBusy=true;worker.postMessage({type:'integrate',data:{pts}});
+        }
+        if(_queuedPts&&worker){
+          const q=_queuedPts;_queuedPts=null;
+          await new Promise(res=>{const ck=()=>integBusy?setTimeout(ck,30):res();ck()});
+          if(worker){integBusy=true;worker.postMessage({type:'integrate',data:{pts:q}})}
+        }
+        // Wait for last integrate to complete before clearing replayBusy
+        await new Promise(res=>{const ck=()=>integBusy?setTimeout(ck,30):res();ck()});
+        _replayBusy=false;
+        chip('cTS','ok',`TSDF: ${dims.join('×')} ✔`);
+        wkr(`TSDF ready · ${(all.length+1)} frames · tap BAKE STL`);
+      };
+      replay();
     }
     else if(type==='done'){integBusy=false}
     else if(type==='mesh'){
       integBusy=false;bakeQ=false;_bakeRetries=0;
       const v=ev.data.verts;
-      if(!v||v.length<9){sts('NO SURFACE — scan more frames, lower ISO');$('bBake').disabled=false;return}
+      if(!v||v.length<9){
+        sts('NO SURFACE — try lower ISO (use negative values), more frames, closer scan');
+        wkr('Tip: tap ISO slider left, then BAKE again');
+        $('bBake').disabled=false;return;
+      }
       sts('SMOOTHING...');wkr(`${(v.length/9|0).toLocaleString()} tris`);
       const out=$('cbSm').checked?laplacian(v,4):v;
       sts(`COMPLETE — ${(out.length/9|0).toLocaleString()} triangles`);
       lastMeshVerts=out;$('bBake').disabled=false;
       if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose()}
-      const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(out,3));
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.BufferAttribute(out.slice(),3));
       geo.computeVertexNormals();
       const mat=$('cbWire').checked
         ?new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true})
         :new THREE.MeshStandardMaterial({color:0x00ccaa,roughness:.5,metalness:.2,side:THREE.DoubleSide});
       reviewMesh=new THREE.Mesh(geo,mat);meshGroup.add(reviewMesh);
-      // Auto-center camera on baked mesh
       geo.computeBoundingBox();const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
-      oc.target.copy(bc);cam3.position.copy(bc).add(new THREE.Vector3(0,0,bc.z>0?bc.z*2:3));
+      oc.target.copy(bc);cam3.position.copy(bc).add(new THREE.Vector3(0,0,Math.max(3,bc.z*1.5+2)));
       dlSTL(mkSTL(out));
     }
   };
@@ -581,7 +599,7 @@ async function stitch(){
       pos.push(px,py,dv*scaleFactor);
       const i=(y*RES+x)*4;
       cols.push(colorData[i]/255,colorData[i+1]/255,colorData[i+2]/255);
-      // For TSDF: convert to mm-scale 3D
+      // For TSDF: convert to mm-scale 3D (camera-local coords)
       rawPts.push(px*100,py*100,dv*scaleFactor*100);
       // Update bbox
       if(px*100<bbox.minX)bbox.minX=px*100;if(px*100>bbox.maxX)bbox.maxX=px*100;
@@ -594,21 +612,33 @@ async function stitch(){
     const points=new THREE.Points(ptGeo,ptMat);
     const pivot=new THREE.Group();
     if(hasGyro&&dQ.length()>.01)pivot.quaternion.copy(dQ);
-    // Fix 7: mirror X axis for front camera — front cam is horizontally flipped
     if(facingMode==='user')points.scale.set(-1,1,1);
     points.position.set(0,0,-RADIUS);pivot.add(points);ptGroup.add(pivot);
-    capturedClouds.push({geo:ptGeo,mat:ptMat,pts:rawPts.slice()});
-    
+
+    // Apply gyro rotation to TSDF pts so all frames are in world space
+    // Without this, every frame's pts are in camera-local coordinates
+    // and the TSDF sees them all stacked at the same position → card deck
+    let worldPts=rawPts;
+    if(hasGyro&&dQ.length()>.01){
+      worldPts=[];
+      const v=new THREE.Vector3();
+      for(let i=0;i<rawPts.length;i+=3){
+        v.set(rawPts[i],rawPts[i+1],rawPts[i+2]).applyQuaternion(dQ);
+        worldPts.push(v.x,v.y,v.z);
+      }
+    }
+    capturedClouds.push({geo:ptGeo,mat:ptMat,pts:worldPts.slice()});
+
     // ── LAYER 2: TSDF integration (background worker) ────────────────────────
-    const ptsF32=new Float32Array(rawPts);
+    const ptsF32=new Float32Array(worldPts);
     if(worker&&!integBusy&&!bakeQ){
       integBusy=true;
       worker.postMessage({type:'integrate',data:{pts:ptsF32}});
-      pc+=rawPts.length/3|0;
+      pc+=worldPts.length/3|0;
     } else if(worker){
       // Worker busy (init/integrate in flight) — queue pts so nothing is lost
       _queuedPts=ptsF32;
-      pc+=rawPts.length/3|0;
+      pc+=worldPts.length/3|0;
     }
     fc++;
     // Adapt TSDF grid after 4th frame (fc is now 4, bbox has 4 frames of data)
@@ -621,8 +651,11 @@ async function stitch(){
       const nx=Math.min(100,Math.max(20,Math.ceil((dx+pad*2)/vSz)));
       const ny=Math.min(100,Math.max(20,Math.ceil((dy+pad*2)/vSz)));
       const nz=Math.min(100,Math.max(20,Math.ceil((dz+pad*2)/vSz)));
-      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nx,ny,nz]);
-      wkr(`GRID ADAPTED ${nx}×${ny}×${nz}`);
+      // Pass all captured pts for replay into new grid — this is the critical fix
+      // Without this, the adapted grid starts empty and marching cubes produces nothing
+      const ptsToReplay=capturedClouds.map(c=>new Float32Array(c.pts));
+      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nx,ny,nz],ptsToReplay);
+      wkr(`GRID ADAPTED ${nx}×${ny}×${nz} — replaying ${ptsToReplay.length} frames`);
     }
     $('bBake').disabled=false;
     // Fix pts display: show raw count when < 1000, k when >= 1000
@@ -815,10 +848,13 @@ $('bApplyScale').addEventListener('click',()=>{
 // ── BAKE STL ──────────────────────────────────────────────────────────────────
 $('bBake').onclick=()=>{
   if(!worker||fc<2){sts('NOT ENOUGH FRAMES — stitch more');return}
+  if(_replayBusy){
+    wkr('REPLAYING FRAMES... tap BAKE when TSDF chip shows ✔');
+    setTimeout(()=>$('bBake').click(),1000);return;
+  }
   if(integBusy){
     _bakeRetries++;
     if(_bakeRetries>5){
-      // Worker stuck — force reset
       integBusy=false;bakeQ=false;_bakeRetries=0;
       wkr('WORKER TIMEOUT — retrying');
       setTimeout(()=>$('bBake').click(),200);return;
@@ -829,7 +865,7 @@ $('bBake').onclick=()=>{
   _bakeRetries=0;
   sts('MARCHING CUBES...');wkr('building mesh...');
   $('bBake').disabled=true;bakeQ=true;integBusy=true;
-  worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:2}});
+  worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:1}});
 };
 
 // ── LAPLACIAN + STL ───────────────────────────────────────────────────────────
@@ -977,7 +1013,7 @@ $('bdisc').addEventListener('click',()=>{
   while(ptGroup.children.length)ptGroup.remove(ptGroup.children[0]);
   if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh=null}
   oc.enabled=false;cam3.position.set(0,0,0);
-  fc=0;pc=0;adapted=false;bs=0;lastMeshVerts=null;
+  fc=0;pc=0;adapted=false;bs=0;lastMeshVerts=null;_replayBusy=false;_bakeRetries=0;
   bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
   pKP=null;pDesc=null;_hudKP=[];_hudMT=[];_stitchKP=[];roiRect=null;$('roi').style.display='none';
   // Reset V29 modes
