@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<!-- P3dK Scanner v2 — Clean Architecture
+  Single coordinate system: Three.js units (≈ meters)
+  Phase 1: INIT — camera starts, ORB runs, user frames object
+  Phase 2: SCAN — tap to capture frames, TSDF builds in background  
+  Phase 3: BAKE — one tap, mesh appears, STL downloads
+  No unit mismatch. No mode confusion. Minimal buttons.
+-->
+<html>
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>P3dK SCANNER</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+:root{--c:#0ff;--a:#ffb000;--m:#f0f;--g:#0f9;--bg:#050505}
+*{box-sizing:border-box;user-select:none;margin:0;padding:0;overflow:hidden}
+body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;touch-action:none}
+/* Camera feed — fullscreen background */
+#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+/* ORB keypoint HUD — drawn on 2D canvas */
+#hud{position:fixed;inset:0;z-index:2;pointer-events:none}
+/* Three.js — point cloud + baked mesh review */
+#glc{position:fixed;inset:0;z-index:3;background:transparent;pointer-events:none}
+/* Ghost overlay for alignment */
+#ghost{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:4;
+  opacity:0;pointer-events:none;mix-blend-mode:screen;transition:opacity .4s}
+/* Progress bar */
+#pb{position:fixed;top:0;left:0;height:3px;background:var(--a);z-index:20;width:0%;transition:width .6s ease-out}
+/* Flash on capture */
+#flash{position:fixed;inset:0;background:#fff;z-index:30;opacity:0;pointer-events:none;transition:opacity .08s}
+/* UI panels */
+#ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;
+  justify-content:space-between;pointer-events:none;padding:10px}
+.pan{background:rgba(0,12,12,.15);border:1px solid rgba(0,255,255,.25);
+  padding:10px;pointer-events:auto;backdrop-filter:blur(3px)}
+/* Phase indicator */
+#phase{font-size:11px;font-weight:bold;line-height:1.8;pointer-events:none}
+#phase .ph{color:rgba(0,255,255,.4);font-size:10px}
+#phase .ph.active{color:var(--c)}
+#phase .info{font-size:12px;color:var(--a);min-height:16px}
+/* Sensor chips */
+#chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.chip{font-size:9px;padding:2px 7px;border-radius:2px;font-weight:bold}
+.chip.ok{background:rgba(0,255,153,.15);color:var(--g);border:1px solid rgba(0,255,153,.3)}
+.chip.off{background:rgba(60,60,60,.2);color:#555;border:1px solid #333}
+.chip.warn{background:rgba(255,176,0,.15);color:var(--a);border:1px solid rgba(255,176,0,.3)}
+/* Buttons */
+.btn{background:rgba(0,20,20,.2);color:var(--c);border:1px solid rgba(0,255,255,.4);
+  padding:14px;font:bold 13px 'Courier New';cursor:pointer;text-transform:uppercase;
+  width:100%;margin-top:8px;transition:.1s;pointer-events:auto;letter-spacing:1px}
+.btn:active{background:var(--c);color:#000}
+.btn:disabled{opacity:.3;pointer-events:none}
+.btn.primary{border-color:var(--c);border-width:2px;font-size:16px;height:68px}
+.btn.danger{border-color:var(--m);color:var(--m)}
+.btn.go{border-color:var(--g);color:var(--g)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Frame counter arc */
+#arc{position:fixed;top:12px;right:12px;z-index:11;pointer-events:none}
+/* Phase 3 review panel */
+#rev{display:none}
+.sl-row{display:flex;align-items:center;gap:8px;margin:6px 0}
+.sl-row span{font-size:10px;color:#ccc;width:80px;flex-shrink:0}
+.sl-row input[type=range]{flex:1;accent-color:var(--a)}
+.sl-row .val{font-size:11px;color:var(--a);width:32px;text-align:right}
+/* Instruction overlay — shown in Phase 1 */
+#instr{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:11;text-align:center;pointer-events:none;display:none}
+#instr .big{font-size:32px;color:rgba(0,255,255,.8);animation:pulse 2s infinite}
+#instr .sub{font-size:12px;color:var(--a);margin-top:8px}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+/* Frame dots strip */
+#fdots{display:flex;gap:4px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.fdot{width:8px;height:8px;border-radius:50%;background:rgba(0,255,255,.25);
+  border:1px solid rgba(0,255,255,.3);transition:background .3s}
+.fdot.done{background:var(--c)}
+.fdot.active{background:var(--a);animation:pulse .5s infinite}
+</style>
+</head>
+<body>
+<video id=vid autoplay playsinline muted></video>
+<canvas id=hud></canvas>
+<canvas id=glc></canvas>
+<img id=ghost src="">
+<div id=pb></div>
+<div id=flash></div>
+
+<!-- Capture instruction crosshair -->
+<div id=instr>
+  <div class=big>⊕</div>
+  <div class=sub>FRAME OBJECT · TAP TO CAPTURE</div>
+</div>
+
+<!-- Orbital guide ring (top right) - drawn by canvas overlay -->
+<!-- Frame arc progress (top right) -->
+<svg id=arc width=62 height=62 viewBox="0 0 62 62" style="position:fixed;top:8px;right:8px;z-index:11;pointer-events:none">
+  <circle cx=31 cy=31 r=26 fill="rgba(0,0,0,.5)" stroke="rgba(0,255,255,.12)" stroke-width=1/>
+  <!-- 8 orbital slots around edge -->
+  <g id=orbSlots></g>
+  <!-- Frame count arc -->
+  <circle id=arcFill cx=31 cy=31 r=26 fill=none stroke="var(--c)" stroke-width=3
+    stroke-dasharray="0 163" stroke-dashoffset="41" transform="rotate(-90 31 31)"
+    style="transition:stroke-dasharray .4s"/>
+  <!-- Gyro direction needle drawn on canvas overlay -->
+  <text x=31 y=36 text-anchor=middle font-size=16 font-family="Courier New"
+    font-weight=bold fill="var(--c)" id=arcTxt>0</text>
+</svg>
+
+<div id=ui>
+  <!-- TOP: status -->
+  <div class=pan>
+    <div id=phase>
+      <div id=phLine>INITIALISING...</div>
+      <div class=info id=info></div>
+    </div>
+    <div id=chips>
+      <span class="chip off" id=cGY>Gyro</span>
+      <span class="chip off" id=cCA>Cam</span>
+      <span class="chip off" id=cOR>ORB</span>
+      <span class="chip off" id=cTS>TSDF</span>
+    </div>
+    <div id=fdots></div>
+  </div>
+
+  <!-- BOTTOM: action buttons (phase-dependent) -->
+  <div>
+    <!-- Phase 1: INIT -->
+    <div id=p1 class=pan>
+      <button class="btn primary" id=bStart>▶ START SCANNING</button>
+    </div>
+
+    <!-- Phase 2: SCAN -->
+    <div id=p2 class=pan style=display:none>
+      <button class="btn primary" id=bCapture>[ ⬤ CAPTURE FRAME ]</button>
+      <div class=g2>
+        <button class=btn id=bDone disabled>REVIEW 3D →</button>
+        <button class="btn danger" id=bStop>✕ STOP</button>
+      </div>
+    </div>
+
+    <!-- Phase 3: REVIEW -->
+    <div id=p3 class=pan style=display:none>
+      <div id=rev>
+        <div style="font-size:10px;color:var(--a);font-weight:bold;margin-bottom:4px">MESH CALIBRATION</div>
+        <div class=sl-row><span>ISO LEVEL</span>
+          <input type=range id=sliso min=-8 max=8 step=1 value=-2
+            oninput="$('viso').textContent=this.value">
+          <span class=val id=viso>-2</span></div>
+        <div class=sl-row><span>POINT SIZE</span>
+          <input type=range id=slps min=0.005 max=0.06 step=0.005 value=0.015
+            oninput="$('vps').textContent=this.value;window.resizePts?.()">
+          <span class=val id=vps>0.015</span></div>
+        <div class=sl-row>
+          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type=checkbox id=cbSm checked> SMOOTH</label>
+          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:10px;cursor:pointer">
+            <input type=checkbox id=cbWire> WIRE</label>
+        </div>
+      </div>
+      <button class="btn go" id=bBake>∴ BAKE → STL</button>
+      <div class=g2>
+        <button class=btn id=bMore>+ MORE FRAMES</button>
+        <button class="btn danger" id=bDiscard>DISCARD</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type=module>
+import{pipeline,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+env.allowLocalModels=false;env.useBrowserCache=true;
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const sts=t=>{$('phLine').textContent=t};
+const info=t=>{$('info').textContent=t};
+const chip=(id,s,t)=>{const e=$(id);e.className='chip '+s;e.textContent=t};
+const vid=$('vid'),ghost=$('ghost'),glc=$('glc'),hud=$('hud');
+const pb=$('pb'),flash=$('flash');
+const hudCtx=hud.getContext('2d');
+hud.width=innerWidth;hud.height=innerHeight;
+
+// ── THREE.JS ──────────────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+const cam3=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.01,100);
+cam3.position.set(0,0,2);
+const rend=new THREE.WebGLRenderer({canvas:glc,antialias:true,alpha:true});
+rend.setPixelRatio(Math.min(devicePixelRatio,2));
+rend.setSize(innerWidth,innerHeight);
+const oc=new THREE.OrbitControls(cam3,rend.domElement);
+oc.enableDamping=true;oc.enabled=false;
+scene.add(new THREE.AmbientLight(0xffffff,.6));
+const dl=new THREE.DirectionalLight(0x00ffff,.5);dl.position.set(2,3,2);scene.add(dl);
+const ptGroup=new THREE.Group();scene.add(ptGroup);
+const meshGroup=new THREE.Group();scene.add(meshGroup);
+let reviewMesh=null,lastVerts=null;
+
+// ── TSDF WORKER ───────────────────────────────────────────────────────────────
+// ALL coordinates in Three.js units (≈ meters). VoxSz=0.008m=8mm.
+const WC=`
+let nx=0,ny=0,nz=0,sz=0,bb={x:0,y:0,z:0},sd=null,wt=null;
+const TR=3; // truncation in meters (3× voxel size)
+const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+self.onmessage=function(e){
+  const{type,data}=e;
+  if(type==='init'){
+    nx=data.nx;ny=data.ny;nz=data.nz;sz=data.sz;bb=data.bb;
+    const N=nx*ny*nz;
+    sd=new Float32Array(N).fill(TR);
+    wt=new Float32Array(N);
+    self.postMessage({type:'ready',dims:[nx,ny,nz]});
+  }
+  else if(type==='integrate'){
+    if(!sd)return;
+    const p=data.pts; // Float32Array of xyz in meters
+    const wts=data.wts; // Float32Array per-point weights (0..1), optional
+    for(let i=0;i<p.length;i+=3){
+      const px=p[i],py=p[i+1],pz=p[i+2];
+      // Per-point weight: quality × facing ratio (default 1 if no weights passed)
+      const ptW=wts?Math.max(0.05,wts[i/3]):1;
+      const vx=Math.floor((px-bb.x)/sz)|0;
+      const vy=Math.floor((py-bb.y)/sz)|0;
+      const vz=Math.floor((pz-bb.z)/sz)|0;
+      const bv=Math.ceil(TR/sz)+1;
+      for(let dz2=-bv;dz2<=bv;dz2++){
+        const zi=vz+dz2;
+        if(vx<0||vy<0||zi<0||vx>=nx||vy>=ny||zi>=nz)continue;
+        const idx=vi(vx,vy,zi);
+        const s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
+        const w=wt[idx];
+        // Weight the SDF update by per-point quality
+        const addW=ptW;
+        sd[idx]=(sd[idx]*w+s*addW)/(w+addW);
+        wt[idx]=Math.min(w+addW,255);
+      }
+    }
+    self.postMessage({type:'done'});
+  }
+  else if(type==='march'){
+    if(!sd){self.postMessage({type:'mesh',verts:new Float32Array(0)});return}
+    const iso=data.iso||0,minW=data.minW||1,verts=[];
+    const ip=(p1,p2,v1,v2)=>{
+      const t=(iso-v1)/((v2-v1)||.0001);
+      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
+    };
+    const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
+    for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
+      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
+               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+      const vals=c.map(([x,y,z])=>{
+        const idx=vi(Math.min(nx-1,x),Math.min(ny-1,y),Math.min(nz-1,z));
+        return wt[idx]<minW?TR:sd[idx];
+      });
+      const pos=c.map(([x,y,z])=>[bb.x+x*sz+sz*.5,bb.y+y*sz+sz*.5,bb.z+z*sz+sz*.5]);
+      for(const[a,b,cc,d]of tets){
+        const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
+        const ins=sv.map(v=>v<iso?1:0),bit=ins[0]|(ins[1]<<1)|(ins[2]<<2)|(ins[3]<<3);
+        if(!bit||bit===15)continue;
+        const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
+        for(const[ea,eb]of edges)if(ins[ea]!==ins[eb])cuts.push(ip(sp[ea],sp[eb],sv[ea],sv[eb]));
+        if(cuts.length>=3){
+          verts.push(...cuts[0],...cuts[1],...cuts[2]);
+          if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3]);
+        }
+      }
+    }
+    const arr=new Float32Array(verts);
+    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
+  }
+};`;
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let depthPipe=null,worker=null;
+let phase=1;
+let fc=0,pc=0;
+let integBusy=false,bakeQ=false,adapted=false,replayBusy=false;
+let bakeRetries=0,queuedPts=null;
+let opLocked=false; // global lock: prevents overlapping async operations
+let capturedFrames=[];
+let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+const dQ=new THREE.Quaternion();
+let hasGyro=false,vTrack=null;
+// Orbital coverage tracking — yaw angles captured (from gyro, in degrees 0-360)
+let coveredAngles=[];
+// Frame quality — last computed scores
+let lastQuality={blur:0,corners:0,exposure:0,score:0};
+// Temporal depth stabilization — EMA across frames (ChatGPT #3)
+// DA2 depth flickers ±20% even on static scenes. EMA at 0.7 weight dramatically
+// smooths TSDF integration and reduces floating geometry.
+let prevDepth=null; // Float32Array of last frame's normalized depth
+// Depth scale/shift per-frame (Gemini #1)
+// DA2 relative depth has unknown scale each frame. Store last norm for alignment.
+let prevNormDepth=null; // for scale alignment
+let prevMatchKP=null,prevMatchDesc=null; // ORB state at last capture for alignment
+
+// ── ORB ────────────────────────────────────────────────────────────────────────
+const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};
+  let s=42;for(let i=0;i<256;i++)p.push(r(),r(),r(),r());return p})();
+function brief(g,W,H,cx,cy){
+  const d=new Uint32Array(8);
+  for(let i=0;i<256;i++){const b=i*4,
+    x1=Math.max(0,Math.min(W-1,cx+BP[b])),y1=Math.max(0,Math.min(H-1,cy+BP[b+1])),
+    x2=Math.max(0,Math.min(W-1,cx+BP[b+2])),y2=Math.max(0,Math.min(H-1,cy+BP[b+3]));
+    if(g[y1*W+x1]>g[y2*W+x2])d[i>>5]|=1<<(i&31);}
+  return d;
+}
+function hamming(a,b){let h=0;for(let i=0;i<8;i++){let x=a[i]^b[i];x-=(x>>1)&0x55555555;x=(x&0x33333333)+((x>>2)&0x33333333);h+=((x+(x>>4)&0xF0F0F0F)*0x1010101)>>24}return h}
+function fastCorners(g,W,H){
+  const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
+  const raw=[];
+  for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){
+    const c=g[y*W+x];let br=0,dk=0;
+    for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+20)br++;else if(v<c-20)dk++}
+    if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)});
+  }
+  raw.sort((a,b)=>b.s-a.s);
+  const k=[],m=12;
+  for(const p of raw){if(k.length>=30)break;if(!k.some(q=>Math.abs(q.x-p.x)<m&&Math.abs(q.y-p.y)<m))k.push(p)}
+  return k;
+}
+
+// ── WIRE MESH / DEPTH VISUALIZATION ENGINE ────────────────────────────────────
+// Replaces flickering magenta corner dots with stable edge lines (Sobel)
+// and real-time depth contours — the "sculptor's eye" view of the scene.
+// All computed on the existing 128×128 luma buffer — zero extra cost.
+
+// Sobel edge map: returns Float32Array of edge magnitudes [0..1] at 128×128
+function sobelEdges(gray,W,H){
+  const out=new Float32Array(W*H);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const gx=(-gray[(y-1)*W+(x-1)]-2*gray[y*W+(x-1)]-gray[(y+1)*W+(x-1)])
+             +( gray[(y-1)*W+(x+1)]+2*gray[y*W+(x+1)]+gray[(y+1)*W+(x+1)]);
+    const gy=(-gray[(y-1)*W+(x-1)]-2*gray[(y-1)*W+x]-gray[(y-1)*W+(x+1)])
+             +( gray[(y+1)*W+(x-1)]+2*gray[(y+1)*W+x]+gray[(y+1)*W+(x+1)]);
+    out[y*W+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128);
+  }
+  return out;
+}
+
+// Depth contour lines: draw iso-depth lines on the HUD canvas
+// depthMap is Float32Array [0..1] at dW×dH, mapped to screen
+// contourLevels: e.g. [0.2,0.35,0.5,0.65,0.8]
+let lastLiveDepth=null; // cached from last preview inference
+let liveDepthW=0,liveDepthH=0;
+const CONTOUR_LEVELS=[0.18,0.32,0.46,0.60,0.74,0.88];
+// Colors cycling cyan→green→amber (depth near→far)
+const CONTOUR_COLORS=[
+  'rgba(0,255,255,.55)','rgba(0,220,180,.5)','rgba(0,255,100,.45)',
+  'rgba(100,255,0,.4)','rgba(255,200,0,.35)','rgba(255,120,0,.3)'
+];
+
+function drawDepthContours(ox,oy,dw,dh){
+  if(!lastLiveDepth||!liveDepthW)return;
+  const W=liveDepthW,H=liveDepthH;
+  const sx=dw/W,sy=dh/H;
+  for(let ci=0;ci<CONTOUR_LEVELS.length;ci++){
+    const lvl=CONTOUR_LEVELS[ci];
+    hudCtx.strokeStyle=CONTOUR_COLORS[ci];
+    hudCtx.lineWidth=1.2;
+    hudCtx.beginPath();
+    // March squares to find contour crossings
+    for(let y=0;y<H-1;y++)for(let x=0;x<W-1;x++){
+      const tl=lastLiveDepth[y*W+x],tr=lastLiveDepth[y*W+x+1];
+      const bl=lastLiveDepth[(y+1)*W+x],br=lastLiveDepth[(y+1)*W+x+1];
+      // Quick reject: no crossing in this cell
+      const mn=Math.min(tl,tr,bl,br),mx=Math.max(tl,tr,bl,br);
+      if(lvl<mn||lvl>mx)continue;
+      // Linear interpolation along edges that cross the contour
+      const pts=[];
+      if((tl<lvl)!==(tr<lvl)){const t=(lvl-tl)/(tr-tl);pts.push([ox+(x+t)*sx,oy+y*sy])}
+      if((tr<lvl)!==(br<lvl)){const t=(lvl-tr)/(br-tr);pts.push([ox+(x+1)*sx,oy+(y+t)*sy])}
+      if((bl<lvl)!==(br<lvl)){const t=(lvl-bl)/(br-bl);pts.push([ox+(x+t)*sx,oy+(y+1)*sy])}
+      if((tl<lvl)!==(bl<lvl)){const t=(lvl-tl)/(bl-tl);pts.push([ox+x*sx,oy+(y+t)*sy])}
+      if(pts.length>=2){hudCtx.moveTo(pts[0][0],pts[0][1]);hudCtx.lineTo(pts[1][0],pts[1][1])}
+    }
+    hudCtx.stroke();
+  }
+}
+
+// Draw Sobel wire mesh overlay on live feed
+let edgeMap=null; // updated by trackLoop
+function drawWireMesh(ox,oy,dw,dh){
+  if(!edgeMap)return;
+  const W=128,H=128,sx=dw/W,sy=dh/H;
+  const threshold=0.25; // only draw significant edges
+  // Draw edge pixels as small glowing dots
+  hudCtx.fillStyle='rgba(0,255,200,.6)';
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    if(edgeMap[y*W+x]>threshold){
+      const px=ox+x*sx,py=oy+y*sy;
+      hudCtx.fillRect(px-0.6,py-0.6,1.2,1.2);
+    }
+  }
+}
+
+// Alignment delta arrows — shown after stitch, replaces confusing ghost
+// Shows HOW FAR and WHICH DIRECTION to move for next capture
+let stitchDelta={x:0,y:0,frames:0}; // accumulated translation since last stitch
+function drawAlignmentGuide(){
+  if(!stitchKP.length||stitchDelta.frames<2)return;
+  const cx=innerWidth/2,cy=innerHeight*0.35;
+  const dx=stitchDelta.x,dy=stitchDelta.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<8)return; // at capture position — no arrow needed
+  // Draw arrow showing accumulated movement direction
+  const angle=Math.atan2(dy,dx);
+  const len=Math.min(60,dist*0.8);
+  const ex=cx+Math.cos(angle)*len,ey=cy+Math.sin(angle)*len;
+  hudCtx.strokeStyle='rgba(255,176,0,.7)';hudCtx.lineWidth=2;
+  hudCtx.beginPath();hudCtx.moveTo(cx,cy);hudCtx.lineTo(ex,ey);
+  // Arrowhead
+  hudCtx.lineTo(ex-Math.cos(angle-.4)*12,ey-Math.sin(angle-.4)*12);
+  hudCtx.moveTo(ex,ey);
+  hudCtx.lineTo(ex-Math.cos(angle+.4)*12,ey-Math.sin(angle+.4)*12);
+  hudCtx.stroke();
+  // Distance label
+  hudCtx.fillStyle='rgba(255,176,0,.8)';
+  hudCtx.font='bold 10px Courier New';
+  hudCtx.textAlign='center';
+  hudCtx.fillText(`MOVED ${Math.round(dist)}px`,cx,cy-10);
+  hudCtx.textAlign='left';
+}
+
+// Live depth preview: run DA2 at 128px every 1.5s for contour overlay
+let depthPreviewBusy=false;
+let smallInferCvs=document.createElement('canvas');
+let smallInferCtx=smallInferCvs.getContext('2d');
+async function updateDepthPreview(){
+  if(!depthPipe||depthPreviewBusy||phase!==2||!vid.videoWidth)return;
+  depthPreviewBusy=true;
+  try{
+    smallInferCvs.width=128;smallInferCvs.height=96;
+    smallInferCtx.drawImage(vid,0,0,128,96);
+    const res=await depthPipe(smallInferCvs);
+    if(res.predicted_depth){
+      const dd=res.predicted_depth.data instanceof Float32Array?
+        res.predicted_depth.data:new Float32Array(res.predicted_depth.data);
+      let mn=Infinity,mx=-Infinity;
+      for(let i=0;i<dd.length;i++){if(dd
