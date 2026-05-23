@@ -387,18 +387,21 @@ const _edgeCtx=_edgeCvs.getContext('2d',{willReadFrequently:false});
 const _edgeBuf=new Uint8ClampedArray(128*128*4); // RGBA pixels, reused every frame
 function drawWireMesh(ox,oy,dw,dh){
   if(!edgeMap)return;
-  // Build RGBA buffer — edges are cyan-green, rest is transparent
+  // Adaptive threshold: use 85th percentile of edge magnitudes
+  // This keeps roughly 15% of pixels as edges regardless of scene complexity
+  // Prevents flooding in high-texture outdoor scenes
+  const sorted=Array.from(edgeMap).sort((a,b)=>a-b);
+  const thresh=Math.max(0.3,sorted[Math.floor(sorted.length*.85)]);
   for(let i=0;i<128*128;i++){
     const e=edgeMap[i];
-    if(e>0.22){
-      const a=Math.min(220,e*600)|0;
-      _edgeBuf[i*4]=0;_edgeBuf[i*4+1]=220;_edgeBuf[i*4+2]=180;_edgeBuf[i*4+3]=a;
+    if(e>thresh){
+      const a=Math.min(180,((e-thresh)/(1-thresh))*500)|0;
+      _edgeBuf[i*4]=0;_edgeBuf[i*4+1]=210;_edgeBuf[i*4+2]=170;_edgeBuf[i*4+3]=a;
     }else{
-      _edgeBuf[i*4+3]=0; // transparent
+      _edgeBuf[i*4+3]=0;
     }
   }
   _edgeCtx.putImageData(new ImageData(_edgeBuf,128,128),0,0);
-  // Single drawImage scales 128×128 → screen size
   hudCtx.drawImage(_edgeCvs,ox,oy,dw,dh);
 }
 
@@ -858,11 +861,16 @@ async function captureFrame(){
     const rng=(mx-mn)||1;let norm=new Float32Array(dd.length);
     for(let i=0;i<dd.length;i++)norm[i]=(dd[i]-mn)/rng;
 
-    // P1: Depth scale/shift alignment (Gemini #1)
-    // Use ORB matches from the last capture to align this frame's depth scale
-    // to the previous frame's — keeps all frames in consistent metric space.
+    // Declare dW/dH FIRST before ANY code that uses them (fixes temporal dead zone)
+    const RES=80;
+    const dW=iCvs.width,dH=iCvs.height,dMin=Math.min(dW,dH);
+    const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
+    const maxD=2.0;
+    const fovR=60*Math.PI/180;
+    const tanH=Math.tan(fovR/2);
+
+    // P1: Depth scale/shift alignment (uses dW/dH declared above)
     if(prevNormDepth&&prevMatchKP&&prevMatchKP.length>=4){
-      // Re-run matching using saved kp/desc from last capture moment
       const currKP=fastCorners(tGray,128,128);
       const currDesc=currKP.map(p=>brief(tGray,128,128,p.x,p.y));
       const alignMatches=[];
@@ -872,32 +880,11 @@ async function captureFrame(){
         if(bi>=0)alignMatches.push({ax:prevMatchKP[i].x,ay:prevMatchKP[i].y,bx:currKP[bi].x,by:currKP[bi].y});
       }
       const {s,t}=alignDepthScale(prevNormDepth,norm,alignMatches,dW,dH);
-      if(s!==1||t!==0){
-        norm=applyDepthAlignment(norm,s,t);
-        info(`Depth aligned: scale=${s.toFixed(2)} shift=${t.toFixed(3)}`);
-      }
+      if(s!==1||t!==0){norm=applyDepthAlignment(norm,s,t);}
     }
-    // Save ORB state and norm for next frame's alignment
     prevNormDepth=norm.slice();
     prevMatchKP=hudKP.slice();prevMatchDesc=hudKP.map(p=>brief(tGray,128,128,p.x,p.y));
-
-    // P0: Temporal depth stabilization (ChatGPT #3)
-    // EMA smooths DA2's frame-to-frame flicker before TSDF integration.
-    // Must run AFTER scale alignment so the EMA is in a consistent scale.
     norm=temporalSmooth(norm);
-
-    // ── Build point cloud in THREE.JS UNITS (meters) ─────────────────────────
-    // DA2: norm[i]=1 means near, 0 means far
-    // We want z=near→small (object in front), z=far→large (background)
-    // Use dv = 1 - norm[i] so near→0, far→1
-    // Then scale: max depth ≈ 2m (reasonable for close scanning)
-    // x,y from pinhole model with FOV≈60°
-    const RES=80; // 80×80 sample grid
-    const dW=iCvs.width,dH=iCvs.height,dMin=Math.min(dW,dH);
-    const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
-    const maxD=2.0; // 2 meters depth range
-    const fovR=60*Math.PI/180;
-    const tanH=Math.tan(fovR/2);
 
     // Adaptive cull: use 5th-95th percentile depth
     const sorted=Array.from(norm).sort((a,b)=>a-b);
@@ -1124,7 +1111,7 @@ function goPhase1Reset(){
   prevDepth=null;prevNormDepth=null;prevMatchKP=null;prevMatchDesc=null;
   edgeMap=null;lastLiveDepth=null;stitchDelta={x:0,y:0,frames:0};
   glc.style.pointerEvents='none';oc.enabled=false;
-  $('p3').style.display='none';$('p1').style.display='block';$('rev').style.display='none';
+  $('p3').style.display='none';$('p2').style.display='none';$('p1').style.display='block';$('rev').style.display='none';
   sts('READY TO SCAN');info('Frame your object and tap START');
 }
 
