@@ -55,7 +55,11 @@ body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;tou
 .btn.primary{border-color:var(--c);border-width:2px;font-size:16px;height:68px}
 .btn.danger{border-color:var(--m);color:var(--m)}
 .btn.go{border-color:var(--g);color:var(--g)}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Dedicated Camera Shutter Dock */
+.cam-dock{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-top:8px;pointer-events:auto}
+.shutter-btn{width:80px;height:80px;border-radius:50%;background:rgba(0,255,255,0.12);border:3px solid var(--c);color:var(--c);font:bold 10px 'Courier New';cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:0.15s;flex-shrink:0;box-shadow:0 0 12px rgba(0,255,255,0.15)}
+.shutter-btn:active{transform:scale(0.9);background:var(--c);color:#000}
+.dock-side{flex:1;height:52px;margin:0!important}
 /* Frame counter arc */
 #arc{position:fixed;top:12px;right:12px;z-index:11;pointer-events:none}
 /* Phase 3 review panel */
@@ -130,12 +134,15 @@ body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;tou
       <button class="btn primary" id=bStart>▶ START SCANNING</button>
     </div>
 
-    <!-- Phase 2: SCAN -->
+    <!-- Phase 2: SCAN — shutter dock layout -->
     <div id=p2 class=pan style=display:none>
-      <button class="btn primary" id=bCapture>[ ⬤ CAPTURE FRAME ]</button>
-      <div class=g2>
-        <button class=btn id=bDone disabled>REVIEW 3D →</button>
-        <button class="btn danger" id=bStop>✕ STOP</button>
+      <div class=cam-dock>
+        <button class="btn danger dock-side" id=bStop>✕ STOP</button>
+        <button class=shutter-btn id=bCapture>
+          <span style="font-size:18px;line-height:1;margin-bottom:2px">⬤</span>
+          <span id=shutterLabel style="font-size:8px;letter-spacing:.5px">CAPTURE</span>
+        </button>
+        <button class="btn dock-side" id=bDone disabled>REVIEW →</button>
       </div>
     </div>
 
@@ -153,9 +160,15 @@ body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;tou
           <span class=val id=vps>0.015</span></div>
         <div class=sl-row>
           <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;cursor:pointer">
-            <input type=checkbox id=cbSm checked> SMOOTH</label>
+            <input type=checkbox id=cbSm checked> TAUBIN SMOOTH</label>
           <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:10px;cursor:pointer">
-            <input type=checkbox id=cbWire> WIRE</label>
+            <input type=checkbox id=cbWire> WIREFRAME</label>
+        </div>
+        <div class=sl-row>
+          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type=checkbox id=cbCloud checked> CLOUD</label>
+          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:10px;cursor:pointer">
+            <input type=checkbox id=cbMesh checked> MESH</label>
         </div>
       </div>
       <button class="btn go" id=bBake>∴ BAKE → STL</button>
@@ -214,8 +227,11 @@ self.onmessage=function(e){
   else if(type==='integrate'){
     if(!sd)return;
     const p=data.pts; // Float32Array of xyz in meters
+    const wts=data.wts; // Float32Array per-point weights (0..1), optional
     for(let i=0;i<p.length;i+=3){
       const px=p[i],py=p[i+1],pz=p[i+2];
+      // Per-point weight: quality × facing ratio (default 1 if no weights passed)
+      const ptW=wts?Math.max(0.05,wts[i/3]):1;
       const vx=Math.floor((px-bb.x)/sz)|0;
       const vy=Math.floor((py-bb.y)/sz)|0;
       const vz=Math.floor((pz-bb.z)/sz)|0;
@@ -226,8 +242,10 @@ self.onmessage=function(e){
         const idx=vi(vx,vy,zi);
         const s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
         const w=wt[idx];
-        sd[idx]=(sd[idx]*w+s)/(w+1);
-        wt[idx]=Math.min(w+1,255);
+        // Weight the SDF update by per-point quality
+        const addW=ptW;
+        sd[idx]=(sd[idx]*w+s*addW)/(w+addW);
+        wt[idx]=Math.min(w+addW,255);
       }
     }
     self.postMessage({type:'done'});
@@ -271,14 +289,22 @@ let phase=1;
 let fc=0,pc=0;
 let integBusy=false,bakeQ=false,adapted=false,replayBusy=false;
 let bakeRetries=0,queuedPts=null;
+let opLocked=false; // global lock: prevents overlapping async operations
 let capturedFrames=[];
 let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
 const dQ=new THREE.Quaternion();
 let hasGyro=false,vTrack=null;
 // Orbital coverage tracking — yaw angles captured (from gyro, in degrees 0-360)
 let coveredAngles=[];
-// Frame quality — last computed scores
 let lastQuality={blur:0,corners:0,exposure:0,score:0};
+let prevDepth=null;
+let prevNormDepth=null;
+let prevMatchKP=null,prevMatchDesc=null;
+// Stitch overlap tracking for center reticule HUD
+let stitchMatchKP=[],stitchMatchDesc=[],liveMatchCount=0;
+let filteredOverlapPct=100; // EMA-smoothed overlap percentage
+// Desktop turntable fallback — drag to simulate gyro yaw
+let manualYaw=0,isDraggingYaw=false,dragStartX=0;
 
 // ── ORB ────────────────────────────────────────────────────────────────────────
 const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};
@@ -306,7 +332,170 @@ function fastCorners(g,W,H){
   return k;
 }
 
-// ── FRAME QUALITY SCORING (inspired by OpenScan's feature heatmap) ────────────
+// ── WIRE MESH / DEPTH VISUALIZATION ENGINE ────────────────────────────────────
+// Replaces flickering magenta corner dots with stable edge lines (Sobel)
+// and real-time depth contours — the "sculptor's eye" view of the scene.
+// All computed on the existing 128×128 luma buffer — zero extra cost.
+
+// Sobel edge map: returns Float32Array of edge magnitudes [0..1] at 128×128
+function sobelEdges(gray,W,H){
+  const out=new Float32Array(W*H);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const gx=(-gray[(y-1)*W+(x-1)]-2*gray[y*W+(x-1)]-gray[(y+1)*W+(x-1)])
+             +( gray[(y-1)*W+(x+1)]+2*gray[y*W+(x+1)]+gray[(y+1)*W+(x+1)]);
+    const gy=(-gray[(y-1)*W+(x-1)]-2*gray[(y-1)*W+x]-gray[(y-1)*W+(x+1)])
+             +( gray[(y+1)*W+(x-1)]+2*gray[(y+1)*W+x]+gray[(y+1)*W+(x+1)]);
+    out[y*W+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128);
+  }
+  return out;
+}
+
+// Depth contour lines: draw iso-depth lines on the HUD canvas
+// depthMap is Float32Array [0..1] at dW×dH, mapped to screen
+// contourLevels: e.g. [0.2,0.35,0.5,0.65,0.8]
+let lastLiveDepth=null; // cached from last preview inference
+let liveDepthW=0,liveDepthH=0;
+const CONTOUR_LEVELS=[0.18,0.32,0.46,0.60,0.74,0.88];
+// Colors cycling cyan→green→amber (depth near→far)
+const CONTOUR_COLORS=[
+  'rgba(0,255,255,.55)','rgba(0,220,180,.5)','rgba(0,255,100,.45)',
+  'rgba(100,255,0,.4)','rgba(255,200,0,.35)','rgba(255,120,0,.3)'
+];
+
+function drawDepthContours(ox,oy,dw,dh){
+  if(!lastLiveDepth||!liveDepthW)return;
+  const W=liveDepthW,H=liveDepthH;
+  const sx=dw/W,sy=dh/H;
+  for(let ci=0;ci<CONTOUR_LEVELS.length;ci++){
+    const lvl=CONTOUR_LEVELS[ci];
+    hudCtx.strokeStyle=CONTOUR_COLORS[ci];
+    hudCtx.lineWidth=1.2;
+    hudCtx.beginPath();
+    // March squares to find contour crossings
+    for(let y=0;y<H-1;y++)for(let x=0;x<W-1;x++){
+      const tl=lastLiveDepth[y*W+x],tr=lastLiveDepth[y*W+x+1];
+      const bl=lastLiveDepth[(y+1)*W+x],br=lastLiveDepth[(y+1)*W+x+1];
+      // Quick reject: no crossing in this cell
+      const mn=Math.min(tl,tr,bl,br),mx=Math.max(tl,tr,bl,br);
+      if(lvl<mn||lvl>mx)continue;
+      // Linear interpolation along edges that cross the contour
+      const pts=[];
+      if((tl<lvl)!==(tr<lvl)){const t=(lvl-tl)/(tr-tl);pts.push([ox+(x+t)*sx,oy+y*sy])}
+      if((tr<lvl)!==(br<lvl)){const t=(lvl-tr)/(br-tr);pts.push([ox+(x+1)*sx,oy+(y+t)*sy])}
+      if((bl<lvl)!==(br<lvl)){const t=(lvl-bl)/(br-bl);pts.push([ox+(x+t)*sx,oy+(y+1)*sy])}
+      if((tl<lvl)!==(bl<lvl)){const t=(lvl-tl)/(bl-tl);pts.push([ox+x*sx,oy+(y+t)*sy])}
+      if(pts.length>=2){hudCtx.moveTo(pts[0][0],pts[0][1]);hudCtx.lineTo(pts[1][0],pts[1][1])}
+    }
+    hudCtx.stroke();
+  }
+}
+
+// Draw Sobel wire mesh overlay on live feed
+let edgeMap=null; // updated by trackLoop
+// Wire mesh via ImageData — single putImageData+drawImage instead of thousands of fillRect calls
+// This is ~50x faster: one JS buffer write, one GPU upload, one drawImage.
+const _edgeCvs=document.createElement('canvas');_edgeCvs.width=_edgeCvs.height=128;
+const _edgeCtx=_edgeCvs.getContext('2d',{willReadFrequently:false});
+const _edgeBuf=new Uint8ClampedArray(128*128*4); // RGBA pixels, reused every frame
+function drawWireMesh(ox,oy,dw,dh){
+  if(!edgeMap)return;
+  // Adaptive threshold: use 85th percentile of edge magnitudes
+  // This keeps roughly 15% of pixels as edges regardless of scene complexity
+  // Prevents flooding in high-texture outdoor scenes
+  const sorted=Array.from(edgeMap).sort((a,b)=>a-b);
+  const thresh=Math.max(0.3,sorted[Math.floor(sorted.length*.85)]);
+  for(let i=0;i<128*128;i++){
+    const e=edgeMap[i];
+    if(e>thresh){
+      const a=Math.min(180,((e-thresh)/(1-thresh))*500)|0;
+      _edgeBuf[i*4]=0;_edgeBuf[i*4+1]=210;_edgeBuf[i*4+2]=170;_edgeBuf[i*4+3]=a;
+    }else{
+      _edgeBuf[i*4+3]=0;
+    }
+  }
+  _edgeCtx.putImageData(new ImageData(_edgeBuf,128,128),0,0);
+  hudCtx.drawImage(_edgeCvs,ox,oy,dw,dh);
+}
+
+// Alignment delta arrows — shown after stitch, replaces confusing ghost
+// Shows HOW FAR and WHICH DIRECTION to move for next capture
+let stitchDelta={x:0,y:0,frames:0}; // accumulated translation since last stitch
+function drawAlignmentGuide(){
+  if(!stitchKP.length||stitchDelta.frames<2)return;
+  const cx=innerWidth/2,cy=innerHeight*0.35;
+  const dx=stitchDelta.x,dy=stitchDelta.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<8)return; // at capture position — no arrow needed
+  // Draw arrow showing accumulated movement direction
+  const angle=Math.atan2(dy,dx);
+  const len=Math.min(60,dist*0.8);
+  const ex=cx+Math.cos(angle)*len,ey=cy+Math.sin(angle)*len;
+  hudCtx.strokeStyle='rgba(255,176,0,.7)';hudCtx.lineWidth=2;
+  hudCtx.beginPath();hudCtx.moveTo(cx,cy);hudCtx.lineTo(ex,ey);
+  // Arrowhead
+  hudCtx.lineTo(ex-Math.cos(angle-.4)*12,ey-Math.sin(angle-.4)*12);
+  hudCtx.moveTo(ex,ey);
+  hudCtx.lineTo(ex-Math.cos(angle+.4)*12,ey-Math.sin(angle+.4)*12);
+  hudCtx.stroke();
+  // Distance label
+  hudCtx.fillStyle='rgba(255,176,0,.8)';
+  hudCtx.font='bold 10px Courier New';
+  hudCtx.textAlign='center';
+  hudCtx.fillText(`MOVED ${Math.round(dist)}px`,cx,cy-10);
+  hudCtx.textAlign='left';
+}
+
+// Live depth preview: run DA2 at 128px every 1.5s for contour overlay
+let depthPreviewBusy=false;
+let smallInferCvs=document.createElement('canvas');
+let smallInferCtx=smallInferCvs.getContext('2d');
+async function updateDepthPreview(){
+  if(!depthPipe||depthPreviewBusy||phase!==2||!vid.videoWidth)return;
+  depthPreviewBusy=true;
+  try{
+    smallInferCvs.width=128;smallInferCvs.height=96;
+    smallInferCtx.drawImage(vid,0,0,128,96);
+    const res=await depthPipe(smallInferCvs);
+    if(res.predicted_depth){
+      const dd=res.predicted_depth.data instanceof Float32Array?
+        res.predicted_depth.data:new Float32Array(res.predicted_depth.data);
+      let mn=Infinity,mx=-Infinity;
+      for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
+      const rng=(mx-mn)||1;
+      lastLiveDepth=new Float32Array(dd.length);
+      for(let i=0;i<dd.length;i++)lastLiveDepth[i]=(dd[i]-mn)/rng;
+      liveDepthW=128;liveDepthH=96;
+    }
+  }catch(e){}
+  depthPreviewBusy=false;
+}
+// Post-bake shape analysis using PCA on point cloud
+function analyzeShape(pts){
+  if(!pts||pts.length<30)return null;
+  // Compute centroid
+  let cx=0,cy=0,cz=0,n=pts.length/3;
+  for(let i=0;i<pts.length;i+=3){cx+=pts[i];cy+=pts[i+1];cz+=pts[i+2]}
+  cx/=n;cy/=n;cz/=n;
+  // Covariance matrix (3×3 upper triangle)
+  let c00=0,c11=0,c22=0,c01=0,c02=0,c12=0;
+  for(let i=0;i<pts.length;i+=3){
+    const dx=pts[i]-cx,dy=pts[i+1]-cy,dz=pts[i+2]-cz;
+    c00+=dx*dx;c11+=dy*dy;c22+=dz*dz;c01+=dx*dy;c02+=dx*dz;c12+=dy*dz;
+  }
+  c00/=n;c11/=n;c22/=n;c01/=n;c02/=n;c12/=n;
+  // Approximate eigenvalues (Gershgorin circles → actual iteration overkill)
+  // Use diagonal variances as proxy for extent in each axis
+  const extents=[Math.sqrt(c00),Math.sqrt(c11),Math.sqrt(c22)].sort((a,b)=>b-a);
+  const [e0,e1,e2]=extents; // largest to smallest
+  // Shape classification by aspect ratios
+  const r10=e1/e0,r20=e2/e0; // both in [0..1]
+  let shape,color,description;
+  if(r10>0.8&&r20>0.8){shape='● SPHERE / CUBE';color='#0ff';description='equidimensional — all axes similar'}
+  else if(r10>0.6&&r20<0.4){shape='▬ DISC / PLANE';color='#0f9';description='flat — one short axis'}
+  else if(r10<0.4){shape='| CYLINDER / CONE';color='#ffb000';description='elongated — one long axis dominates'}
+  else{shape='◈ IRREGULAR';color='#f0f';description='complex shape — multiple features'}
+  return{shape,color,description,extents:[e0.toFixed(3),e1.toFixed(3),e2.toFixed(3)]};
+}
 // Laplacian variance: measures image sharpness (blur detection)
 // High variance = sharp. Low variance = blurry.
 function laplacianVariance(gray,W,H){
@@ -434,33 +623,91 @@ let pKP=null,pDesc=null,snapTx=0,snapTy=0;
 let hudKP=[],stitchKP=[],hudAge=0;
 
 // Persistent RAF HUD loop
+// ── CENTER RETICULE with overlap% and orbital progress ────────────────────────
+function drawCenterReticule(cx,cy){
+  const r1=35,r2=44; // inner=overlap, outer=orbital progress
+  // EMA-smooth the raw overlap count
+  let rawPct=100;
+  if(fc>0&&stitchMatchKP.length>0)
+    rawPct=Math.max(0,Math.min(100,Math.round(liveMatchCount/Math.max(5,stitchMatchKP.length)*100)));
+  filteredOverlapPct=Math.round(filteredOverlapPct*.75+rawPct*.25);
+  const progPct=Math.min(100,Math.round(coveredAngles.length/8*100));
+  let col='#0f9',label='OPTIMAL POSITION';
+  if(fc===0){col='#0ff';label='FIRST CAPTURE';}
+  else if(filteredOverlapPct>85){col='#ffb000';label='MOVE FURTHER';}
+  else if(filteredOverlapPct<25){col='#f0f';label='TRACKING WEAK';}
+  else if(filteredOverlapPct<50){col='#0ff';label='LOW OVERLAP';}
+
+  hudCtx.shadowBlur=6;hudCtx.shadowColor=col;
+  // Outer ring: orbital progress (cyan)
+  hudCtx.beginPath();hudCtx.arc(cx,cy,r2,0,Math.PI*2);
+  hudCtx.strokeStyle='rgba(0,255,255,.08)';hudCtx.lineWidth=2;hudCtx.stroke();
+  hudCtx.beginPath();hudCtx.arc(cx,cy,r2,-Math.PI/2,-Math.PI/2+Math.PI*2*(progPct/100));
+  hudCtx.strokeStyle='var(--c)';hudCtx.lineWidth=2.5;hudCtx.stroke();
+  // Inner ring: overlap % (color-coded)
+  hudCtx.beginPath();hudCtx.arc(cx,cy,r1,0,Math.PI*2);
+  hudCtx.strokeStyle='rgba(255,255,255,.04)';hudCtx.lineWidth=4;hudCtx.stroke();
+  hudCtx.beginPath();hudCtx.arc(cx,cy,r1,-Math.PI/2,-Math.PI/2+Math.PI*2*(filteredOverlapPct/100));
+  hudCtx.strokeStyle=col;hudCtx.lineWidth=4;hudCtx.stroke();
+  hudCtx.shadowBlur=0;
+  // Crosshair ticks
+  hudCtx.strokeStyle=col;hudCtx.lineWidth=1.5;hudCtx.beginPath();
+  hudCtx.moveTo(cx-8,cy);hudCtx.lineTo(cx-3,cy);hudCtx.moveTo(cx+3,cy);hudCtx.lineTo(cx+8,cy);
+  hudCtx.moveTo(cx,cy-8);hudCtx.lineTo(cx,cy-3);hudCtx.moveTo(cx,cy+3);hudCtx.lineTo(cx,cy+8);
+  hudCtx.stroke();
+  // Labels
+  hudCtx.textAlign='center';
+  hudCtx.font='bold 9px Courier New';hudCtx.fillStyle=col;
+  hudCtx.fillText(label,cx,cy-r2-10);
+  hudCtx.font='bold 8px Courier New';hudCtx.fillStyle='rgba(255,255,255,.75)';
+  hudCtx.fillText(fc>0?`${filteredOverlapPct}% MATCH`:'READY',cx,cy+4);
+  hudCtx.font='bold 8px Courier New';hudCtx.fillStyle='var(--c)';
+  hudCtx.fillText(`ORBIT: ${progPct}%`,cx,cy+r2+13);
+  if(!hasGyro){
+    hudCtx.font='7px Courier New';hudCtx.fillStyle='var(--a)';
+    hudCtx.fillText('DRAG TO ROTATE',cx,cy+r2+24);
+  }
+  hudCtx.textAlign='left';
+}
+
 function drawHUD(){
   hudCtx.clearRect(0,0,hud.width,hud.height);
   if(phase!==2||!vid.videoWidth)return;
   const vw=vid.videoWidth,vh=vid.videoHeight;
   const sc=Math.max(innerWidth/vw,innerHeight/vh);
   const dw=vw*sc,dh=vh*sc,ox=(innerWidth-dw)/2,oy=(innerHeight-dh)/2;
-  const mD=Math.min(vw,vh),sx=(vw-mD)/2,sy=(vh-mD)/2;
-  const ms=(px,py)=>({x:ox+(sx+(px/128)*mD)*sc,y:oy+(sy+(py/128)*mD)*sc});
-  const age=Math.max(0,1-hudAge/60);
-  // Frozen stitch squares (cyan) — where we captured last
+  const mD=Math.min(vw,vh),sx2=(vw-mD)/2,sy2=(vh-mD)/2;
+  const ms=(px,py)=>({x:ox+(sx2+(px/128)*mD)*sc,y:oy+(sy2+(py/128)*mD)*sc});
+
+  // 1. Sobel wire mesh — fast single ImageData upload
+  drawWireMesh(ox,oy,dw,dh);
+
+  // 2. Frozen stitch markers (cyan crosshairs)
   for(const p of stitchKP){
     const pt=ms(p.x,p.y);
-    hudCtx.strokeStyle='rgba(0,220,255,.9)';hudCtx.lineWidth=1.5;
-    hudCtx.strokeRect(pt.x-5,pt.y-5,10,10);
+    hudCtx.strokeStyle='rgba(0,220,255,.95)';hudCtx.lineWidth=1.5;
+    hudCtx.strokeRect(pt.x-6,pt.y-6,12,12);
+    hudCtx.beginPath();
+    hudCtx.moveTo(pt.x-9,pt.y);hudCtx.lineTo(pt.x+9,pt.y);
+    hudCtx.moveTo(pt.x,pt.y-9);hudCtx.lineTo(pt.x,pt.y+9);
+    hudCtx.stroke();
   }
-  // Live corners (magenta)
-  hudCtx.fillStyle=`rgba(255,0,255,${age*.6+.15})`;
-  for(const p of hudKP){const pt=ms(p.x,p.y);hudCtx.fillRect(pt.x-3,pt.y-3,6,6)}
-  // Quality bar and orbital guide drawn by computeQuality interval
+
+  // 3. Alignment arrows
+  drawAlignmentGuide();
+  // 4. Center reticule with overlap% and orbital progress
+  drawCenterReticule(innerWidth/2,innerHeight*.4);
+  // 5. Quality bar + orbital guide
   if(lastQuality.score>0)drawQualityBar(lastQuality.score,lastQuality.corners,lastQuality.label||'');
   drawOrbitalGuide();
   hudAge++;
 }
 (function raf(){requestAnimationFrame(raf);drawHUD();rend.render(scene,cam3);if(oc.enabled)oc.update()})();
 
-// Quality scoring runs every 500ms — lightweight, doesn't block ORB
+// Quality scoring runs every 500ms — uses existing tGray buffer, no DA2 needed
 setInterval(()=>{if(phase===2)computeQuality()},500);
+// Depth preview removed — DA2 at 128x96 still takes 150-400ms on mobile main
+// thread, causing visible freezes every 1.5s. Sobel edges provide instant feedback.
 
 // ── TSDF WORKER LIFECYCLE ─────────────────────────────────────────────────────
 function mkWorker(vSz,bb,dims,replay){
@@ -479,12 +726,12 @@ function mkWorker(vSz,bb,dims,replay){
         for(const pts of (replay||[])){
           await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
           if(!worker)break;
-          integBusy=true;worker.postMessage({type:'integrate',data:{pts}});
+          integBusy=true;worker.postMessage({type:"integrate",data:{pts}},[pts.buffer]);
         }
         if(queuedPts&&worker){
           const q=queuedPts;queuedPts=null;
           await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
-          if(worker){integBusy=true;worker.postMessage({type:'integrate',data:{pts:q}})}
+          if(worker){integBusy=true;worker.postMessage({type:"integrate",data:{pts:q}},[q.buffer])}
         }
         await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
         replayBusy=false;
@@ -504,7 +751,11 @@ function mkWorker(vSz,bb,dims,replay){
       sts('SMOOTHING...');
       const out=$('cbSm').checked?smoothMesh(v,3):v;
       // Display
-      if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose()}
+      if(reviewMesh){
+        reviewMesh.geometry.dispose();
+        reviewMesh.material.dispose();
+        meshGroup.remove(reviewMesh);
+      }
       const geo=new THREE.BufferGeometry();
       geo.setAttribute('position',new THREE.BufferAttribute(out.slice(),3));
       geo.computeVertexNormals();
@@ -521,10 +772,21 @@ function mkWorker(vSz,bb,dims,replay){
       const d=Math.max(.5,Math.max(bs.x,bs.y,bs.z)*1.8);
       oc.target.copy(bc);cam3.position.set(bc.x,bc.y,bc.z+d);
       cam3.lookAt(bc);oc.update();
+      $('cbCloud').checked=false;$('cbMesh').checked=true;
+      ptGroup.visible=false;meshGroup.visible=true;
       lastVerts=out;$('bBake').disabled=false;
       const tris=(out.length/9|0).toLocaleString();
-      sts('MESH READY — '+tris+' triangles');info('Drag to orbit · tap BAKE STL to download');
-      // Download STL
+      // Post-bake shape analysis — PCA → primitive classification
+      const allPts=[];
+      capturedFrames.forEach(f=>{for(let i=0;i<f.pts.length;i++)allPts.push(f.pts[i])});
+      const shape=analyzeShape(new Float32Array(allPts));
+      const shapeStr=shape?` · ${shape.shape}`:'';
+      sts('MESH READY — '+tris+' tris'+shapeStr);
+      if(shape){
+        info(`${shape.description} · extents ${shape.extents.join('/')}m`);
+        // Flash shape color
+        $('bBake').style.borderColor=shape.color;$('bBake').style.color=shape.color;
+      }else{info('Drag to orbit · tap BAKE STL to download');}
       dlSTL(out);
     }
   };
@@ -541,8 +803,98 @@ function initWorker(){
 const iCvs=document.createElement('canvas');
 const iCtx=iCvs.getContext('2d',{willReadFrequently:true});
 
+// ── DEPTH SCALE/SHIFT ALIGNMENT — Median Robust Estimator ────────────────────
+// DA2 produces relative depth with unknown scale per frame.
+// PROBLEM WITH LEAST-SQUARES: one mismatched background ORB point can dominate
+// the regression and wildly rescale the whole depth map.
+// FIX: Compute per-match scale ratio, take the MEDIAN.
+// Median is immune to up to 49% outlier matches — correct for noisy ORB.
+function alignDepthScale(prevNorm,currNorm,matches,dW,dH){
+  if(!prevNorm||!matches||matches.length<4)return{s:1,t:0};
+  const dMin=Math.min(dW,dH),dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
+  const ratios=[];
+  for(const m of matches){
+    const du=Math.floor(dsx+(m.bx/128)*dMin),dv=Math.floor(dsy+(m.by/128)*dMin);
+    const pu=Math.floor(dsx+(m.ax/128)*dMin),pv=Math.floor(dsy+(m.ay/128)*dMin);
+    if(du<0||du>=dW||dv<0||dv>=dH||pu<0||pu>=dW||pv<0||pv>=dH)continue;
+    const vc=currNorm[dv*dW+du],vp=prevNorm[pv*dW+pu];
+    if(vc<0.05||vp<0.05)continue; // skip near-zero (background/sky)
+    ratios.push(vp/vc);
+  }
+  if(ratios.length<3)return{s:1,t:0};
+  ratios.sort((a,b)=>a-b);
+  const s=ratios[ratios.length>>1]; // MEDIAN — robust to outliers
+  if(s<0.25||s>4)return{s:1,t:0}; // reject catastrophic mismatch
+  // Median shift
+  const shifts=[];
+  for(const m of matches){
+    const du=Math.floor(dsx+(m.bx/128)*dMin),dv=Math.floor(dsy+(m.by/128)*dMin);
+    const pu=Math.floor(dsx+(m.ax/128)*dMin),pv=Math.floor(dsy+(m.ay/128)*dMin);
+    if(du<0||du>=dW||dv<0||dv>=dH||pu<0||pu>=dW||pv<0||pv>=dH)continue;
+    const vc=currNorm[dv*dW+du],vp=prevNorm[pv*dW+pu];
+    if(vc<0.05||vp<0.05)continue;
+    shifts.push(vp-s*vc);
+  }
+  if(!shifts.length)return{s,t:0};
+  shifts.sort((a,b)=>a-b);
+  return{s,t:shifts[shifts.length>>1]};
+}
+
+// Apply scale/shift to normalize depth map relative to previous frame
+function applyDepthAlignment(norm,s,t){
+  if(s===1&&t===0)return norm;
+  const out=new Float32Array(norm.length);
+  for(let i=0;i<norm.length;i++){
+    out[i]=Math.max(0,Math.min(1,s*norm[i]+t));
+  }
+  return out;
+}
+
+// ── TEMPORAL DEPTH STABILIZATION (ChatGPT #3) ─────────────────────────────────
+// Exponential moving average across frames. Alpha=0.3 on new, 0.7 on history.
+// Reduces DA2 depth flicker without adding latency (pure memory operation).
+function temporalSmooth(norm){
+  if(!prevDepth||prevDepth.length!==norm.length){
+    prevDepth=norm.slice();return norm;
+  }
+  const out=new Float32Array(norm.length);
+  for(let i=0;i<norm.length;i++)out[i]=norm[i]*.3+prevDepth[i]*.7;
+  prevDepth=out.slice();
+  return out;
+}
+
+// ── SURFACE NORMAL CONFIDENCE (Gemini #2, simplified) ────────────────────────
+// Compute per-pixel facing ratio (dot product of surface normal with camera axis).
+// Grazing angle pixels (normal ⊥ camera) have high depth uncertainty → low weight.
+// Returns Float32Array same size as RES×RES, values 0..1 (1=facing camera directly).
+function computeFacingRatio(norm,dW,dH,dMin,dsx,dsy,RES){
+  const fr=new Float32Array(RES*RES);
+  for(let iy=1;iy<RES-1;iy++)for(let ix=1;ix<RES-1;ix++){
+    const nu=Math.floor(dsx+(ix/RES)*dMin),nv=Math.floor(dsy+(iy/RES)*dMin);
+    if(nu<1||nu>=dW-1||nv<1||nv>=dH-1){fr[iy*RES+ix]=0.5;continue}
+    const dx=norm[nv*dW+(nu+1)]-norm[nv*dW+(nu-1)];
+    const dy=norm[(nv+1)*dW+nu]-norm[(nv-1)*dW+nu];
+    // Surface normal from depth gradients: n = normalize(-dx, -dy, 2/RES)
+    const nz=2/RES;
+    const len=Math.sqrt(dx*dx+dy*dy+nz*nz)||1;
+    // Facing ratio = |n·camera_axis| = |nz/len|
+    fr[iy*RES+ix]=Math.min(1,Math.abs(nz/len)*2); // ×2 to spread range
+  }
+  return fr;
+}
+
 async function captureFrame(){
   if(!depthPipe||!vid.videoWidth)return;
+  if(opLocked)return; // prevent double-tap during async inference
+  opLocked=true;
+  // Skip if quality too low, but always allow first frame to establish reference
+  if(fc>0&&lastQuality.score<50){
+    info(`⚠ Quality ${lastQuality.score}% too low — ${lastQuality.label||'improve conditions'}`);
+    // Flash red to signal rejection
+    flash.style.background='rgba(255,0,64,.3)';flash.style.opacity='.5';
+    setTimeout(()=>{flash.style.opacity=0;flash.style.background='#fff'},200);
+    return;
+  }
 
   // Animate UI
   $('bCapture').disabled=true;$('bCapture').textContent='[ PROCESSING... ]';
@@ -551,9 +903,15 @@ async function captureFrame(){
   flash.style.opacity='.35';setTimeout(()=>flash.style.opacity=0,80);
   navigator.vibrate?.([50]);
 
-  // Snapshot ORB keypoints for HUD
+  // Snapshot ORB keypoints for HUD frozen markers
   stitchKP=hudKP.slice();
-  // Record which orbital direction was covered
+  // Snapshot for overlap% reticule tracking
+  stitchMatchKP=hudKP.slice();
+  stitchMatchDesc=hudKP.map(p=>brief(tGray,128,128,p.x,p.y));
+  liveMatchCount=0;
+  // Reset alignment delta arrows
+  stitchDelta={x:0,y:0,frames:0};
+  // Record orbital coverage
   recordCoverage();
 
   try{
@@ -566,29 +924,49 @@ async function captureFrame(){
     const dd=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
     let mn=Infinity,mx=-Infinity;
     for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
-    const rng=(mx-mn)||1,norm=new Float32Array(dd.length);
+    const rng=(mx-mn)||1;let norm=new Float32Array(dd.length);
     for(let i=0;i<dd.length;i++)norm[i]=(dd[i]-mn)/rng;
 
-    // ── Build point cloud in THREE.JS UNITS (meters) ─────────────────────────
-    // DA2: norm[i]=1 means near, 0 means far
-    // We want z=near→small (object in front), z=far→large (background)
-    // Use dv = 1 - norm[i] so near→0, far→1
-    // Then scale: max depth ≈ 2m (reasonable for close scanning)
-    // x,y from pinhole model with FOV≈60°
-    const RES=80; // 80×80 sample grid
+    // Declare dW/dH FIRST before ANY code that uses them (fixes temporal dead zone)
+    const RES=80;
     const dW=iCvs.width,dH=iCvs.height,dMin=Math.min(dW,dH);
     const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
-    const maxD=2.0; // 2 meters depth range
+    const maxD=2.0;
     const fovR=60*Math.PI/180;
     const tanH=Math.tan(fovR/2);
+
+    // P1: Depth scale/shift alignment (uses dW/dH declared above)
+    if(prevNormDepth&&prevMatchKP&&prevMatchKP.length>=4){
+      const currKP=fastCorners(tGray,128,128);
+      const currDesc=currKP.map(p=>brief(tGray,128,128,p.x,p.y));
+      const alignMatches=[];
+      for(let i=0;i<prevMatchKP.length;i++){
+        let best=52,bi=-1;
+        for(let j=0;j<currKP.length;j++){const h2=hamming(prevMatchDesc[i],currDesc[j]);if(h2<best){best=h2;bi=j}}
+        if(bi>=0)alignMatches.push({ax:prevMatchKP[i].x,ay:prevMatchKP[i].y,bx:currKP[bi].x,by:currKP[bi].y});
+      }
+      const {s,t}=alignDepthScale(prevNormDepth,norm,alignMatches,dW,dH);
+      if(s!==1||t!==0){norm=applyDepthAlignment(norm,s,t);}
+    }
+    prevNormDepth=norm.slice();
+    prevMatchKP=hudKP.slice();prevMatchDesc=hudKP.map(p=>brief(tGray,128,128,p.x,p.y));
+    norm=temporalSmooth(norm);
 
     // Adaptive cull: use 5th-95th percentile depth
     const sorted=Array.from(norm).sort((a,b)=>a-b);
     const p05=sorted[Math.floor(sorted.length*.05)];
     const p95=sorted[Math.floor(sorted.length*.95)];
 
-    const pos=[];const colors=[];const pts=[];
-    const spacing=2.5/RES; // display cloud spans ±1.25 in x,y
+    const pos=[];const colors=[];const pts=[];const weights=[];
+    const spacing=2.5/RES;
+
+    // P2: Compute surface normal facing ratios (Gemini #2)
+    // Points at grazing angles (|normal·camera| near 0) have high depth uncertainty.
+    const facingRatio=computeFacingRatio(norm,dW,dH,dMin,dsx,dsy,RES);
+
+    // P1: Frame quality weight for TSDF (ChatGPT #5)
+    // High-quality frames contribute more to each voxel than blurry/dark ones.
+    const frameWeight=Math.max(0.2,lastQuality.score/100);
 
     // Color from camera
     const cCvs=document.createElement('canvas');cCvs.width=cCvs.height=RES;
@@ -619,6 +997,9 @@ async function captureFrame(){
         tx=v3.x;ty=v3.y;tz=v3.z;
       }
       pts.push(tx,ty,tz);
+      // Combined weight: frame quality × surface facing ratio
+      // Grazing-angle pts and blurry-frame pts contribute less to TSDF
+      weights.push(frameWeight*facingRatio[iy*RES+ix]);
       // Bbox from TSDF pts
       if(tx<bbox.minX)bbox.minX=tx;if(tx>bbox.maxX)bbox.maxX=tx;
       if(ty<bbox.minY)bbox.minY=ty;if(ty>bbox.maxY)bbox.maxY=ty;
@@ -638,10 +1019,11 @@ async function captureFrame(){
     }else{ptGroup.add(cloud)}
     capturedFrames.push({pts:new Float32Array(pts),cloud});
 
-    // Send to TSDF
+    // Send to TSDF — include per-point weights for quality+normal weighting
     const ptsF32=new Float32Array(pts);
+    const wtsF32=new Float32Array(weights);
     if(worker&&!integBusy&&!bakeQ){
-      integBusy=true;worker.postMessage({type:'integrate',data:{pts:ptsF32}});
+      integBusy=true;worker.postMessage({type:"integrate",data:{pts:ptsF32,wts:wtsF32}},[ptsF32.buffer,wtsF32.buffer]);
       pc+=pts.length/3;
     }else if(worker){queuedPts=ptsF32;pc+=pts.length/3}
 
@@ -676,19 +1058,10 @@ async function captureFrame(){
     sts(`SCANNING — ${fc} frames`);
     info(`${(pc/1000).toFixed(1)}k pts · move around object`);
 
-    // Ghost overlay — 320px blob URL
-    const gW=320,gH=Math.round(320*h/w);
-    const gCvs2=document.createElement('canvas');gCvs2.width=gW;gCvs2.height=gH;
-    const gCtx=gCvs2.getContext('2d');
-    gCtx.drawImage(vid,0,0,gW,gH);
-    gCtx.fillStyle='rgba(0,50,60,.35)';gCtx.fillRect(0,0,gW,gH);
-    gCvs2.toBlob(b=>{
-      const url=URL.createObjectURL(b);
-      const old=ghost._burl;ghost.src=url;ghost._burl=url;
-      if(old)URL.revokeObjectURL(old);
-    },'image/jpeg',.6);
-    ghost.style.opacity='.4';
-    pKP=null;pDesc=null; // reset ORB tracking
+    // Ghost overlay removed — was causing confusion
+    // Alignment is now shown via the arrow indicator in the HUD
+    ghost.style.opacity='0';
+    pKP=null;pDesc=null; // reset ORB tracking from new position
 
   }catch(e){sts('ERROR: '+e.message.slice(0,50))}
 
@@ -696,6 +1069,7 @@ async function captureFrame(){
   pb.style.transition='width .15s';pb.style.width='100%';
   setTimeout(()=>{pb.style.width='0%'},350);
   $('bCapture').textContent='[ ⬤ CAPTURE FRAME ]';$('bCapture').disabled=false;
+  opLocked=false;
 }
 
 // ── ORB TRACKING LOOP ─────────────────────────────────────────────────────────
@@ -710,10 +1084,17 @@ function trackLoop(t){
     tCtx.drawImage(vid,sx,sy,minD,minD,0,0,128,128);
     const td=tCtx.getImageData(0,0,128,128).data;
     for(let i=0;i<td.length;i+=4)tGray[i>>2]=(td[i]*.299+td[i+1]*.587+td[i+2]*.114)|0;
+
+    // Compute Sobel edge map for wire mesh overlay
+    // This replaces the flickering magenta dots — edges are geometrically stable
+    edgeMap=sobelEdges(tGray,128,128);
+
+    // ORB for alignment tracking (used internally — no longer shown as dots)
     const kp=fastCorners(tGray,128,128);
     const desc=kp.map(p=>brief(tGray,128,128,p.x,p.y));
-    // Match and snap ghost
-    if(pKP&&pKP.length>3&&desc.length>3&&+ghost.style.opacity>0.05){
+
+    // Track camera movement since last stitch for alignment arrows
+    if(pKP&&pKP.length>3&&desc.length>3){
       const matches=[];
       for(let i=0;i<pKP.length;i++){
         let b=52,bi=-1;
@@ -721,20 +1102,32 @@ function trackLoop(t){
         if(bi>=0)matches.push({ax:pKP[i].x,ay:pKP[i].y,bx:kp[bi].x,by:kp[bi].y});
       }
       if(matches.length>=4){
-        let tx=0,ty=0,n=0;
-        matches.forEach(m=>{tx+=m.bx-m.ax;ty+=m.by-m.ay;n++});
-        tx/=n;ty/=n;
-        snapTx=snapTx*.7+(-tx*(innerWidth/128))*.3;
-        snapTy=snapTy*.7+(-ty*(innerHeight/128))*.3;
-        snapTx=Math.max(-innerWidth*.3,Math.min(innerWidth*.3,snapTx));
-        snapTy=Math.max(-innerHeight*.3,Math.min(innerHeight*.3,snapTy));
-        ghost.style.transform=`translate(${snapTx.toFixed(1)}px,${snapTy.toFixed(1)}px)`;
-        chip('cOR',`ok`,`ORB ${matches.length}✓`);
+        let mtx=0,mty=0,mn=0;
+        matches.forEach(m=>{mtx+=m.bx-m.ax;mty+=m.by-m.ay;mn++});
+        mtx/=mn;mty/=mn;
+        stitchDelta.x+=mtx*(innerWidth/128)*.3;
+        stitchDelta.y+=mty*(innerHeight/128)*.3;
+        stitchDelta.frames++;
+        chip('cOR','ok',`ORB ${matches.length}✓`);
       }
+    }
+    // Overlap tracking vs last stitch (for reticule)
+    liveMatchCount=0;
+    if(stitchMatchKP.length>3&&desc.length>3){
+      for(let i=0;i<stitchMatchKP.length;i++){
+        let b=52,bi=-1;
+        for(let j=0;j<kp.length;j++){const h2=hamming(stitchMatchDesc[i],desc[j]);if(h2<b){b=h2;bi=j}}
+        if(bi>=0)liveMatchCount++;
+      }
+    }
+    // Live shutter button label
+    if(!opLocked){
+      const sl=$('shutterLabel');
+      if(sl)sl.textContent=fc===0?'START':stitchMatchKP.length>0?`${Math.min(100,Math.round(liveMatchCount/stitchMatchKP.length*100))}%`:'READY';
     }
     hudKP=kp;hudAge=0;
     pKP=kp;pDesc=desc;
-    chip('cOR','warn',`ORB ${kp.length}kp`);
+    if(!kp.length)chip('cOR','warn','ORB —');
   }
   requestAnimationFrame(trackLoop);
 }
@@ -751,9 +1144,13 @@ async function goPhase2(){
 
 function goPhase3(){
   phase=3;ghost.style.opacity='0';
+  vid.style.opacity='0'; // fade to black for clean 3D review
   $('p2').style.display='none';$('p3').style.display='block';
   $('rev').style.display='block';$('instr').style.display='none';
   glc.style.pointerEvents='auto';oc.enabled=true;
+  // Default: show cloud before bake, hide mesh (not baked yet)
+  $('cbCloud').checked=true;$('cbMesh').checked=false;
+  ptGroup.visible=true;meshGroup.visible=false;
   // Center camera on point cloud
   let cx=0,cy=0,cz=0,cn=0;
   capturedFrames.forEach(f=>{
@@ -768,17 +1165,38 @@ function goPhase3(){
 }
 
 function goPhase1Reset(){
-  phase=1;adapted=false;fc=0;pc=0;integBusy=false;bakeQ=false;replayBusy=false;queuedPts=null;
-  capturedFrames.forEach(f=>{if(f.cloud.parent)f.cloud.parent.remove(f.cloud)});
+  phase=1;adapted=false;fc=0;pc=0;integBusy=false;bakeQ=false;replayBusy=false;queuedPts=null;opLocked=false;
+  // Explicitly dispose GPU resources — .remove() alone does NOT free GPU memory
+  capturedFrames.forEach(f=>{
+    if(f.cloud){
+      f.cloud.geometry.dispose();
+      f.cloud.material.dispose();
+      if(f.cloud.parent)f.cloud.parent.remove(f.cloud);
+    }
+  });
   capturedFrames=[];
-  while(ptGroup.children.length)ptGroup.remove(ptGroup.children[0]);
-  if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose();reviewMesh=null}
+  // Dispose all pivot groups and their children
+  while(ptGroup.children.length){
+    const pivot=ptGroup.children[0];
+    pivot.children.forEach(c=>{if(c.geometry)c.geometry.dispose();if(c.material)c.material.dispose()});
+    ptGroup.remove(pivot);
+  }
+  if(reviewMesh){
+    reviewMesh.geometry.dispose();
+    reviewMesh.material.dispose();
+    meshGroup.remove(reviewMesh);reviewMesh=null;
+  }
+  lastVerts=null;
   bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
   $('fdots').innerHTML='';$('arcFill').setAttribute('stroke-dasharray','0 145');$('arcTxt').textContent='0';
   hudKP=[];stitchKP=[];pKP=null;ghost.style.opacity='0';
   snapTx=0;snapTy=0;coveredAngles=[];lastQuality={blur:0,corners:0,exposure:0,score:0};
+  prevDepth=null;prevNormDepth=null;prevMatchKP=null;prevMatchDesc=null;
+  stitchMatchKP=[];stitchMatchDesc=[];liveMatchCount=0;filteredOverlapPct=100;
+  manualYaw=0;
+  edgeMap&&edgeMap.fill(0);stitchDelta={x:0,y:0,frames:0};
   glc.style.pointerEvents='none';oc.enabled=false;
-  $('p3').style.display='none';$('p1').style.display='block';$('rev').style.display='none';
+  $('p3').style.display='none';$('p2').style.display='none';$('p1').style.display='block';$('rev').style.display='none';vid.style.opacity='1';
   sts('READY TO SCAN');info('Frame your object and tap START');
 }
 
@@ -797,19 +1215,32 @@ $('bBake').onclick=()=>{
   worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:1}});
 };
 
-// ── SMOOTH MESH ───────────────────────────────────────────────────────────────
+// ── TAUBIN SMOOTHING (ChatGPT #8) ────────────────────────────────────────────
+// Standard Laplacian shrinks the mesh. Taubin λ/μ two-pass preserves volume.
+// λ=0.5 shrinks, μ=-0.53 expands back — net effect: smooth without shrinkage.
+// Same fast typed-array accumulator, just two passes with different signs.
 function smoothMesh(v,n){
   const cnt=v.length/3|0;
   const p=new Float32Array(v);
   const acc=new Float32Array(cnt*3),cnt2=new Uint32Array(cnt);
-  for(let k=0;k<n;k++){
+  const lambda=0.5,mu=-0.53;
+  // Helper: one Laplacian displacement pass with given factor
+  function lapPass(factor){
     acc.fill(0);cnt2.fill(0);
     for(let i=0;i<cnt-2;i+=3){
-      for(const[vi,n1,n2]of[[i,i+1,i+2],[i+1,i,i+2],[i+2,i,i+1]]){
-        acc[vi*3]+=p[n1*3]+p[n2*3];acc[vi*3+1]+=p[n1*3+1]+p[n2*3+1];acc[vi*3+2]+=p[n1*3+2]+p[n2*3+2];cnt2[vi]+=2;
+      for(const[vi2,n1,n2]of[[i,i+1,i+2],[i+1,i,i+2],[i+2,i,i+1]]){
+        acc[vi2*3]+=p[n1*3]+p[n2*3];acc[vi2*3+1]+=p[n1*3+1]+p[n2*3+1];acc[vi2*3+2]+=p[n1*3+2]+p[n2*3+2];cnt2[vi2]+=2;
       }
     }
-    for(let i=0;i<cnt;i++){if(!cnt2[i])continue;const f=1/cnt2[i];p[i*3]=p[i*3]*.5+acc[i*3]*f*.5;p[i*3+1]=p[i*3+1]*.5+acc[i*3+1]*f*.5;p[i*3+2]=p[i*3+2]*.5+acc[i*3+2]*f*.5;}
+    for(let i=0;i<cnt;i++){
+      if(!cnt2[i])continue;
+      const f=factor/cnt2[i];
+      p[i*3]+=acc[i*3]*f;p[i*3+1]+=acc[i*3+1]*f;p[i*3+2]+=acc[i*3+2]*f;
+    }
+  }
+  for(let k=0;k<n;k++){
+    lapPass(lambda); // shrink step
+    lapPass(mu);     // expand step (negative — restores volume)
   }
   return p;
 }
@@ -836,7 +1267,19 @@ function dlSTL(v){
 }
 
 // ── BUTTON WIRING ─────────────────────────────────────────────────────────────
-$('bStart').onclick=()=>goPhase2();
+$('bStart').onclick=async()=>{
+  // iOS Safari requires DeviceOrientationEvent.requestPermission()
+  // inside a direct user click event — this is the only valid place.
+  if(typeof DeviceOrientationEvent!=='undefined'&&
+     typeof DeviceOrientationEvent.requestPermission==='function'){
+    try{
+      const perm=await DeviceOrientationEvent.requestPermission();
+      if(perm==='granted'){chip('cGY','ok','Gyro ✔');setupGyroHandler();}
+      else chip('cGY','off','Gyro denied');
+    }catch(e){chip('cGY','off','Gyro ✗');}
+  }
+  goPhase2();
+};
 $('bCapture').onclick=()=>captureFrame();
 $('bDone').onclick=()=>goPhase3();
 $('bStop').onclick=()=>{ghost.style.opacity='0';goPhase1Reset()};
@@ -852,7 +1295,25 @@ $('bDiscard').onclick=()=>goPhase1Reset();
 $('cbWire').addEventListener('change',()=>{
   if(reviewMesh){reviewMesh.material.wireframe=$('cbWire').checked;reviewMesh.material.needsUpdate=true}
 });
+$('cbCloud').addEventListener('change',()=>{ptGroup.visible=$('cbCloud').checked});
+$('cbMesh').addEventListener('change',()=>{meshGroup.visible=$('cbMesh').checked});
 window.resizePts=()=>capturedFrames.forEach(f=>f.cloud.material.size=parseFloat($('slps').value));
+
+// ── TURNTABLE DRAG (desktop / no-gyro fallback) ───────────────────────────────
+const dragTarget=document.getElementById('hud');
+function onDragStart(x){if(phase===2&&!hasGyro){isDraggingYaw=true;dragStartX=x;}}
+function onDragMove(x){
+  if(!isDraggingYaw||phase!==2||hasGyro)return;
+  manualYaw-=(x-dragStartX)*.007;dragStartX=x;
+  dQ.setFromEuler(new THREE.Euler(0,manualYaw,0,'YXZ'));
+}
+function onDragEnd(){isDraggingYaw=false;}
+dragTarget.addEventListener('mousedown',e=>onDragStart(e.clientX));
+dragTarget.addEventListener('mousemove',e=>onDragMove(e.clientX));
+window.addEventListener('mouseup',onDragEnd);
+dragTarget.addEventListener('touchstart',e=>{if(e.touches.length===1)onDragStart(e.touches[0].clientX)},{passive:true});
+dragTarget.addEventListener('touchmove',e=>{if(e.touches.length===1)onDragMove(e.touches[0].clientX)},{passive:true});
+dragTarget.addEventListener('touchend',onDragEnd);
 
 // ── SENSOR INIT ───────────────────────────────────────────────────────────────
 async function startCamera(){
@@ -865,46 +1326,89 @@ async function startCamera(){
 
 // ── BOOT ─────────────────────────────────────────────────────────────────────
 async function boot(){
-  sts('LOADING NEURAL DEPTH...');info('Depth Anything V2 — first load ~26MB');
-  pb.style.transition='none';pb.style.width='5%';
-  // Start camera immediately
+  sts('LOADING NEURAL DEPTH...');
+  info('First load ~26MB · cached after');
+  pb.style.transition='none';pb.style.width='3%';
+
+  // Camera starts immediately — independent of model load
   try{
     await startCamera();
-  }catch(e){chip('cCA','warn','CAM ✗');info('Camera failed: '+e.message.slice(0,40))}
-  // Gyro
+    info('Camera ready · loading neural model...');
+  }catch(e){
+    chip('cCA','warn','CAM ✗');
+    info('Camera: '+e.message.slice(0,35)+' — check permissions');
+    // Don't block — model can still load, camera can be retried
+  }
+
+  // Non-iOS gyro starts passively (no permission needed)
+  window.addEventListener('deviceorientation',e=>{
+    if(!e.alpha&&!e.beta&&!e.gamma)return;
+    if(hasGyro)return;
+    hasGyro=true;chip('cGY','ok','Gyro ✔');
+    setupGyroHandler();
+  },{once:true});
+
+  // Load neural model with timeout fallback
+  const MODEL_TIMEOUT=90000; // 90s — slow connections on first load
+  let modelTimer;
+  const modelTimeout=new Promise((_,rej)=>{
+    modelTimer=setTimeout(()=>rej(new Error('Download timed out — check connection')),MODEL_TIMEOUT);
+  });
+
   try{
-    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
-      await DeviceOrientationEvent.requestPermission().catch(()=>{});
-    window.addEventListener('deviceorientation',e=>{
-      if(!e.alpha&&!e.beta&&!e.gamma)return;
-      hasGyro=true;chip('cGY','ok','Gyro ✔');
-      const a=e.alpha?THREE.MathUtils.degToRad(e.alpha):0;
-      const b=e.beta?THREE.MathUtils.degToRad(e.beta):0;
-      const g2=e.gamma?THREE.MathUtils.degToRad(e.gamma):0;
-      const ori=window.orientation?THREE.MathUtils.degToRad(window.orientation):0;
-      dQ.setFromEuler(new THREE.Euler(b,a,-g2,'YXZ'));
-      dQ.multiply(new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)));
-      dQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-ori));
-    });
-  }catch(e){chip('cGY','off','Gyro ✗')}
-  // Load model
-  try{
-    depthPipe=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{
-      progress_callback:p=>{
-        if(p.status==='downloading'||p.status==='loading'){
-          const pct=p.progress??(p.loaded&&p.total?p.loaded/p.total*100:50);
-          pb.style.transition='width .3s';pb.style.width=(5+pct*.9)+'%';
+    depthPipe=await Promise.race([
+      pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{
+        progress_callback:p=>{
+          if(p.status==='downloading'||p.status==='loading'){
+            const pct=p.progress??(p.loaded&&p.total?p.loaded/p.total*100:50);
+            pb.style.transition='width .3s';
+            pb.style.width=(3+pct*.92)+'%';
+            if(p.loaded&&p.total)info(`Loading model… ${Math.round(pct)}% (${Math.round(p.loaded/1048576)}/${Math.round(p.total/1048576)}MB)`);
+          }
         }
-      }
-    });
+      }),
+      modelTimeout
+    ]);
+    clearTimeout(modelTimer);
     pb.style.width='100%';setTimeout(()=>pb.style.width='0%',600);
-    sts('READY TO SCAN');info('Frame your object and tap START');
+    sts('READY TO SCAN');
+    info('Frame your object · tap START SCANNING');
     $('bStart').disabled=false;
-  }catch(e){sts('MODEL FAILED — reload');info(e.message.slice(0,50));console.error(e)}
-  // Resize handler
+    $('bStart').textContent='▶ START SCANNING';
+  }catch(e){
+    clearTimeout(modelTimer);
+    pb.style.width='0%';
+    sts('MODEL LOAD FAILED');
+    info(e.message.slice(0,60));
+    // Enable retry — never leave user permanently stuck
+    $('bStart').disabled=false;
+    $('bStart').textContent='↺ RETRY LOAD';
+    $('bStart').onclick=async()=>{
+      $('bStart').disabled=true;$('bStart').textContent='▶ START SCANNING';
+      await boot(); // retry the whole boot sequence
+    };
+    console.error('Model load failed:',e);
+    return; // don't attach the normal click handler
+  }
+
   window.addEventListener('resize',()=>{
     cam3.aspect=innerWidth/innerHeight;cam3.updateProjectionMatrix();
     rend.setSize(innerWidth,innerHeight);hud.width=innerWidth;hud.height=innerHeight;
+  });
+}
+
+// Gyro handler — attached after permission granted (or on first event for non-iOS)
+function setupGyroHandler(){
+  window.addEventListener('deviceorientation',e=>{
+    if(!e.alpha&&!e.beta&&!e.gamma)return;
+    hasGyro=true;chip('cGY','ok','Gyro ✔');
+    const a=e.alpha?THREE.MathUtils.degToRad(e.alpha):0;
+    const b2=e.beta?THREE.MathUtils.degToRad(e.beta):0;
+    const g2=e.gamma?THREE.MathUtils.degToRad(e.gamma):0;
+    const ori=window.orientation?THREE.MathUtils.degToRad(window.orientation):0;
+    dQ.setFromEuler(new THREE.Euler(b2,a,-g2,'YXZ'));
+    dQ.multiply(new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)));
+    dQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-ori));
   });
 }
 boot();
