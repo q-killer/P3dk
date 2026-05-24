@@ -18,7 +18,7 @@
 *{box-sizing:border-box;user-select:none;margin:0;padding:0;overflow:hidden}
 body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;touch-action:none}
 /* Camera feed — fullscreen background */
-#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;transition:opacity .4s}
 /* ORB keypoint HUD — drawn on 2D canvas */
 #hud{position:fixed;inset:0;z-index:2;pointer-events:none}
 /* Three.js — point cloud + baked mesh review */
@@ -288,7 +288,7 @@ let depthPipe=null,worker=null;
 let phase=1;
 let fc=0,pc=0;
 let integBusy=false,bakeQ=false,adapted=false,replayBusy=false;
-let bakeRetries=0,queuedPts=null;
+let bakeRetries=0,queuedPts=null,queuedWts=null;
 let opLocked=false; // global lock: prevents overlapping async operations
 let capturedFrames=[];
 let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
@@ -350,45 +350,6 @@ function sobelEdges(gray,W,H){
   return out;
 }
 
-// Depth contour lines: draw iso-depth lines on the HUD canvas
-// depthMap is Float32Array [0..1] at dW×dH, mapped to screen
-// contourLevels: e.g. [0.2,0.35,0.5,0.65,0.8]
-let lastLiveDepth=null; // cached from last preview inference
-let liveDepthW=0,liveDepthH=0;
-const CONTOUR_LEVELS=[0.18,0.32,0.46,0.60,0.74,0.88];
-// Colors cycling cyan→green→amber (depth near→far)
-const CONTOUR_COLORS=[
-  'rgba(0,255,255,.55)','rgba(0,220,180,.5)','rgba(0,255,100,.45)',
-  'rgba(100,255,0,.4)','rgba(255,200,0,.35)','rgba(255,120,0,.3)'
-];
-
-function drawDepthContours(ox,oy,dw,dh){
-  if(!lastLiveDepth||!liveDepthW)return;
-  const W=liveDepthW,H=liveDepthH;
-  const sx=dw/W,sy=dh/H;
-  for(let ci=0;ci<CONTOUR_LEVELS.length;ci++){
-    const lvl=CONTOUR_LEVELS[ci];
-    hudCtx.strokeStyle=CONTOUR_COLORS[ci];
-    hudCtx.lineWidth=1.2;
-    hudCtx.beginPath();
-    // March squares to find contour crossings
-    for(let y=0;y<H-1;y++)for(let x=0;x<W-1;x++){
-      const tl=lastLiveDepth[y*W+x],tr=lastLiveDepth[y*W+x+1];
-      const bl=lastLiveDepth[(y+1)*W+x],br=lastLiveDepth[(y+1)*W+x+1];
-      // Quick reject: no crossing in this cell
-      const mn=Math.min(tl,tr,bl,br),mx=Math.max(tl,tr,bl,br);
-      if(lvl<mn||lvl>mx)continue;
-      // Linear interpolation along edges that cross the contour
-      const pts=[];
-      if((tl<lvl)!==(tr<lvl)){const t=(lvl-tl)/(tr-tl);pts.push([ox+(x+t)*sx,oy+y*sy])}
-      if((tr<lvl)!==(br<lvl)){const t=(lvl-tr)/(br-tr);pts.push([ox+(x+1)*sx,oy+(y+t)*sy])}
-      if((bl<lvl)!==(br<lvl)){const t=(lvl-bl)/(br-bl);pts.push([ox+(x+t)*sx,oy+(y+1)*sy])}
-      if((tl<lvl)!==(bl<lvl)){const t=(lvl-tl)/(bl-tl);pts.push([ox+x*sx,oy+(y+t)*sy])}
-      if(pts.length>=2){hudCtx.moveTo(pts[0][0],pts[0][1]);hudCtx.lineTo(pts[1][0],pts[1][1])}
-    }
-    hudCtx.stroke();
-  }
-}
 
 // Draw Sobel wire mesh overlay on live feed
 let edgeMap=null; // updated by trackLoop
@@ -445,30 +406,7 @@ function drawAlignmentGuide(){
   hudCtx.textAlign='left';
 }
 
-// Live depth preview: run DA2 at 128px every 1.5s for contour overlay
-let depthPreviewBusy=false;
-let smallInferCvs=document.createElement('canvas');
-let smallInferCtx=smallInferCvs.getContext('2d');
-async function updateDepthPreview(){
-  if(!depthPipe||depthPreviewBusy||phase!==2||!vid.videoWidth)return;
-  depthPreviewBusy=true;
-  try{
-    smallInferCvs.width=128;smallInferCvs.height=96;
-    smallInferCtx.drawImage(vid,0,0,128,96);
-    const res=await depthPipe(smallInferCvs);
-    if(res.predicted_depth){
-      const dd=res.predicted_depth.data instanceof Float32Array?
-        res.predicted_depth.data:new Float32Array(res.predicted_depth.data);
-      let mn=Infinity,mx=-Infinity;
-      for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
-      const rng=(mx-mn)||1;
-      lastLiveDepth=new Float32Array(dd.length);
-      for(let i=0;i<dd.length;i++)lastLiveDepth[i]=(dd[i]-mn)/rng;
-      liveDepthW=128;liveDepthH=96;
-    }
-  }catch(e){}
-  depthPreviewBusy=false;
-}
+
 // Post-bake shape analysis using PCA on point cloud
 function analyzeShape(pts){
   if(!pts||pts.length<30)return null;
@@ -543,36 +481,26 @@ function computeQuality(){
   const score=Math.round(blur*.4+cornerScore*.4+exp.score*.2);
   lastQuality={blur:Math.round(blur),corners:kp.length,exposure:exp.score,label:exp.label,score};
   hudKP=kp;hudAge=0;
-  // Update quality bar in HUD
-  drawQualityBar(score,kp.length,exp.label);
+  // Quality bar rendered by drawHUD every frame — don't write to canvas here
 }
 
-// Draw a quality bar overlay on the HUD canvas
-const QY=innerHeight-80; // position just above buttons
 function drawQualityBar(score,corners,expLabel){
   if(phase!==2)return;
-  const W=Math.min(innerWidth-40,400),X=(innerWidth-W)/2;
-  const Y=innerHeight-90;
-  // Background
-  hudCtx.fillStyle='rgba(0,0,0,.6)';
-  hudCtx.fillRect(X,Y,W,38);
-  // Color: red<40, amber<70, green>=70
-  const col=score<40?'#f04':score<70?'var(--a)':'var(--g)';
-  const barW=Math.round(W*score/100);
-  hudCtx.fillStyle=score<40?'rgba(255,0,64,.5)':score<70?'rgba(255,176,0,.4)':'rgba(0,255,153,.4)';
-  hudCtx.fillRect(X,Y,barW,38);
-  // Border
-  hudCtx.strokeStyle=score<40?'#f04':score<70?'#ffb000':'#0f9';
-  hudCtx.lineWidth=1;hudCtx.strokeRect(X,Y,W,38);
-  // Text
-  hudCtx.font='bold 11px Courier New';
-  hudCtx.fillStyle=score<40?'#f04':score<70?'#ffb000':'#0f9';
-  hudCtx.fillText(`QUALITY ${score}% · ${corners} FEATURES · ${expLabel}`,X+8,Y+14);
-  hudCtx.fillStyle='rgba(255,255,255,.5)';
-  hudCtx.font='9px Courier New';
-  if(score<40)hudCtx.fillText('⚠ LOW — move closer, improve lighting, or add texture',X+8,Y+28);
-  else if(score<70)hudCtx.fillText('◎ FAIR — better results possible with more light',X+8,Y+28);
-  else hudCtx.fillText('✔ GOOD — tap CAPTURE',X+8,Y+28);
+  const W=Math.min(innerWidth-32,360),X=(innerWidth-W)/2;
+  // Position below the top status panel (about 120px from top on mobile)
+  const Y=136;
+  hudCtx.fillStyle='rgba(0,0,0,.7)';hudCtx.fillRect(X,Y,W,32);
+  const col=score<40?'#f04':score<70?'#ffb000':'#0f9';
+  hudCtx.fillStyle=score<40?'rgba(255,0,64,.45)':score<70?'rgba(255,176,0,.35)':'rgba(0,255,153,.35)';
+  hudCtx.fillRect(X,Y,Math.round(W*score/100),32);
+  hudCtx.strokeStyle=col;hudCtx.lineWidth=1;hudCtx.strokeRect(X,Y,W,32);
+  hudCtx.font='bold 10px Courier New';hudCtx.fillStyle=col;
+  const hint=score<40?'⚠ LOW':score<70?'◎ FAIR':'✔ GOOD';
+  hudCtx.fillText(`${hint} · ${score}% · ${corners}feat · ${expLabel}`,X+7,Y+13);
+  hudCtx.fillStyle='rgba(255,255,255,.45)';hudCtx.font='8px Courier New';
+  if(score<40)hudCtx.fillText('move closer · improve lighting · add texture to surface',X+7,Y+25);
+  else if(score<70)hudCtx.fillText('better results with more light and less motion',X+7,Y+25);
+  else hudCtx.fillText('ready — tap CAPTURE',X+7,Y+25);
 }
 
 // ── ORBITAL COVERAGE GUIDE ────────────────────────────────────────────────────
@@ -726,12 +654,21 @@ function mkWorker(vSz,bb,dims,replay){
         for(const pts of (replay||[])){
           await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
           if(!worker)break;
-          integBusy=true;worker.postMessage({type:"integrate",data:{pts}},[pts.buffer]);
+          integBusy=true;
+          // Clone before transferring — pts.buffer becomes detached after first transfer
+          // without clone, subsequent replays send zero-length buffers silently
+          const clone=pts.slice();
+          worker.postMessage({type:"integrate",data:{pts:clone}},[clone.buffer]);
         }
         if(queuedPts&&worker){
-          const q=queuedPts;queuedPts=null;
+          const q=queuedPts,qw=queuedWts;queuedPts=null;queuedWts=null;
           await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
-          if(worker){integBusy=true;worker.postMessage({type:"integrate",data:{pts:q}},[q.buffer])}
+          if(worker){
+            integBusy=true;
+            const msg=qw?{pts:q,wts:qw}:{pts:q};
+            const bufs=qw?[q.buffer,qw.buffer]:[q.buffer];
+            worker.postMessage({type:"integrate",data:msg},bufs);
+          }
         }
         await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
         replayBusy=false;
@@ -887,17 +824,18 @@ async function captureFrame(){
   if(!depthPipe||!vid.videoWidth)return;
   if(opLocked)return; // prevent double-tap during async inference
   opLocked=true;
-  // Skip if quality too low, but always allow first frame to establish reference
+  // Frame rejection — skip if quality too low (first frame always allowed)
   if(fc>0&&lastQuality.score<50){
-    info(`⚠ Quality ${lastQuality.score}% too low — ${lastQuality.label||'improve conditions'}`);
-    // Flash red to signal rejection
+    info(`⚠ Quality ${lastQuality.score}% — ${lastQuality.label||'improve conditions'}`);
     flash.style.background='rgba(255,0,64,.3)';flash.style.opacity='.5';
     setTimeout(()=>{flash.style.opacity=0;flash.style.background='#fff'},200);
+    opLocked=false; // CRITICAL: must release lock before every return path
     return;
   }
 
   // Animate UI
-  $('bCapture').disabled=true;$('bCapture').textContent='[ PROCESSING... ]';
+  $('bCapture').disabled=true;
+  const sl=$('shutterLabel');if(sl)sl.textContent='…';
   pb.style.transition='none';pb.style.width='0%';
   requestAnimationFrame(()=>{pb.style.transition='width .7s ease-out';pb.style.width='82%'});
   flash.style.opacity='.35';setTimeout(()=>flash.style.opacity=0,80);
@@ -1025,7 +963,7 @@ async function captureFrame(){
     if(worker&&!integBusy&&!bakeQ){
       integBusy=true;worker.postMessage({type:"integrate",data:{pts:ptsF32,wts:wtsF32}},[ptsF32.buffer,wtsF32.buffer]);
       pc+=pts.length/3;
-    }else if(worker){queuedPts=ptsF32;pc+=pts.length/3}
+    }else if(worker){queuedPts=ptsF32;queuedWts=wtsF32;pc+=pts.length/3}
 
     fc++;
 
@@ -1038,7 +976,7 @@ async function captureFrame(){
     // Update arc
     const target=10; // 10 frames for full arc
     const pct=Math.min(fc/target,1);
-    $('arcFill').setAttribute('stroke-dasharray',`${pct*145} 145`);
+    $('arcFill').setAttribute('stroke-dasharray',`${pct*163} 163`);
     $('arcTxt').textContent=fc;
     $('bDone').disabled=fc<3;
 
@@ -1068,7 +1006,9 @@ async function captureFrame(){
   // Complete progress bar
   pb.style.transition='width .15s';pb.style.width='100%';
   setTimeout(()=>{pb.style.width='0%'},350);
-  $('bCapture').textContent='[ ⬤ CAPTURE FRAME ]';$('bCapture').disabled=false;
+  // Restore shutter button — only update label span, never overwrite button children
+  const sl2=$('shutterLabel');if(sl2)sl2.textContent='CAPTURE';
+  $('bCapture').disabled=false;
   opLocked=false;
 }
 
@@ -1165,7 +1105,7 @@ function goPhase3(){
 }
 
 function goPhase1Reset(){
-  phase=1;adapted=false;fc=0;pc=0;integBusy=false;bakeQ=false;replayBusy=false;queuedPts=null;opLocked=false;
+  phase=1;adapted=false;fc=0;pc=0;integBusy=false;bakeQ=false;replayBusy=false;queuedPts=null;queuedWts=null;opLocked=false;
   // Explicitly dispose GPU resources — .remove() alone does NOT free GPU memory
   capturedFrames.forEach(f=>{
     if(f.cloud){
@@ -1188,7 +1128,7 @@ function goPhase1Reset(){
   }
   lastVerts=null;
   bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-  $('fdots').innerHTML='';$('arcFill').setAttribute('stroke-dasharray','0 145');$('arcTxt').textContent='0';
+  $('fdots').innerHTML='';$('arcFill').setAttribute('stroke-dasharray','0 163');$('arcTxt').textContent='0';
   hudKP=[];stitchKP=[];pKP=null;ghost.style.opacity='0';
   snapTx=0;snapTy=0;coveredAngles=[];lastQuality={blur:0,corners:0,exposure:0,score:0};
   prevDepth=null;prevNormDepth=null;prevMatchKP=null;prevMatchDesc=null;
@@ -1267,24 +1207,15 @@ function dlSTL(v){
 }
 
 // ── BUTTON WIRING ─────────────────────────────────────────────────────────────
-$('bStart').onclick=async()=>{
-  // iOS Safari requires DeviceOrientationEvent.requestPermission()
-  // inside a direct user click event — this is the only valid place.
-  if(typeof DeviceOrientationEvent!=='undefined'&&
-     typeof DeviceOrientationEvent.requestPermission==='function'){
-    try{
-      const perm=await DeviceOrientationEvent.requestPermission();
-      if(perm==='granted'){chip('cGY','ok','Gyro ✔');setupGyroHandler();}
-      else chip('cGY','off','Gyro denied');
-    }catch(e){chip('cGY','off','Gyro ✗');}
-  }
-  goPhase2();
-};
+// bStart.onclick is set inside boot() after model loads (or on retry failure)
+// so it cannot race with the retry handler
 $('bCapture').onclick=()=>captureFrame();
 $('bDone').onclick=()=>goPhase3();
 $('bStop').onclick=()=>{ghost.style.opacity='0';goPhase1Reset()};
 $('bMore').onclick=async()=>{
-  phase=2;glc.style.pointerEvents='none';oc.enabled=false;
+  phase=2;
+  vid.style.opacity='1'; // restore camera — was faded in review
+  glc.style.pointerEvents='none';oc.enabled=false;
   $('p3').style.display='none';$('p1').style.display='none';$('p2').style.display='block';
   $('instr').style.display='block';
   try{await startCamera()}catch(e){}
@@ -1375,6 +1306,18 @@ async function boot(){
     info('Frame your object · tap START SCANNING');
     $('bStart').disabled=false;
     $('bStart').textContent='▶ START SCANNING';
+    // Wire normal onclick here so retry path can't interfere
+    $('bStart').onclick=async()=>{
+      if(typeof DeviceOrientationEvent!=='undefined'&&
+         typeof DeviceOrientationEvent.requestPermission==='function'){
+        try{
+          const perm=await DeviceOrientationEvent.requestPermission();
+          if(perm==='granted'){chip('cGY','ok','Gyro ✔');setupGyroHandler();}
+          else chip('cGY','off','Gyro denied');
+        }catch(e){chip('cGY','off','Gyro ✗');}
+      }
+      goPhase2();
+    };
   }catch(e){
     clearTimeout(modelTimer);
     pb.style.width='0%';
