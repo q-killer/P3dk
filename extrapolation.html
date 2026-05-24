@@ -1,1161 +1,1860 @@
 <!DOCTYPE html>
-<!-- P3dK Extrapolation v1.0
-  Geometric Shape Extrapolator — photos → primitives → watertight STL
-  Phase 1 CAPTURE: camera + DA2 depth → project file
-  Phase 2 EXTRACT: point cloud → cluster → auto-fit primitives → edit
-  Phase 3 BUILD:   manifold-3d boolean union → STL download
-  Single file, zero install, browser-native.
--->
-<html>
+<html lang="en">
 <head>
-<meta charset=UTF-8>
-<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK EXTRAPOLATION</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<style>
-:root{--c:#0ff;--a:#ffb000;--m:#f0f;--g:#0f9;--bg:#050505;
-  --csph:#0ff;--cbox:#ffb000;--ccyl:#0f9;--ccon:#f0f}
-*{box-sizing:border-box;user-select:none;margin:0;padding:0;overflow:hidden}
-body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;touch-action:none;height:100dvh}
-#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;transition:opacity .4s}
-#hud{position:fixed;inset:0;z-index:2;pointer-events:none}
-#glc{position:fixed;inset:0;z-index:3;background:transparent;pointer-events:none}
-#pb{position:fixed;top:0;left:0;height:3px;background:var(--a);z-index:20;width:0%;transition:width .5s}
-#flash{position:fixed;inset:0;background:#fff;z-index:30;opacity:0;pointer-events:none;transition:opacity .07s}
-/* Status panel */
-#ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;justify-content:space-between;pointer-events:none;padding:8px}
-.pan{background:rgba(0,12,12,.6);border:1px solid rgba(0,255,255,.2);padding:9px;pointer-events:auto;backdrop-filter:blur(4px)}
-#phLine{font-size:12px;font-weight:bold;color:var(--c)}
-#info{font-size:11px;color:var(--a);min-height:15px;margin-top:2px}
-#chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:5px}
-.chip{font-size:9px;padding:2px 6px;border-radius:2px;font-weight:bold}
-.chip.ok{background:rgba(0,255,153,.15);color:var(--g);border:1px solid rgba(0,255,153,.3)}
-.chip.off{background:rgba(40,40,40,.3);color:#555;border:1px solid #333}
-.chip.warn{background:rgba(255,176,0,.15);color:var(--a);border:1px solid rgba(255,176,0,.3)}
-/* Buttons */
-.btn{background:rgba(0,20,20,.3);color:var(--c);border:1px solid rgba(0,255,255,.35);
-  padding:12px;font:bold 12px 'Courier New';cursor:pointer;text-transform:uppercase;
-  width:100%;margin-top:6px;transition:.1s;pointer-events:auto;letter-spacing:.5px;
-  border-radius:2px}
-.btn:active{background:var(--c);color:#000}
-.btn:disabled{opacity:.25;pointer-events:none}
-.btn.go{border-color:var(--g);color:var(--g)}
-.btn.am{border-color:var(--a);color:var(--a)}
-.btn.mg{border-color:var(--m);color:var(--m)}
-.btn.sm{padding:8px;font-size:11px;margin-top:4px}
-.g2{display:grid;grid-template-columns:1fr 1fr;gap:6px}
-.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px}
-/* Shutter dock */
-.dock{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;margin-top:8px}
-.shutter{width:74px;height:74px;border-radius:50%;background:rgba(0,255,255,.1);
-  border:3px solid var(--c);color:var(--c);font:bold 9px 'Courier New';
-  cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  transition:.15s;flex-shrink:0;box-shadow:0 0 10px rgba(0,255,255,.15);pointer-events:auto}
-.shutter:active{transform:scale(.9);background:var(--c);color:#000}
-.shutter:disabled{opacity:.25;pointer-events:none}
-.dock-side{flex:1;height:48px;margin:0!important}
-/* Photo strip */
-#strip{display:flex;gap:5px;margin-top:6px;overflow-x:auto;min-height:44px;align-items:center}
-#strip:empty::before{content:'No photos yet';font-size:10px;color:#444;margin:auto}
-.thumb{width:40px;height:40px;border-radius:2px;border:1px solid rgba(0,255,255,.25);
-  object-fit:cover;flex-shrink:0;cursor:pointer;transition:.1s}
-.thumb.active{border-color:var(--c);box-shadow:0 0 6px var(--c)}
-.thumb.scaled{border-color:var(--g)}
-/* Phase 2 extract panel */
-#p2{display:none}
-#primList{max-height:110px;overflow-y:auto;margin:5px 0;border-top:1px solid rgba(0,255,255,.1)}
-.primRow{display:flex;align-items:center;gap:6px;padding:5px 0;
-  border-bottom:1px solid rgba(0,255,255,.06);cursor:pointer;font-size:10px}
-.primRow.sel{background:rgba(0,255,255,.07)}
-.primRow .ptag{font-size:9px;padding:1px 5px;border-radius:2px;font-weight:bold;flex-shrink:0}
-.primRow .pdim{color:#aaa;flex:1}
-.primRow .pdel{color:#f04;cursor:pointer;padding:2px 5px;font-size:11px}
-/* Param editor */
-#paramEd{display:none;background:rgba(0,12,12,.4);border:1px solid rgba(0,255,255,.15);padding:7px;margin-top:5px}
-.sl-row{display:flex;align-items:center;gap:7px;margin:4px 0;font-size:10px;color:#bbb}
-.sl-row input[type=range]{flex:1;accent-color:var(--a);height:3px}
-.sl-row .sv{color:var(--a);width:36px;text-align:right;font-size:10px}
-/* Phase 3 build panel */
-#p3{display:none}
-#buildLog{font-size:10px;color:#aaa;max-height:80px;overflow-y:auto;line-height:1.7;margin:5px 0}
-/* Scale calibration modal */
-#scaleMod{display:none;position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.85);
-  flex-direction:column;align-items:center;justify-content:center;padding:16px}
-#scaleMod.show{display:flex}
-#scaleCanvas{border:1px solid rgba(0,255,255,.3);max-width:100%;max-height:300px;cursor:crosshair;touch-action:none}
-#scalePts{font-size:10px;color:var(--a);margin:8px 0 4px;text-align:center}
-#scaleMmRow{display:flex;align-items:center;gap:8px;margin-top:6px}
-#scaleMmRow input{background:#111;color:var(--c);border:1px solid rgba(0,255,255,.3);
-  padding:6px 8px;font:12px 'Courier New';width:80px;text-align:center}
-#scaleMmRow label{font-size:11px;color:#aaa}
-/* Frame counter */
-#fcount{position:fixed;top:9px;right:9px;z-index:11;width:48px;height:48px;
-  background:rgba(0,0,0,.5);border-radius:50%;border:1.5px solid rgba(0,255,255,.2);
-  display:flex;align-items:center;justify-content:center;
-  font:bold 15px 'Courier New';color:var(--c);pointer-events:none}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>P3dK Extrapolation Engine</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script type="module">
+        import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.1';
+        window.transformers = { pipeline, env };
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #050505;
+            --primary: #00ffff;
+            --warning: #ffb000;
+            --danger: #ff00ff;
+            --success: #00ff99;
+            --panel-bg: rgba(0, 12, 12, 0.6);
+            --panel-border: rgba(0, 255, 255, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body, html {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Courier New', monospace;
+            color: var(--primary);
+        }
+
+        #app-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            grid-template-rows: 1fr 120px;
+        }
+
+        /* Glassmorphism Panel Common Style */
+        .cyber-panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--panel-border);
+            backdrop-filter: blur(4px);
+            -webkit-backdrop-filter: blur(4px);
+            padding: 15px;
+            overflow-y: auto;
+            z-index: 10;
+        }
+
+        /* Sidebar Design */
+        #sidebar {
+            grid-column: 1;
+            grid-row: 1 / 3;
+            border-right: 1px solid var(--panel-border);
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        /* Center/Main Viewer Area */
+        #main-view {
+            grid-column: 2;
+            grid-row: 1;
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #camera-container, #three-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        #camera-container {
+            z-index: 2;
+            background: #000;
+        }
+
+        #three-container {
+            z-index: 1;
+        }
+
+        video(#webcam) {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+        }
+
+        canvas(#hud-canvas) {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 3;
+        }
+
+        /* Bottom Thumbnail Strip */
+        #photo-strip {
+            grid-column: 2;
+            grid-row: 2;
+            border-top: 1px solid var(--panel-border);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            padding: 10px 20px;
+            overflow-x: auto;
+            background: rgba(0, 5, 5, 0.8);
+            z-index: 5;
+        }
+
+        .thumb-wrapper {
+            position: relative;
+            width: 90px;
+            height: 90px;
+            flex-shrink: 0;
+            border: 1px solid var(--panel-border);
+            cursor: pointer;
+            background: #111;
+        }
+
+        .thumb-wrapper.calibrated {
+            border-color: var(--success);
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .thumb-wrapper img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Core Interactive Elements */
+        .cyber-btn {
+            background: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+            font-family: 'Courier New', monospace;
+            padding: 10px 15px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.2s ease;
+            text-transform: uppercase;
+            text-align: center;
+        }
+
+        .cyber-btn:hover:not(:disabled) {
+            background: rgba(0, 255, 255, 0.2);
+            box-shadow: 0 0 10px var(--primary);
+        }
+
+        .cyber-btn:disabled {
+            border-color: #333;
+            color: #555;
+            cursor: not-allowed;
+        }
+
+        .cyber-btn.danger {
+            border-color: var(--danger);
+            color: var(--danger);
+        }
+        .cyber-btn.danger:hover { background: rgba(255, 0, 255, 0.2); box-shadow: 0 0 10px var(--danger); }
+
+        .cyber-btn.success {
+            border-color: var(--success);
+            color: var(--success);
+        }
+        .cyber-btn.success:hover { background: rgba(0, 255, 153, 0.2); box-shadow: 0 0 10px var(--success); }
+
+        /* Shutter Button Setup */
+        #shutter-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 15px 0;
+        }
+
+        #shutter-btn {
+            width: 74px;
+            height: 74px;
+            border-radius: 50%;
+            border: 3px solid var(--primary);
+            background: transparent;
+            color: var(--primary);
+            font-size: 10px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 15px rgba(0,255,255,0.2);
+        }
+
+        #shutter-btn:hover {
+            background: rgba(0, 255, 255, 0.1);
+            box-shadow: 0 0 25px var(--primary);
+        }
+
+        /* Quality Metrics Overlay Indicator */
+        #quality-bar-container {
+            width: 100%;
+            height: 6px;
+            background: #222;
+            margin-top: 5px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        #quality-bar {
+            height: 100%;
+            width: 0%;
+            background: var(--warning);
+            transition: width 0.2s ease, background-color 0.2s ease;
+        }
+
+        /* Modals and Overlays */
+        #boot-screen {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: var(--bg-color);
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .terminal-text {
+            color: var(--primary);
+            text-shadow: 0 0 5px var(--primary);
+            font-size: 14px;
+            max-width: 600px;
+            width: 90%;
+        }
+
+        /* Interactive Calibration Modal */
+        #calibration-modal {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 85%; max-width: 700px;
+            background: rgba(5,5,5,0.95);
+            border: 2px solid var(--primary);
+            box-shadow: 0 0 30px rgba(0,255,255,0.4);
+            z-index: 50;
+            display: none;
+            flex-direction: column;
+            padding: 20px;
+        }
+
+        #calibration-canvas-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            margin-bottom: 15px;
+            cursor: crosshair;
+        }
+
+        #calibration-canvas {
+            width: 100%;
+            display: block;
+        }
+
+        /* Slider and Control Styling */
+        .control-group {
+            margin-bottom: 12px;
+        }
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            margin-bottom: 4px;
+            color: #aaa;
+        }
+        .control-group input[type="range"] {
+            width: 100%;
+            background: #222;
+            -webkit-appearance: none;
+            height: 4px;
+            outline: none;
+        }
+        .control-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 12px;
+            height: 12px;
+            background: var(--primary);
+            cursor: pointer;
+        }
+
+        .primitive-item {
+            border: 1px solid rgba(0,255,255,0.2);
+            padding: 8px;
+            margin-bottom: 6px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,20,20,0.3);
+        }
+        .primitive-item.active {
+            border-color: white;
+            background: rgba(0,255,255,0.1);
+        }
+
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            border-bottom: 1px solid var(--panel-border);
+            padding-bottom: 4px;
+            margin-top: 15px;
+            margin-bottom: 10px;
+            letter-spacing: 1px;
+            color: #fff;
+        }
+
+        #build-log {
+            font-size: 10px;
+            background: rgba(0,0,0,0.4);
+            padding: 5px;
+            height: 100px;
+            overflow-y: auto;
+            border: 1px solid rgba(0,255,255,0.1);
+            color: #888;
+        }
+
+        .view-toggle-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
 </head>
 <body>
-<video id=vid autoplay playsinline muted></video>
-<canvas id=hud></canvas>
-<canvas id=glc></canvas>
-<div id=pb></div>
-<div id=flash></div>
-<div id=fcount>0</div>
 
-<!-- Scale calibration modal -->
-<div id=scaleMod>
-  <div style="color:var(--c);font:bold 12px 'Courier New';margin-bottom:8px">SCALE CALIBRATION</div>
-  <div id=scalePts>TAP TWO POINTS ON THE PHOTO OF KNOWN DISTANCE</div>
-  <canvas id=scaleCanvas width=480 height=360></canvas>
-  <div id=scaleMmRow>
-    <label>KNOWN MM:</label>
-    <input type=number id=scaleMm placeholder=85.6 min=1 max=5000>
-    <span style="font-size:10px;color:#555">(e.g. 85.6 = credit card)</span>
-  </div>
-  <div class=g2 style="margin-top:10px;width:100%;max-width:360px">
-    <button class="btn mg" id=bScaleCancel>CANCEL</button>
-    <button class="btn go" id=bScaleOK disabled>APPLY ✔</button>
-  </div>
-</div>
-
-<div id=ui>
-  <!-- TOP: status + chips -->
-  <div class=pan>
-    <div id=phLine>INITIALISING...</div>
-    <div id=info></div>
-    <div id=chips>
-      <span class="chip off" id=cCA>Cam</span>
-      <span class="chip off" id=cGY>Gyro</span>
-      <span class="chip off" id=cMD>Model</span>
-    </div>
-  </div>
-
-  <!-- BOTTOM: phase panels -->
-  <div>
-    <!-- Phase 1: CAPTURE -->
-    <div id=p1 class=pan>
-      <div id=strip></div>
-      <div class=dock>
-        <button class="btn am dock-side" id=bScale style="font-size:10px">⊕ SCALE</button>
-        <button class=shutter id=bCapture disabled>
-          <span style="font-size:16px">⬤</span>
-          <span id=shutterLbl style="font-size:8px">MODEL</span>
-        </button>
-        <button class="btn go dock-side" id=bProcess disabled style="font-size:10px">EXTRACT →</button>
-      </div>
+    <div id="boot-screen">
+        <div class="terminal-text" style="font-size: 24px; font-weight: bold; margin-bottom: 10px;">P3dK_ENGINE // BOOT_SEQUENCE</div>
+        <div id="boot-status" class="terminal-text">INITIALIZING CORE ARCHITECTURE...</div>
+        <div id="boot-progress" class="terminal-text" style="color: var(--warning);">[ ] MINIMAL INTERFACE STAGE REGISTERED</div>
+        <button id="retry-boot-btn" class="cyber-btn" style="display:none; margin-top: 20px;">RETRY ENGINE INITIALIZATION</button>
     </div>
 
-    <!-- Phase 2: EXTRACT -->
-    <div id=p2 class=pan>
-      <div class=g2 style="margin-bottom:5px">
-        <label style="font-size:10px;color:#aaa;display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type=checkbox id=cbCloud checked> CLOUD</label>
-        <label style="font-size:10px;color:#aaa;display:flex;align-items:center;gap:4px;cursor:pointer">
-          <input type=checkbox id=cbPrim checked> PRIMITIVES</label>
-      </div>
-      <div id=primList></div>
-      <div id=paramEd>
-        <div id=paramTitle style="font-size:10px;color:var(--a);font-weight:bold;margin-bottom:4px"></div>
-        <!-- sliders injected dynamically -->
-      </div>
-      <div class=g3 style="margin-top:5px">
-        <button class="btn sm" id=bAddSph style="border-color:var(--csph);color:var(--csph)">+SPHERE</button>
-        <button class="btn sm" id=bAddBox style="border-color:var(--cbox);color:var(--cbox)">+BOX</button>
-        <button class="btn sm" id=bAddCyl style="border-color:var(--ccyl);color:var(--ccyl)">+CYL</button>
-      </div>
-      <button class="btn am" id=bAutoFit>⚡ AUTO-FIT PRIMITIVES</button>
-      <div class=g2>
-        <button class="btn mg" id=bBack>← BACK</button>
-        <button class="btn go" id=bBuild disabled>BUILD STL →</button>
-      </div>
+    <div id="app-container">
+        
+        <div id="sidebar" class="cyber-panel">
+            <div>
+                <div class="terminal-text" style="font-weight: bold; font-size: 16px; color:#fff;">P3dK ENGINE v2.5</div>
+                <div id="global-status" style="font-size:11px; margin-top:2px; color: var(--success);">STATUS: READY_</div>
+            </div>
+
+            <div class="view-toggle-container">
+                <button id="go-capture-btn" class="cyber-btn success">CAM CAPTURE</button>
+                <button id="go-extract-btn" class="cyber-btn" disabled>3D ENGINE</button>
+            </div>
+
+            <div id="panel-capture-controls">
+                <div class="section-title">FRAME ACQUISITION</div>
+                <div id="shutter-container">
+                    <button id="shutter-btn">
+                        <span id="shutter-txt-main">CAPTURE</span>
+                        <span id="shutter-txt-sub">0% Q</span>
+                    </button>
+                </div>
+                <label style="font-size:11px;">LIVE STREAM METRIC INTERACTION:</label>
+                <div id="quality-bar-container">
+                    <div id="quality-bar"></div>
+                </div>
+                <div id="frame-counter" style="font-size:11px; margin-top:5px; text-align:right;">CAPTURED FRAMES: 0</div>
+            </div>
+
+            <div id="panel-extract-controls" style="display:none; flex-grow:1; flex-direction:column; gap:10px;">
+                <div class="section-title">GEOMETRIC PRIMITIVES</div>
+                <button id="run-autofit-btn" class="cyber-btn success" style="width:100%;">RUN AUTO-FIT ENGINE</button>
+                
+                <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:5px; margin-top:5px;">
+                    <button id="add-sphere-btn" class="cyber-btn" style="font-size:10px; padding:5px;">+SPHERE</button>
+                    <button id="add-box-btn" class="cyber-btn" style="font-size:10px; padding:5px;">+BOX</button>
+                    <button id="add-cylinder-btn" class="cyber-btn" style="font-size:10px; padding:5px;">+CYLINDER</button>
+                </div>
+
+                <div id="primitive-list" style="max-height:160px; overflow-y:auto; margin-top:5px;">
+                    </div>
+
+                <div id="primitive-sliders" style="display:none; border:1px solid rgba(255,255,255,0.1); padding:10px; background:rgba(0,0,0,0.2);">
+                    <div style="font-size:11px; font-weight:bold; margin-bottom:8px; display:flex; justify-content:space-between;">
+                        <span>MODIFY EXTENTS (mm)</span>
+                        <span id="delete-primitive-btn" class="cyber-btn danger" style="padding:1px 6px; font-size:10px; cursor:pointer;">✕</span>
+                    </div>
+                    <div class="control-group" id="sg-dim1">
+                        <label id="lbl-dim1">DIM 1</label>
+                        <input type="range" id="sl-dim1" min="1" max="1000" value="100">
+                    </div>
+                    <div class="control-group" id="sg-dim2">
+                        <label id="lbl-dim2">DIM 2</label>
+                        <input type="range" id="sl-dim2" min="1" max="1000" value="100">
+                    </div>
+                    <div class="control-group" id="sg-dim3">
+                        <label id="lbl-dim3">DIM 3</label>
+                        <input type="range" id="sl-dim3" min="1" max="1000" value="100">
+                    </div>
+                </div>
+
+                <div class="section-title">SOLID EXPORT PROCESSING</div>
+                <button id="run-build-btn" class="cyber-btn" style="width:100%;" disabled>RUN MANIFOLD UNION</button>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:5px;">
+                    <button id="export-stl-btn" class="cyber-btn success" style="font-size:11px;" disabled>SAVE STL</button>
+                    <button id="export-p3dk-btn" class="cyber-btn" style="font-size:11px;">SAVE .P3DK</button>
+                </div>
+                <button id="reset-engine-btn" class="cyber-btn danger" style="width:100%; margin-top:5px; font-size:11px; padding:4px;">NEW PROJECT RESET</button>
+                
+                <div class="section-title">ENGINE COMPUTATION LOG</div>
+                <div id="build-log"></div>
+            </div>
+        </div>
+
+        <div id="main-view">
+            <div id="camera-container">
+                <video id="webcam" autoplay playsinline muted></video>
+                <canvas id="hud-canvas"></canvas>
+            </div>
+
+            <div id="three-container"></div>
+        </div>
+
+        <div id="photo-strip">
+            </div>
     </div>
 
-    <!-- Phase 3: BUILD -->
-    <div id=p3 class=pan>
-      <div id=buildLog></div>
-      <button class="btn go" id=bDownload disabled>↓ DOWNLOAD STL</button>
-      <div class=g2>
-        <button class="btn mg" id=bBack3>← BACK TO EDIT</button>
-        <button class="btn" id=bNew>NEW PROJECT</button>
-      </div>
+    <div id="calibration-modal">
+        <div style="font-size:14px; font-weight:bold; margin-bottom:10px;">SCALE CALIBRATION PANEL</div>
+        <div style="font-size:11px; margin-bottom:10px; color:#aaa;">TAP TWO DISTINCT GEOMETRIC VERTECES ON THE CAPTURE FIELD TO INITIALIZE REAL METRIC RELATIONS.</div>
+        <div id="calibration-canvas-container">
+            <canvas id="calibration-canvas"></canvas>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+                <label style="font-size:11px; color:#fff;">KNOWN DISTANCE (mm): </label>
+                <input type="number" id="cal-distance-input" value="100" style="background:#222; border:1px solid var(--primary); color:var(--primary); font-family:monospace; padding:5px; width:80px; text-align:center;">
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button id="cal-cancel-btn" class="cyber-btn danger">ABORT</button>
+                <button id="cal-save-btn" class="cyber-btn success">APPLY SCALE</button>
+            </div>
+        </div>
     </div>
-  </div>
-</div>
 
-<script type=module>
-import{pipeline,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
-env.allowLocalModels=false;env.useBrowserCache=true;
+    <script>
+        // GLOBALS DEFINITION
+        let depthPipeline = null;
+        let opLocked = false;
+        let appMode = 'CAPTURE'; // CAPTURE or EXTRACT
+        
+        // Data Store Components
+        const capturedPhotos = []; // { id, imgData, depthMap: Float32Array, width, height, gyro: THREE.Quaternion, scaleFactor }
+        let trackingPrimitives = []; // { id, type, position: THREE.Vector3, rotation: THREE.Quaternion, extents: THREE.Vector3, mesh, wireframe }
+        let currentSelectedPrimitive = null;
+        let globalScaleFactor = null; // Calculated meter per pixel distance representation
 
-// ── DOM ───────────────────────────────────────────────────────────────────────
-const $=id=>document.getElementById(id);
-const sts=t=>($('phLine').textContent=t);
-const info=t=>($('info').textContent=t);
-const chip=(id,s,t)=>{const e=$(id);e.className='chip '+s;e.textContent=t};
-const log=t=>{const el=$('buildLog');el.textContent+=t+'\n';el.scrollTop=el.scrollHeight};
-const vid=$('vid'),hud=$('hud'),glc=$('glc'),pb=$('pb'),flash=$('flash');
-const hudCtx=hud.getContext('2d');
-hud.width=innerWidth;hud.height=innerHeight;
+        // Device Orientation Frame Trackers
+        let activeDeviceOrientation = new THREE.Quaternion();
+        
+        // Calibration Working State Variables
+        let activeCalibrationIndex = null;
+        let calibrationTaps = [];
 
-// ── THREE.JS ──────────────────────────────────────────────────────────────────
-const scene=new THREE.Scene();
-const cam3=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,.001,100);
-cam3.position.set(0,.5,3);
-const rend=new THREE.WebGLRenderer({canvas:glc,antialias:true,alpha:true});
-rend.setPixelRatio(Math.min(devicePixelRatio,2));
-rend.setSize(innerWidth,innerHeight);
-const oc=new THREE.OrbitControls(cam3,rend.domElement);
-oc.enableDamping=true;oc.enabled=false;
-scene.add(new THREE.AmbientLight(0xffffff,.5));
-const dl=new THREE.DirectionalLight(0xffffff,.8);dl.position.set(2,4,3);scene.add(dl);
-const dl2=new THREE.DirectionalLight(0x0088ff,.3);dl2.position.set(-2,-1,-2);scene.add(dl2);
-const ptGroup=new THREE.Group();scene.add(ptGroup);
-const primGroup=new THREE.Group();scene.add(primGroup);
-const resultGroup=new THREE.Group();scene.add(resultGroup);
-// RAF loop
-(function raf(){requestAnimationFrame(raf);if(oc.enabled)oc.update();rend.render(scene,cam3)})();
+        // Web Video & Computation Render Passes
+        let videoElement, hudCanvas, hudCtx;
+        let threeScene, threeCamera, threeRenderer, threeControls;
+        let unifiedPointCloudMesh = null;
 
-// ── STATE ─────────────────────────────────────────────────────────────────────
-let depthPipe=null,phase=1,opLocked=false;
-// Project data
-let photos=[];  // {jpeg:Blob, depth:Float32Array, dW,dH, pose:{qx,qy,qz,qw}, scaleInfo}
-let projectScale=null; // {mm, scaleFactor} — meters per unit of depth
-let primitives=[]; // {type,center,params,color,mesh,enabled,id}
-let nextPrimId=1;
-let selectedPrim=null;
-let resultVerts=null; // final manifold mesh for STL download
+        // Configuration Parameters
+        const PREVIEW_WIDTH = 512;
+        const PREVIEW_HEIGHT = 512;
+        const GRID_RES = 40; // 40x40 sampling point tracking mechanics
 
-// Gyro
-const dQ=new THREE.Quaternion();
-let hasGyro=false;
+        // BOOT LOGIC CHAIN ENHANCEMENT
+        window.addEventListener('DOMContentLoaded', async () => {
+            logBoot("INITIALIZING COMPONENT MATRIX...");
+            setupDOMHooks();
+            setupThreeEngine();
+            
+            try {
+                await initCameraPipeline();
+                await initDepthInferenceEngine();
+                initGyroscopeTracking();
+                
+                // Remove loader layout seamlessly
+                document.getElementById('boot-screen').style.display = 'none';
+                logTerminal("ENGINE READY. STANDBY FOR ACQUISITION FRAME SIGNALS.");
+            } catch (err) {
+                console.error(err);
+                document.getElementById('boot-status').innerText = "FATAL: INITIALIZATION REJECTED";
+                document.getElementById('boot-progress').innerText = `CRITICAL CAUSE: ${err.message}`;
+                document.getElementById('retry-boot-btn').style.display = 'block';
+            }
+        });
 
-// ── ORB / EDGE HUD ────────────────────────────────────────────────────────────
-const tCvs=document.createElement('canvas');tCvs.width=tCvs.height=128;
-const tCtx=tCvs.getContext('2d',{willReadFrequently:true});
-const tGray=new Uint8Array(128*128);
-let edgeMap=null;
-const _eCvs=document.createElement('canvas');_eCvs.width=_eCvs.height=128;
-const _eCtx=_eCvs.getContext('2d');
-const _eBuf=new Uint8ClampedArray(128*128*4);
+        function setupDOMHooks() {
+            videoElement = document.getElementById('webcam');
+            hudCanvas = document.getElementById('hud-canvas');
+            hudCtx = hudCanvas.getContext('2d');
 
-function sobelEdges(g,W,H){
-  const out=new Float32Array(W*H);
-  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
-    const i=y*W+x;
-    const gx=(-g[i-W-1]-2*g[i-1]-g[i+W-1])+(g[i-W+1]+2*g[i+1]+g[i+W+1]);
-    const gy=(-g[i-W-1]-2*g[i-W]-g[i-W+1])+(g[i+W-1]+2*g[i+W]+g[i+W+1]);
-    out[i]=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128);
-  }
-  return out;
-}
+            document.getElementById('retry-boot-btn').onclick = () => location.reload();
+            document.getElementById('shutter-btn').onclick = executeCaptureLifecycle;
+            
+            document.getElementById('go-capture-btn').onclick = () => switchMode('CAPTURE');
+            document.getElementById('go-extract-btn').onclick = () => switchMode('EXTRACT');
 
-function drawHUD(){
-  hudCtx.clearRect(0,0,hud.width,hud.height);
-  if(phase!==1||!vid.videoWidth||!edgeMap)return;
-  const vw=vid.videoWidth,vh=vid.videoHeight;
-  const sc=Math.max(innerWidth/vw,innerHeight/vh);
-  const dw=vw*sc,dh=vh*sc,ox=(innerWidth-dw)/2,oy=(innerHeight-dh)/2;
-  // Adaptive Sobel threshold
-  const sorted=Array.from(edgeMap).sort((a,b)=>a-b);
-  const thresh=Math.max(0.28,sorted[Math.floor(sorted.length*.85)]);
-  for(let i=0;i<128*128;i++){
-    const e=edgeMap[i];
-    if(e>thresh){_eBuf[i*4]=0;_eBuf[i*4+1]=200;_eBuf[i*4+2]=160;_eBuf[i*4+3]=Math.min(170,((e-thresh)/(1-thresh))*480)|0;}
-    else _eBuf[i*4+3]=0;
-  }
-  _eCtx.putImageData(new ImageData(_eBuf,128,128),0,0);
-  hudCtx.drawImage(_eCvs,ox,oy,dw,dh);
-  // Quality bar
-  if(lastQ.score>0){
-    const W2=Math.min(innerWidth-32,320),X=(innerWidth-W2)/2,Y=130;
-    hudCtx.fillStyle='rgba(0,0,0,.65)';hudCtx.fillRect(X,Y,W2,28);
-    const col=lastQ.score<40?'#f04':lastQ.score<70?'#ffb000':'#0f9';
-    hudCtx.fillStyle=lastQ.score<40?'rgba(255,0,64,.4)':lastQ.score<70?'rgba(255,176,0,.3)':'rgba(0,255,153,.3)';
-    hudCtx.fillRect(X,Y,Math.round(W2*lastQ.score/100),28);
-    hudCtx.strokeStyle=col;hudCtx.lineWidth=1;hudCtx.strokeRect(X,Y,W2,28);
-    hudCtx.font='bold 9px Courier New';hudCtx.fillStyle=col;
-    const hint=lastQ.score<40?'⚠ LOW':lastQ.score<70?'◎ FAIR':'✔ GOOD';
-    hudCtx.fillText(`${hint} · ${lastQ.score}% · ${lastQ.label||''}`,X+6,Y+11);
-    hudCtx.fillStyle='rgba(255,255,255,.4)';hudCtx.font='8px Courier New';
-    hudCtx.fillText(lastQ.score<40?'improve lighting / add texture / move closer':'ready — tap ⬤ to capture',X+6,Y+22);
-  }
-}
+            // Interactive Primitives Additions Hooks
+            document.getElementById('add-sphere-btn').onclick = () => manualInjectPrimitive('SPHERE');
+            document.getElementById('add-box-btn').onclick = () => manualInjectPrimitive('BOX');
+            document.getElementById('add-cylinder-btn').onclick = () => manualInjectPrimitive('CYLINDER');
+            document.getElementById('delete-primitive-btn').onclick = executeDeleteSelectedPrimitive;
 
-// ── QUALITY SCORING ───────────────────────────────────────────────────────────
-let lastQ={score:0,label:''};
-function laplacianVar(g,W,H){let s=0,s2=0,n=0;
-  for(let y=1;y<H-1;y+=2)for(let x=1;x<W-1;x+=2){
-    const v=-g[(y-1)*W+x]-g[y*W+(x-1)]+4*g[y*W+x]-g[y*W+(x+1)]-g[(y+1)*W+x];
-    s+=v;s2+=v*v;n++;}
-  const m=s/n;return Math.min(100,(s2/n-m*m)/30);}
-function expScore(px){let s=0,br=0,dk=0,n=0;
-  for(let i=0;i<px.length;i+=4){const v=px[i];s+=v;n++;if(v>235)br++;if(v<20)dk++;}
-  const m=s/n,bp=br/n,dp=dk/n;
-  if(bp>.15)return{score:30,label:'OVEREXPOSED'};
-  if(dp>.3)return{score:20,label:'TOO DARK'};
-  if(m<60)return{score:40,label:'UNDEREXPOSED'};
-  if(m>210)return{score:50,label:'BRIGHT'};
-  return{score:100,label:'OK'};}
-setInterval(()=>{
-  if(phase!==1||!vid.videoWidth)return;
-  const w=vid.videoWidth,h=vid.videoHeight,mD=Math.min(w,h);
-  tCtx.drawImage(vid,(w-mD)/2,(h-mD)/2,mD,mD,0,0,128,128);
-  const px=tCtx.getImageData(0,0,128,128).data;
-  for(let i=0;i<px.length;i+=4)tGray[i>>2]=(px[i]*.299+px[i+1]*.587+px[i+2]*.114)|0;
-  edgeMap=sobelEdges(tGray,128,128);
-  const blur=laplacianVar(tGray,128,128);
-  const kp=fastCorners(tGray,128,128);
-  const exp=expScore(px);
-  const score=Math.round(blur*.4+Math.min(100,(kp.length/25)*100)*.4+exp.score*.2);
-  lastQ={score,label:exp.label};
-  if(!opLocked){const sl=$('shutterLbl');if(sl)sl.textContent=score>=50?'CAPTURE':'LOW';}
-},400);
-(function rafHUD(){requestAnimationFrame(rafHUD);drawHUD()})();
+            // Automation processing links
+            document.getElementById('run-autofit-btn').onclick = executeAutoFitPipeline;
+            document.getElementById('run-build-btn').onclick = executeManifoldUnionPipeline;
+            document.getElementById('export-stl-btn').onclick = triggerSTLExport;
+            document.getElementById('export-p3dk-btn').onclick = triggerP3DKExport;
+            document.getElementById('reset-engine-btn').onclick = resetEngineState;
 
-// ── FAST CORNERS (FAST-9) ─────────────────────────────────────────────────────
-function fastCorners(g,W,H){
-  const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],
-             [0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
-  const raw=[];
-  for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){
-    const c=g[y*W+x];let br=0,dk=0;
-    for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+20)br++;else if(v<c-20)dk++;}
-    if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)});}
-  raw.sort((a,b)=>b.s-a.s);
-  const k=[],m=12;
-  for(const p of raw){if(k.length>=30)break;if(!k.some(q=>Math.abs(q.x-p.x)<m&&Math.abs(q.y-p.y)<m))k.push(p);}
-  return k;}
+            // Slider Tracking Setup Mapping
+            setupSliderListeners();
 
-// ── DEPTH INFERENCE CANVAS ────────────────────────────────────────────────────
-const iCvs=document.createElement('canvas');
-const iCtx=iCvs.getContext('2d',{willReadFrequently:true});
+            // Calibration Modal Wire Hooking Actions
+            document.getElementById('calibration-canvas').onclick = handleCalibrationCanvasTap;
+            document.getElementById('cal-cancel-btn').onclick = () => { document.getElementById('calibration-modal').style.display = 'none'; };
+            document.getElementById('cal-save-btn').onclick = computeCalibrationScaleFactor;
+        }
 
-// ── PHASE 1: CAPTURE ──────────────────────────────────────────────────────────
-async function capturePhoto(){
-  if(!depthPipe||!vid.videoWidth||opLocked)return;
-  if(photos.length>0&&lastQ.score<50){
-    info(`Quality ${lastQ.score}% too low — ${lastQ.label}`);
-    flash.style.background='rgba(255,0,64,.25)';flash.style.opacity='.5';
-    setTimeout(()=>{flash.style.opacity=0;flash.style.background='#fff'},180);
-    return;}
-  opLocked=true;
-  const sl=$('shutterLbl');if(sl)sl.textContent='…';
-  $('bCapture').disabled=true;
-  pb.style.transition='none';pb.style.width='0%';
-  requestAnimationFrame(()=>{pb.style.transition='width .7s';pb.style.width='80%'});
-  flash.style.opacity='.3';setTimeout(()=>flash.style.opacity=0,70);
-  navigator.vibrate?.([40]);
+        function logBoot(txt) {
+            document.getElementById('boot-status').innerText = txt;
+            console.log(`[BOOT] ${txt}`);
+        }
 
-  try{
-    const w=vid.videoWidth,h=vid.videoHeight;
-    // Capture JPEG thumbnail
-    const jCvs=document.createElement('canvas');jCvs.width=512;jCvs.height=Math.round(512*h/w);
-    jCvs.getContext('2d').drawImage(vid,0,0,jCvs.width,jCvs.height);
-    const jpeg=await new Promise(r=>jCvs.toBlob(r,'image/jpeg',.82));
+        function logTerminal(msg) {
+            const logBox = document.getElementById('build-log');
+            if(logBox) {
+                logBox.innerHTML += `<div>&gt; ${msg}</div>`;
+                logBox.scrollTop = logBox.scrollHeight;
+            }
+            console.log(`[ENGINE] ${msg}`);
+        }
 
-    // DA2 depth inference
-    iCvs.width=512;iCvs.height=Math.round(512*h/w);
-    iCtx.drawImage(vid,0,0,iCvs.width,iCvs.height);
-    const res=await depthPipe(iCvs);
-    if(!res.predicted_depth)throw new Error('No depth output');
-    const dd=res.predicted_depth.data instanceof Float32Array?
-      res.predicted_depth.data:new Float32Array(res.predicted_depth.data);
-    // Normalize 0→1
-    let mn=Infinity,mx=-Infinity;
-    for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i];}
-    const rng=(mx-mn)||1;
-    const norm=new Float32Array(dd.length);
-    for(let i=0;i<dd.length;i++)norm[i]=(dd[i]-mn)/rng;
+        // CAMERA LIFECYCLE HOOKS
+        async function initCameraPipeline() {
+            logBoot("CONFIGURING LIVE WEBCAM DEPLOYMENT...");
+            const constraints = {
+                video: {
+                    facingMode: 'environment',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false
+            };
 
-    // Store photo with pose
-    const pose={qx:dQ.x,qy:dQ.y,qz:dQ.z,qw:dQ.w};
-    const idx=photos.length;
-    photos.push({jpeg,depth:norm,dW:iCvs.width,dH:iCvs.height,pose,scaleInfo:null});
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                videoElement.srcObject = stream;
+                return new Promise((resolve) => {
+                    videoElement.onloadedmetadata = () => {
+                        resizeHudCanvas();
+                        window.addEventListener('resize', resizeHudCanvas);
+                        startLiveHUDLoop();
+                        resolve();
+                    };
+                });
+            } catch(e) {
+                throw new Error("CAMERA INTERFACE PERMISSION REQUEST REJECTED OR NOT DETECTED.");
+            }
+        }
 
-    // Add thumbnail to strip
-    const thumb=document.createElement('img');
-    thumb.className='thumb';thumb.src=URL.createObjectURL(jpeg);
-    thumb.title=`Photo ${idx}`;
-    thumb.addEventListener('click',()=>openScaleModal(idx));
-    $('strip').appendChild(thumb);
+        function resizeHudCanvas() {
+            hudCanvas.width = videoElement.videoWidth || 640;
+            hudCanvas.height = videoElement.videoHeight || 480;
+        }
 
-    $('fcount').textContent=photos.length;
-    if(photos.length>=2)$('bProcess').disabled=false;
-    sts(`CAPTURED — ${photos.length} photo${photos.length>1?'s':''}`);
-    info('Move to new angle · tap ⬤ · or EXTRACT →');
+        // DEEPMAP ENGINE LOADER BLOCK
+        async function initDepthInferenceEngine() {
+            logBoot("DOWNLOADING TRANSFORMERS ARTIFACTS (ONNX ARCHITECTURE)...");
+            
+            // Set environment configurations explicitly for CDN native optimization tracking
+            transformers.env.allowLocalModels = false;
+            
+            const bootTimeout = setTimeout(() => {
+                document.getElementById('retry-boot-btn').style.display = 'block';
+            }, 90000); // 90 Second Safety Timeout Barrier
 
-  }catch(e){sts('ERROR: '+e.message.slice(0,50));info('');}
+            try {
+                depthPipeline = await transformers.pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
+                    progress_callback: (data) => {
+                        if(data.status === 'progress') {
+                            const loadedMB = (data.loaded / (1024 * 1024)).toFixed(1);
+                            const totalMB = data.total ? (data.total / (1024 * 1024)).toFixed(1) : "26";
+                            document.getElementById('boot-progress').innerText = `DOWNLOADING MODEL DATA: ${loadedMB}MB / ${totalMB}MB [${Math.round(data.progress)}%]`;
+                        }
+                    }
+                });
+                clearTimeout(bootTimeout);
+                logBoot("TRANSFORMERS RUNTIME GRAPH BOUND SUCCESSFULLY.");
+            } catch(err) {
+                clearTimeout(bootTimeout);
+                throw err;
+            }
+        }
 
-  pb.style.transition='width .15s';pb.style.width='100%';
-  setTimeout(()=>pb.style.width='0%',300);
-  $('bCapture').disabled=false;
-  if(sl)sl.textContent='CAPTURE';
-  opLocked=false;
-}
+        // GYROSCOPIC INTEGRATION SEQUENCE
+        function initGyroscopeTracking() {
+            logBoot("INITIALIZING ATTITUDE REFERENCE GYROS...");
+            
+            // iOS Permission verification handling protocol setup
+            if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                window.addEventListener('click', async function requestAuth() {
+                    try {
+                        const permissionState = await DeviceOrientationEvent.requestPermission();
+                        if (permissionState === 'granted') {
+                            window.addEventListener('deviceorientation', processAttitudeTelemetry, true);
+                        }
+                        window.removeEventListener('click', requestAuth);
+                    } catch(e) { console.error("Gyro authorization request failed", e); }
+                });
+            } else {
+                window.addEventListener('deviceorientation', processAttitudeTelemetry, true);
+            }
+        }
 
-// ── SCALE CALIBRATION ─────────────────────────────────────────────────────────
-let scalePhotoIdx=-1,scalePts=[],scaleCtx=null;
-function openScaleModal(idx){
-  scalePhotoIdx=idx;scalePts=[];
-  $('bScaleOK').disabled=true;$('scaleMm').value='';
-  $('scalePts').textContent='TAP POINT 1 OF 2 ON THE PHOTO';
-  const modal=$('scaleMod');modal.classList.add('show');
-  const sc=$('scaleCanvas');
-  scaleCtx=sc.getContext('2d');
-  const img=new Image();
-  img.onload=()=>{
-    sc.width=Math.min(480,innerWidth-32);
-    sc.height=Math.round(sc.width*img.height/img.width);
-    scaleCtx.drawImage(img,0,0,sc.width,sc.height);
-    drawScalePts();
-  };
-  img.src=URL.createObjectURL(photos[idx].jpeg);
-  // Touch/click on canvas
-  const onPt=e=>{
-    e.preventDefault();
-    const r=sc.getBoundingClientRect();
-    const cx=(e.touches?e.touches[0].clientX:e.clientX)-r.left;
-    const cy=(e.touches?e.touches[0].clientY:e.clientY)-r.top;
-    const u=cx/sc.width,v=cy/sc.height; // normalized [0,1]
-    if(scalePts.length>=2)scalePts=[];
-    scalePts.push({u,v,cx,cy});
-    drawScalePts();
-    if(scalePts.length===2){
-      $('scalePts').textContent='ENTER THE DISTANCE IN MM BELOW';
-      checkScaleOK();
-    }else{
-      $('scalePts').textContent=`POINT 1 SET — TAP POINT 2`;
-    }
-  };
-  sc.addEventListener('click',onPt);
-  sc.addEventListener('touchstart',onPt,{passive:false});
-  sc._cleanup=()=>{sc.removeEventListener('click',onPt);sc.removeEventListener('touchstart',onPt)};
-}
-function drawScalePts(){
-  if(!scaleCtx)return;
-  const img=new Image();
-  img.onload=()=>{
-    const sc=$('scaleCanvas');
-    scaleCtx.drawImage(img,0,0,sc.width,sc.height);
-    scalePts.forEach((p,i)=>{
-      scaleCtx.beginPath();scaleCtx.arc(p.cx,p.cy,7,0,Math.PI*2);
-      scaleCtx.fillStyle=i===0?'#0ff':'#0f9';scaleCtx.fill();
-      scaleCtx.strokeStyle='#fff';scaleCtx.lineWidth=1.5;scaleCtx.stroke();
-      scaleCtx.font='bold 11px Courier New';scaleCtx.fillStyle='#fff';
-      scaleCtx.fillText(`P${i+1}`,p.cx+9,p.cy+4);
-    });
-    if(scalePts.length===2){
-      scaleCtx.beginPath();
-      scaleCtx.moveTo(scalePts[0].cx,scalePts[0].cy);
-      scaleCtx.lineTo(scalePts[1].cx,scalePts[1].cy);
-      scaleCtx.strokeStyle='rgba(255,176,0,.8)';scaleCtx.lineWidth=1.5;
-      scaleCtx.setLineDash([4,4]);scaleCtx.stroke();scaleCtx.setLineDash([]);
-    }
-  };
-  img.src=URL.createObjectURL(photos[scalePhotoIdx].jpeg);
-}
-function checkScaleOK(){
-  const mm=parseFloat($('scaleMm').value);
-  $('bScaleOK').disabled=!(scalePts.length===2&&mm>0);
-}
-$('scaleMm').addEventListener('input',checkScaleOK);
-$('bScaleCancel').onclick=()=>{
-  $('scaleMod').classList.remove('show');
-  $('scaleCanvas')._cleanup?.();
-};
-$('bScaleOK').onclick=()=>{
-  const mm=parseFloat($('scaleMm').value);
-  if(!mm||scalePts.length<2)return;
-  // Compute scale: distance in depth-map pixels between the two tapped points
-  const p=photos[scalePhotoIdx];
-  // Convert normalized coords to depth map pixel coords
-  const u1=Math.round(scalePts[0].u*p.dW),v1=Math.round(scalePts[0].v*p.dH);
-  const u2=Math.round(scalePts[1].u*p.dW),v2=Math.round(scalePts[1].v*p.dH);
-  const d1=p.depth[v1*p.dW+u1]??0.5;
-  const d2=p.depth[v2*p.dW+u2]??0.5;
-  const dAvg=(d1+d2)/2;
-  const tanH=Math.tan(30*Math.PI/180); // 60° FOV half-angle
-  // Unscaled 3D positions (depth=dv=1-norm → near=0, far=1, maxDepth=2m reference)
-  const z1=(1-d1),z2=(1-d2);
-  const x1=(u1/p.dW-.5)*2*z1*tanH,y1=(.5-v1/p.dH)*2*z1*tanH;
-  const x2=(u2/p.dW-.5)*2*z2*tanH,y2=(.5-v2/p.dH)*2*z2*tanH;
-  const unscaledDist=Math.sqrt((x2-x1)**2+(y2-y1)**2+(z2-z1)**2);
-  const scaleFactor=(mm/1000)/unscaledDist; // meters per depth unit
-  projectScale={mm,scaleFactor,p1:[u1,v1],p2:[u2,v2],photoIdx:scalePhotoIdx};
-  // Mark thumbnail
-  const thumbs=$('strip').querySelectorAll('.thumb');
-  thumbs.forEach((t,i)=>{if(i===scalePhotoIdx)t.classList.add('scaled');});
-  $('scaleMod').classList.remove('show');
-  $('scaleCanvas')._cleanup?.();
-  info(`Scale: ${mm}mm reference · ${(scaleFactor*1000).toFixed(1)}mm/unit`);
-};
+        function processAttitudeTelemetry(event) {
+            if (event.alpha === null || event.beta === null || event.gamma === null) return;
 
-// ── POINT CLOUD FROM DEPTH MAPS ───────────────────────────────────────────────
-// Builds a unified point cloud from all stored photos.
-// Applies gyro rotation (if available) and scale calibration.
-const RES=40; // 40×40 sample grid per photo (1600 pts/photo, fast)
-function buildPointCloud(){
-  const sf=projectScale?.scaleFactor??1.0; // meters per depth unit
-  const tanH=Math.tan(30*Math.PI/180);
-  const spacing=2.0/RES;
-  const allPts=[];
+            // Mathematical Conversion Euler mapping to Quaternions
+            const alpha = THREE.MathUtils.degToRad(event.alpha);
+            const beta = THREE.MathUtils.degToRad(event.beta);
+            const gamma = THREE.MathUtils.degToRad(event.gamma);
 
-  for(const ph of photos){
-    const{depth:dm,dW,dH,pose}=ph;
-    const dMin=Math.min(dW,dH),dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
-    // Adaptive cull: 5th–95th percentile depth
-    const sorted=Array.from(dm).sort((a,b)=>a-b);
-    const p05=sorted[Math.floor(sorted.length*.05)];
-    const p95=sorted[Math.floor(sorted.length*.95)];
-    // Pose quaternion
-    const q=new THREE.Quaternion(pose.qx,pose.qy,pose.qz,pose.qw);
-    const hasQ=q.length()>.05;
+            const euler = new THREE.Euler(beta, gamma, -alpha, 'YXZ');
+            const nativeOrient = new THREE.Quaternion().setFromEuler(euler);
 
-    for(let iy=0;iy<RES;iy++)for(let ix=0;ix<RES;ix++){
-      const nu=Math.floor(dsx+(ix/RES)*dMin),nv=Math.floor(dsy+(iy/RES)*dMin);
-      if(nu<0||nu>=dW||nv<0||nv>=dH)continue;
-      const n=dm[nv*dW+nu];
-      if(n<p05||n>p95)continue;
-      const dv=1-n; // 0=near,1=far
-      const z=dv*sf; // meters
-      const px=(-1.0+ix*spacing)*z*tanH;
-      const py=( 1.0-iy*spacing)*z*tanH;
-      let tx=px,ty=py,tz=z;
-      if(hasQ){const v=new THREE.Vector3(px,py,z).applyQuaternion(q);tx=v.x;ty=v.y;tz=v.z;}
-      allPts.push(tx,ty,tz);
-    }
-  }
-  return new Float32Array(allPts);
-}
+            // Gyroscope metric correction adjustment parameter: phone upright base modification mapping
+            const offsetCorrection = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.sqrt(0.5));
+            activeDeviceOrientation.copy(nativeOrient).multiply(offsetCorrection);
+        }
 
-// ── VOXEL GRID CONNECTED COMPONENT CLUSTERING ────────────────────────────────
-// O(N) alternative to DBSCAN. Flood-fill on occupied voxels.
-// voxSz in same units as point cloud (meters).
-function voxelCluster(pts,voxSz){
-  if(!pts||pts.length<9)return[];
-  let mnX=Infinity,mxX=-Infinity,mnY=Infinity,mxY=-Infinity,mnZ=Infinity,mxZ=-Infinity;
-  for(let i=0;i<pts.length;i+=3){
-    if(pts[i]<mnX)mnX=pts[i];if(pts[i]>mxX)mxX=pts[i];
-    if(pts[i+1]<mnY)mnY=pts[i+1];if(pts[i+1]>mxY)mxY=pts[i+1];
-    if(pts[i+2]<mnZ)mnZ=pts[i+2];if(pts[i+2]>mxZ)mxZ=pts[i+2];
-  }
-  const nx=Math.min(80,Math.ceil((mxX-mnX)/voxSz)+2);
-  const ny=Math.min(80,Math.ceil((mxY-mnY)/voxSz)+2);
-  const nz=Math.min(80,Math.ceil((mxZ-mnZ)/voxSz)+2);
-  const vi=(x,y,z)=>x+y*nx+z*nx*ny;
-  const occ=new Uint8Array(nx*ny*nz);
-  const ptVox=new Int32Array(pts.length/3);
-  for(let i=0;i<pts.length;i+=3){
-    const vx=Math.min(nx-1,Math.max(0,Math.floor((pts[i]-mnX)/voxSz)));
-    const vy=Math.min(ny-1,Math.max(0,Math.floor((pts[i+1]-mnY)/voxSz)));
-    const vz=Math.min(nz-1,Math.max(0,Math.floor((pts[i+2]-mnZ)/voxSz)));
-    occ[vi(vx,vy,vz)]=1;
-    ptVox[i/3]=vi(vx,vy,vz);
-  }
-  // Flood-fill — 26-connected
-  const labels=new Int32Array(nx*ny*nz).fill(-1);
-  let cid=0;
-  for(let z=0;z<nz;z++)for(let y=0;y<ny;y++)for(let x=0;x<nx;x++){
-    const idx=vi(x,y,z);
-    if(!occ[idx]||labels[idx]>=0)continue;
-    labels[idx]=cid;
-    const q=[idx];let qi=0;
-    while(qi<q.length){
-      const cur=q[qi++];
-      const cx=cur%nx,cy=Math.floor(cur/nx)%ny,cz=Math.floor(cur/(nx*ny));
-      for(let dz=-1;dz<=1;dz++)for(let dy=-1;dy<=1;dy++)for(let dx=-1;dx<=1;dx++){
-        if(!dx&&!dy&&!dz)continue;
-        const nx2=cx+dx,ny2=cy+dy,nz2=cz+dz;
-        if(nx2<0||nx2>=nx||ny2<0||ny2>=ny||nz2<0||nz2>=nz)continue;
-        const ni=vi(nx2,ny2,nz2);
-        if(occ[ni]&&labels[ni]<0){labels[ni]=cid;q.push(ni);}
-      }
-    }
-    cid++;
-  }
-  // Collect points per cluster, return clusters with ≥30 pts, sorted largest first
-  const clusters=Array.from({length:cid},()=>[]);
-  for(let i=0;i<pts.length;i+=3){
-    const cl=labels[ptVox[i/3]];
-    if(cl>=0)clusters[cl].push(pts[i],pts[i+1],pts[i+2]);
-  }
-  return clusters.filter(c=>c.length>=90).sort((a,b)=>b.length-a.length).map(c=>new Float32Array(c));
-}
+        // LIVE SOBEL WIRE HUD & GATING SCORING FRAME MECHANICS
+        let lastScoreTime = 0;
+        let currentFrameQuality = 0;
 
-// ── PCA (3D) ──────────────────────────────────────────────────────────────────
-// Power iteration — 3 eigenvectors. Fast, accurate enough for primitive fitting.
-function pca3(pts){
-  const n=pts.length/3;
-  let cx=0,cy=0,cz=0;
-  for(let i=0;i<pts.length;i+=3){cx+=pts[i];cy+=pts[i+1];cz+=pts[i+2];}
-  cx/=n;cy/=n;cz/=n;
-  let c00=0,c11=0,c22=0,c01=0,c02=0,c12=0;
-  for(let i=0;i<pts.length;i+=3){
-    const dx=pts[i]-cx,dy=pts[i+1]-cy,dz=pts[i+2]-cz;
-    c00+=dx*dx;c11+=dy*dy;c22+=dz*dz;c01+=dx*dy;c02+=dx*dz;c12+=dy*dz;
-  }
-  c00/=n;c11/=n;c22/=n;c01/=n;c02/=n;c12/=n;
-  // Power iteration for first eigenvector
-  const mv=(v)=>[c00*v[0]+c01*v[1]+c02*v[2],c01*v[0]+c11*v[1]+c12*v[2],c02*v[0]+c12*v[1]+c22*v[2]];
-  const norm=(v)=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l);};
-  let v0=[1,1,1];for(let k=0;k<20;k++)v0=norm(mv(v0));
-  const lam0=mv(v0)[0]*v0[0]+mv(v0)[1]*v0[1]+mv(v0)[2]*v0[2];
-  // Deflate
-  const df=(row,j)=>row[j]-lam0*v0[j];
-  const c00b=df([c00,c01,c02],0),c01b=df([c01,c11,c12],1),c02b=df([c02,c12,c22],2);
-  const c11b=df([c01,c11,c12],1)-lam0*v0[1]*v0[1]+c11,c12b=df([c12,c12,c22],1);
-  // simpler deflation:
-  const D=(v)=>[c00*v[0]+c01*v[1]+c02*v[2]-lam0*(v0[0]*(v0[0]*v[0]+v0[1]*v[1]+v0[2]*v[2])),
-                c01*v[0]+c11*v[1]+c12*v[2]-lam0*(v0[1]*(v0[0]*v[0]+v0[1]*v[1]+v0[2]*v[2])),
-                c02*v[0]+c12*v[1]+c22*v[2]-lam0*(v0[2]*(v0[0]*v[0]+v0[1]*v[1]+v0[2]*v[2]))];
-  // Start orthogonal to v0
-  let v1=Math.abs(v0[0])>.8?[0,1,0]:[1,0,0];
-  v1=norm(v1.map((x,i)=>x-v0[i]*(v0[0]*v1[0]+v0[1]*v1[1]+v0[2]*v1[2])));
-  for(let k=0;k<20;k++){let t=D(v1);t=norm(t.map((x,j)=>x-v0[j]*(v0[0]*t[0]+v0[1]*t[1]+v0[2]*t[2])));v1=t;}
-  // v2 = cross(v0,v1)
-  const v2=[v0[1]*v1[2]-v0[2]*v1[1],v0[2]*v1[0]-v0[0]*v1[2],v0[0]*v1[1]-v0[1]*v1[0]];
-  // Compute extents along each axis for aspect ratio
-  let mn=[Infinity,Infinity,Infinity],mxe=[-Infinity,-Infinity,-Infinity];
-  const axes=[v0,v1,v2];
-  for(let i=0;i<pts.length;i+=3){
-    const dx=pts[i]-cx,dy=pts[i+1]-cy,dz=pts[i+2]-cz;
-    for(let j=0;j<3;j++){
-      const p=dx*axes[j][0]+dy*axes[j][1]+dz*axes[j][2];
-      if(p<mn[j])mn[j]=p;if(p>mxe[j])mxe[j]=p;
-    }
-  }
-  const extents=axes.map((_,j)=>mxe[j]-mn[j]);
-  return{center:[cx,cy,cz],axes,extents,mn,mx:mxe};
-}
+        function startLiveHUDLoop() {
+            function renderStep(timestamp) {
+                if(appMode === 'CAPTURE') {
+                    executeSobelEdgeFilterExtraction();
+                    
+                    if(timestamp - lastScoreTime > 500) {
+                        evaluateLiveFrameQualityScore();
+                        lastScoreTime = timestamp;
+                    }
+                }
+                requestAnimationFrame(renderStep);
+            }
+            requestAnimationFrame(renderStep);
+        }
 
-// ── PRIMITIVE FITTING ─────────────────────────────────────────────────────────
-function fitSphere(pts){
-  const n=pts.length/3;
-  let cx=0,cy=0,cz=0;
-  for(let i=0;i<pts.length;i+=3){cx+=pts[i];cy+=pts[i+1];cz+=pts[i+2];}
-  cx/=n;cy/=n;cz/=n;
-  let r=0;
-  for(let i=0;i<pts.length;i+=3)r+=Math.sqrt((pts[i]-cx)**2+(pts[i+1]-cy)**2+(pts[i+2]-cz)**2);
-  return{type:'sphere',center:[cx,cy,cz],radius:r/n};}
+        function executeSobelEdgeFilterExtraction() {
+            if(!videoElement.videoWidth) return;
+            hudCtx.drawImage(videoElement, 0, 0, hudCanvas.width, hudCanvas.height);
+            
+            const srcData = hudCtx.getImageData(0, 0, hudCanvas.width, hudCanvas.height);
+            const outputData = hudCtx.createImageData(hudCanvas.width, hudCanvas.height);
+            
+            const w = hudCanvas.width;
+            const h = hudCanvas.height;
+            const src = srcData.data;
+            const dst = outputData.data;
 
-function fitBox(pts){
-  const{center,axes,mn,mx:mxe}=pca3(pts);
-  const he=axes.map((_,j)=>(mxe[j]-mn[j])/2);
-  const ofs=axes.map((_,j)=>(mn[j]+mxe[j])/2);
-  // Shift center by OBB offset along principal axes
-  const c=[
-    center[0]+ofs[0]*axes[0][0]+ofs[1]*axes[1][0]+ofs[2]*axes[2][0],
-    center[1]+ofs[0]*axes[0][1]+ofs[1]*axes[1][1]+ofs[2]*axes[2][1],
-    center[2]+ofs[0]*axes[0][2]+ofs[1]*axes[1][2]+ofs[2]*axes[2][2]
-  ];
-  return{type:'box',center:c,axes,halfExtents:he};}
+            // Simplified fast kernel iteration step avoiding complex border bounding logic overhead
+            for (let y = 1; y < h - 1; y++) {
+                for (let x = 1; x < w - 1; x++) {
+                    const idx = (y * w + x) * 4;
+                    
+                    // Convert intensity channels to grayscale maps quickly
+                    const getGray = (ox, oy) => {
+                        const i = ((y + oy) * w + (x + ox)) * 4;
+                        return (src[i] + src[i+1] + src[i+2]) / 3;
+                    };
 
-function fitCylinder(pts){
-  const{center,axes,mn,mx:mxe}=pca3(pts);
-  const axis=axes[0]; // primary axis
-  let rSum=0,n=pts.length/3;
-  for(let i=0;i<pts.length;i+=3){
-    const dx=pts[i]-center[0],dy=pts[i+1]-center[1],dz=pts[i+2]-center[2];
-    const h=dx*axis[0]+dy*axis[1]+dz*axis[2];
-    const px=dx-h*axis[0],py=dy-h*axis[1],pz=dz-h*axis[2];
-    rSum+=Math.sqrt(px*px+py*py+pz*pz);
-  }
-  const height=mxe[0]-mn[0];
-  const midH=(mn[0]+mxe[0])/2;
-  const c=[center[0]+midH*axis[0],center[1]+midH*axis[1],center[2]+midH*axis[2]];
-  return{type:'cylinder',center:c,axis,radius:rSum/n,height};}
+                    // Sobel Matrices horizontal/vertical passes calculation
+                    const hGrad = (-1 * getGray(-1, -1)) + (1 * getGray(1, -1))
+                                + (-2 * getGray(-1, 0))  + (2 * getGray(1, 0))
+                                + (-1 * getGray(-1, 1))  + (1 * getGray(1, 1));
 
-// Classify cluster and return best-fit primitive
-function classifyAndFit(pts){
-  const{extents}=pca3(pts);
-  const sorted=[...extents].sort((a,b)=>b-a);
-  const[e0,e1,e2]=sorted;
-  const r10=e0>0?e1/e0:1,r20=e0>0?e2/e0:1;
-  if(r10>.72&&r20>.72)return fitSphere(pts);
-  if(r10<.38)return fitCylinder(pts);
-  return fitBox(pts);}
+                    const vGrad = (-1 * getGray(-1, -1)) + (-2 * getGray(0, -1)) + (-1 * getGray(1, -1))
+                                + (1 * getGray(-1, 1))  + (2 * getGray(0, 1))  + (1 * getGray(1, 1));
 
-// ── PRIM COLORS ───────────────────────────────────────────────────────────────
-const PRIM_COLORS={sphere:0x00ffff,box:0xffb000,cylinder:0x00ff99,cone:0xff00ff};
-const PRIM_CSS={sphere:'var(--csph)',box:'var(--cbox)',cylinder:'var(--ccyl)',cone:'var(--ccon)'};
+                    const magnitude = Math.sqrt(hGrad * hGrad + vGrad * vGrad);
+                    const threshold = 35;
+                    
+                    if(magnitude > threshold) {
+                        dst[idx] = 0;       // R
+                        dst[idx+1] = 255;   // G (Cyan mapping modification channel output)
+                        dst[idx+2] = 255;   // B
+                        dst[idx+3] = 180;   // Transparency scale element
+                    } else {
+                        dst[idx+3] = 0;     // Discard transparent baseline matching requirements
+                    }
+                }
+            }
+            hudCtx.putImageData(outputData, 0, 0);
+        }
 
-// ── BUILD THREE.JS MESH FOR PRIMITIVE ─────────────────────────────────────────
-function makePrimMesh(pr,wire=false){
-  let geo;
-  const{type,center}=pr;
-  if(type==='sphere'){
-    geo=new THREE.SphereGeometry(pr.radius,24,16);}
-  else if(type==='box'){
-    geo=new THREE.BoxGeometry(pr.halfExtents[0]*2,pr.halfExtents[1]*2,pr.halfExtents[2]*2);
-    // Apply OBB rotation
-    const m=new THREE.Matrix4();
-    m.makeBasis(new THREE.Vector3(...pr.axes[0]),new THREE.Vector3(...pr.axes[1]),new THREE.Vector3(...pr.axes[2]));
-    geo.applyMatrix4(m);}
-  else if(type==='cylinder'){
-    geo=new THREE.CylinderGeometry(pr.radius,pr.radius,pr.height,24,1);
-    // Rotate so Y-axis aligns with pr.axis
-    const def=new THREE.Vector3(0,1,0),ax=new THREE.Vector3(...pr.axis);
-    const q2=new THREE.Quaternion().setFromUnitVectors(def,ax.normalize());
-    geo.applyQuaternion(q2);}
-  else{
-    geo=new THREE.ConeGeometry(pr.radius,pr.height,24);
-    const def=new THREE.Vector3(0,1,0),ax=new THREE.Vector3(...(pr.axis||[0,1,0]));
-    const q2=new THREE.Quaternion().setFromUnitVectors(def,ax.normalize());
-    geo.applyQuaternion(q2);}
-  const mat=wire
-    ?new THREE.MeshBasicMaterial({color:PRIM_COLORS[type],wireframe:true})
-    :new THREE.MeshStandardMaterial({color:PRIM_COLORS[type],transparent:true,opacity:.35,
-        roughness:.4,metalness:.1,side:THREE.DoubleSide});
-  const mesh=new THREE.Mesh(geo,mat);
-  mesh.position.set(...center);
-  return mesh;}
+        function evaluateLiveFrameQualityScore() {
+            if(!videoElement.videoWidth) return;
+            
+            // Re-render a small canvas snapshot profile metric calculation to minimize CPU calculation blocks
+            const capCanvas = document.createElement('canvas');
+            capCanvas.width = 120; capCanvas.height = 120;
+            const ctx = capCanvas.getContext('2d');
+            ctx.drawImage(videoElement, 0, 0, 120, 120);
+            const imgData = ctx.getImageData(0, 0, 120, 120).data;
 
-// ── PRIMITIVE MANAGEMENT ──────────────────────────────────────────────────────
-function addPrimitive(pr){
-  pr.id=nextPrimId++;pr.enabled=true;
-  // Two meshes per primitive: solid (transparent) + wireframe
-  pr.meshSolid=makePrimMesh(pr,false);
-  pr.meshWire=makePrimMesh(pr,true);
-  primGroup.add(pr.meshSolid);primGroup.add(pr.meshWire);
-  primitives.push(pr);
-  renderPrimList();
-  updateBuildBtn();}
+            let totalBrightness = 0;
+            let varianceBlur = 0;
+            let edgeStrengthCount = 0;
 
-function removePrimitive(id){
-  const i=primitives.findIndex(p=>p.id===id);
-  if(i<0)return;
-  const pr=primitives[i];
-  [pr.meshSolid,pr.meshWire].forEach(m=>{if(m){m.geometry.dispose();m.material.dispose();primGroup.remove(m);}});
-  primitives.splice(i,1);
-  if(selectedPrim?.id===id)selectPrimitive(null);
-  renderPrimList();updateBuildBtn();}
+            const grays = new Float32Array(120 * 120);
+            for(let i=0; i<imgData.length; i+=4) {
+                const g = (imgData[i] + imgData[i+1] + imgData[i+2])/3;
+                totalBrightness += g;
+                grays[i/4] = g;
+            }
+            
+            const meanBrightness = totalBrightness / (120*120);
+            
+            // Simplified Laplacian computation pass over pixel bounds tracking matrices
+            for(let y=1; y<119; y++) {
+                for(let x=1; x<119; x++) {
+                    const idx = y * 120 + x;
+                    const val = grays[idx];
+                    const laplacian = (val * -4) + grays[idx-1] + grays[idx+1] + grays[idx-120] + grays[idx+120];
+                    varianceBlur += laplacian * laplacian;
+                    if(Math.abs(laplacian) > 15) edgeStrengthCount++;
+                }
+            }
 
-function refreshPrimMesh(pr){
-  [pr.meshSolid,pr.meshWire].forEach(m=>{if(m){m.geometry.dispose();m.material.dispose();primGroup.remove(m);}});
-  pr.meshSolid=makePrimMesh(pr,false);pr.meshWire=makePrimMesh(pr,true);
-  primGroup.add(pr.meshSolid);primGroup.add(pr.meshWire);
-  // Highlight if selected
-  if(selectedPrim?.id===pr.id){
-    pr.meshSolid.material.opacity=.55;
-    pr.meshWire.material.color.setHex(0xffffff);
-  }}
+            // Normalization mapping across custom calibrated weighting constants
+            const exposureScore = Math.max(0, 100 - Math.abs(meanBrightness - 128) * 1.2);
+            const blurScore = Math.min(100, (varianceBlur / (118 * 118)) * 10);
+            const featureScore = Math.min(100, (edgeStrengthCount / 500) * 100);
 
-function selectPrimitive(pr){
-  // De-highlight previous
-  if(selectedPrim){
-    selectedPrim.meshSolid.material.opacity=.35;
-    selectedPrim.meshWire.material.color.setHex(PRIM_COLORS[selectedPrim.type]);
-  }
-  selectedPrim=pr;
-  if(pr){
-    pr.meshSolid.material.opacity=.55;
-    pr.meshWire.material.color.setHex(0xffffff);
-    showParamEditor(pr);}
-  else{$('paramEd').style.display='none';}
-  renderPrimList();}
+            currentFrameQuality = Math.round((exposureScore * 0.3) + (blurScore * 0.4) + (featureScore * 0.3));
+            
+            // Dynamic UI adjustment pass without overwriting button HTML tracking states
+            document.getElementById('quality-bar').style.width = `${currentFrameQuality}%`;
+            document.getElementById('shutter-txt-sub').innerText = `${currentFrameQuality}% Q`;
+            
+            if(currentFrameQuality < 50) {
+                document.getElementById('quality-bar').style.backgroundColor = 'var(--danger)';
+            } else {
+                document.getElementById('quality-bar').style.backgroundColor = 'var(--success)';
+            }
+        }
 
-// ── PRIMITIVE LIST UI ─────────────────────────────────────────────────────────
-function renderPrimList(){
-  const el=$('primList');el.innerHTML='';
-  if(!primitives.length){el.innerHTML='<div style="font-size:10px;color:#444;padding:5px">No primitives — tap AUTO-FIT or add manually</div>';return;}
-  primitives.forEach(pr=>{
-    const row=document.createElement('div');
-    row.className='primRow'+(selectedPrim?.id===pr.id?' sel':'');
-    const sf=projectScale?.scaleFactor??1;
-    let dims='';
-    if(pr.type==='sphere')dims=`r=${(pr.radius/sf*1000).toFixed(0)}mm`;
-    else if(pr.type==='box')dims=`${(pr.halfExtents.map(x=>(x/sf*1000*2).toFixed(0)).join('×'))}mm`;
-    else if(pr.type==='cylinder')dims=`⌀${(pr.radius/sf*1000*2).toFixed(0)}×${(pr.height/sf*1000).toFixed(0)}mm`;
-    else dims=`⌀${(pr.radius/sf*1000*2).toFixed(0)}×${(pr.height/sf*1000).toFixed(0)}mm`;
-    row.innerHTML=`<span class=ptag style="background:rgba(0,0,0,.3);color:${PRIM_CSS[pr.type]};border:1px solid ${PRIM_CSS[pr.type]}">${pr.type.toUpperCase().slice(0,3)}</span><span class=pdim>${dims}</span><span class=pdel>✕</span>`;
-    row.querySelector('.pdel').onclick=e=>{e.stopPropagation();removePrimitive(pr.id);};
-    row.onclick=()=>selectPrimitive(pr);
-    el.appendChild(row);
-  });}
+        // CAPTURE PIPELINE EXECUTION ENGINE CHAIN
+        async function executeCaptureLifecycle() {
+            if(opLocked) return;
+            if(currentFrameQuality < 50) {
+                logTerminal("ACQUISITION ABORTED: LIVE PICTURE RESOLUTION METRIC BELOW REQUIRED 50% GATING SCORING FRAME CAP.");
+                alert("CAPTURE REJECTED: STABILIZE DEVICE ENGINE PLATFORM OR IMPROVE FIELD LUMINOSITY ENGINE BALANCING.");
+                return;
+            }
 
-// ── PARAMETER EDITOR ──────────────────────────────────────────────────────────
-function showParamEditor(pr){
-  const ed=$('paramEd');ed.style.display='block';
-  $('paramTitle').textContent=pr.type.toUpperCase()+' PARAMETERS';
-  const sf=projectScale?.scaleFactor??1;
-  // Remove old sliders
-  const old=ed.querySelectorAll('.sl-row');old.forEach(e=>e.remove());
-  // Build sliders depending on type
-  const mkSlider=(label,key,minV,maxV,val,fmt,onChange)=>{
-    const row=document.createElement('div');row.className='sl-row';
-    const sv=document.createElement('span');sv.className='sv';sv.textContent=fmt(val);
-    row.innerHTML=`<span>${label}</span>`;
-    const sl=document.createElement('input');
-    sl.type='range';sl.min=minV;sl.max=maxV;sl.step=(maxV-minV)/200;sl.value=val;
-    sl.addEventListener('input',()=>{
-      const v=parseFloat(sl.value);sv.textContent=fmt(v);
-      onChange(v);refreshPrimMesh(pr);renderPrimList();});
-    row.appendChild(sl);row.appendChild(sv);
-    ed.appendChild(row);};
-  const mm=(v)=>`${(v/sf*1000).toFixed(0)}mm`;
-  if(pr.type==='sphere'){
-    mkSlider('RADIUS',null,.01*sf,1.5*sf,pr.radius,mm,v=>{pr.radius=v;});
-  }else if(pr.type==='box'){
-    ['W','H','D'].forEach((lbl,j)=>mkSlider(lbl,null,.005*sf,2*sf,pr.halfExtents[j],mm,v=>{pr.halfExtents[j]=v;}));
-  }else if(pr.type==='cylinder'||pr.type==='cone'){
-    mkSlider('RADIUS',null,.005*sf,1*sf,pr.radius,mm,v=>{pr.radius=v;});
-    mkSlider('HEIGHT',null,.01*sf,3*sf,pr.height,mm,v=>{pr.height=v;});
-  }}
+            try {
+                opLocked = true;
+                document.getElementById('shutter-txt-main').innerText = "PROCESSING";
+                document.getElementById('global-status').innerText = "STATUS: COMPUTING_DEPTH";
 
-function updateBuildBtn(){$('bBuild').disabled=primitives.filter(p=>p.enabled).length<1;}
+                // Extract image frame canvas allocation matrices tracking states
+                const width = videoElement.videoWidth;
+                const height = videoElement.videoHeight;
+                
+                const captureCanvas = document.createElement('canvas');
+                captureCanvas.width = PREVIEW_WIDTH;
+                captureCanvas.height = PREVIEW_HEIGHT;
+                const capCtx = captureCanvas.getContext('2d');
+                capCtx.drawImage(videoElement, 0, 0, PREVIEW_WIDTH, PREVIEW_HEIGHT);
+                
+                const imgDataUrl = captureCanvas.toDataURL('image/jpeg', 0.85);
 
-// ── PHASE 2: EXTRACT ──────────────────────────────────────────────────────────
-let cloudPts=null;
-function goPhase2(){
-  phase=2;
-  vid.style.opacity='0';
-  $('p1').style.display='none';$('p2').style.display='block';
-  glc.style.pointerEvents='auto';oc.enabled=true;
-  sts('EXTRACTING...');info('Building point cloud…');
-  // Build and display unified point cloud
-  cloudPts=buildPointCloud();
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(cloudPts,3));
-  const mat=new THREE.PointsMaterial({size:.015,color:0x00ccaa,sizeAttenuation:true,transparent:true,opacity:.7});
-  ptGroup.clear();
-  const cloud=new THREE.Points(geo,mat);ptGroup.add(cloud);
-  // Center camera
-  geo.computeBoundingBox();
-  const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
-  const bs=new THREE.Vector3();geo.boundingBox.getSize(bs);
-  const d=Math.max(.5,Math.max(bs.x,bs.y,bs.z)*1.8);
-  oc.target.copy(bc);cam3.position.set(bc.x,bc.y,bc.z+d);cam3.lookAt(bc);oc.update();
-  sts('EXTRACT — '+photos.length+' photos · '+(cloudPts.length/3|0)+' pts');
-  info(projectScale?`Scale: ${projectScale.mm}mm ref`:'Tap ⊕ SCALE on a photo for real-world dimensions');
-  renderPrimList();updateBuildBtn();
-}
+                // Execute DeepMap Engine pipeline on standard canvas data element references
+                logTerminal("INITIALIZING DEPTH ANYTHINGS INFERENCE PASS REEL...");
+                const rawDepthResult = await depthPipeline(imgDataUrl);
+                
+                // Depth Inversion Logic: Extract raw float pixel allocations
+                const rawDepthData = rawDepthResult.depth.data; // Float32 elements matching size parameters
+                const depthMin = rawDepthData.reduce((m, v) => Math.min(m, v), Infinity);
+                const depthMax = rawDepthData.reduce((m, v) => Math.max(m, v), -Infinity);
+                
+                const processedDepth = new Float32Array(rawDepthData.length);
+                for(let i=0; i<rawDepthData.length; i++) {
+                    // Normalize across [0,1] boundary allocation spaces
+                    const norm = (rawDepthData[i] - depthMin) / (depthMax - depthMin || 1.0);
+                    processedDepth[i] = 1.0 - norm; // Inversion assignment mapping: 0=Near, 1=Far representation matrix values
+                }
 
-// AUTO-FIT
-$('bAutoFit').onclick=async()=>{
-  if(!cloudPts){info('No point cloud yet');return;}
-  $('bAutoFit').disabled=true;$('bAutoFit').textContent='⏳ FITTING...';
-  // Remove existing primitives
-  primitives.slice().forEach(p=>removePrimitive(p.id));
-  const sf=projectScale?.scaleFactor??1;
-  const clusters=voxelCluster(cloudPts,0.04*sf);
-  info(`Found ${clusters.length} region${clusters.length!==1?'s':''} — fitting primitives…`);
-  await new Promise(r=>setTimeout(r,20)); // let UI update
-  let added=0;
-  for(const cl of clusters.slice(0,8)){
-    const pr=classifyAndFit(cl);
-    addPrimitive(pr);added++;
-  }
-  if(!added){// fallback: one primitive for whole cloud
-    const pr=classifyAndFit(cloudPts);addPrimitive(pr);added=1;}
-  $('bAutoFit').disabled=false;$('bAutoFit').textContent='⚡ AUTO-FIT PRIMITIVES';
-  info(`${added} primitive${added!==1?'s':''} fitted — tap to edit`);
-};
+                // Preserve individual structure tracking metadata variables
+                const photoPayload = {
+                    id: Date.now(),
+                    imgData: imgDataUrl,
+                    depthMap: processedDepth,
+                    width: PREVIEW_WIDTH,
+                    height: PREVIEW_HEIGHT,
+                    gyro: activeDeviceOrientation.clone(),
+                    scaleFactor: null // Set manually during subsequent analytical steps
+                };
 
-// Manual add buttons — place at cloud centroid with estimated size
-function cloudCentroid(){
-  if(!cloudPts||cloudPts.length<3)return[0,.5,1];
-  let cx=0,cy=0,cz=0,n=cloudPts.length/3;
-  for(let i=0;i<cloudPts.length;i+=3){cx+=cloudPts[i];cy+=cloudPts[i+1];cz+=cloudPts[i+2];}
-  return[cx/n,cy/n,cz/n];}
-function cloudScale(){
-  if(!cloudPts||cloudPts.length<3)return .2;
-  const{extents}=pca3(cloudPts);
-  return Math.max(.05,...extents)*.3;}
+                capturedPhotos.push(photoPayload);
+                appendPhotoToStripUI(photoPayload, capturedPhotos.length - 1);
+                
+                document.getElementById('frame-counter').innerText = `CAPTURED FRAMES: ${capturedPhotos.length}`;
+                logTerminal(`CAPTURE SAVED SUCCESSFULLY. INDEX POSITION REEL ASSIGNED: [${capturedPhotos.length - 1}]`);
 
-$('bAddSph').onclick=()=>{
-  const c=cloudCentroid(),s=cloudScale();
-  addPrimitive({type:'sphere',center:c,radius:s});selectPrimitive(primitives[primitives.length-1]);};
-$('bAddBox').onclick=()=>{
-  const c=cloudCentroid(),s=cloudScale();
-  const{axes}=pca3(cloudPts||new Float32Array([0,0,0]));
-  addPrimitive({type:'box',center:c,axes,halfExtents:[s,s*.6,s*.4]});
-  selectPrimitive(primitives[primitives.length-1]);};
-$('bAddCyl').onclick=()=>{
-  const c=cloudCentroid(),s=cloudScale();
-  addPrimitive({type:'cylinder',center:c,axis:[0,1,0],radius:s*.5,height:s*1.5});
-  selectPrimitive(primitives[primitives.length-1]);};
+                if(capturedPhotos.length >= 2) {
+                    document.getElementById('go-extract-btn').disabled = false;
+                }
 
-$('cbCloud').addEventListener('change',()=>{ptGroup.visible=$('cbCloud').checked;});
-$('cbPrim').addEventListener('change',()=>{primGroup.visible=$('cbPrim').checked;});
-$('bBack').onclick=()=>goPhase1();
-$('bBack3').onclick=()=>{
-  phase=2;$('p3').style.display='none';$('p2').style.display='block';
-  glc.style.pointerEvents='auto';oc.enabled=true;
-  ptGroup.visible=true;primGroup.visible=true;resultGroup.visible=false;};
+            } catch (err) {
+                console.error(err);
+                logTerminal(`CAPTURE RUNTIME ANOMALY ERROR: ${err.message}`);
+            } finally {
+                document.getElementById('shutter-txt-main').innerText = "CAPTURE";
+                document.getElementById('global-status').innerText = "STATUS: READY_";
+                opLocked = false;
+            }
+        }
 
-// ── PHASE 1 return ────────────────────────────────────────────────────────────
-function goPhase1(){
-  phase=1;vid.style.opacity='1';oc.enabled=false;glc.style.pointerEvents='none';
-  $('p2').style.display='none';$('p3').style.display='none';$('p1').style.display='block';
-  sts(photos.length?`${photos.length} photo${photos.length>1?'s':''} captured`:'READY TO CAPTURE');
-  info(photos.length>=2?'Tap EXTRACT → to process':'Take 2+ photos from different angles');}
+        function appendPhotoToStripUI(photo, index) {
+            const strip = document.getElementById('photo-strip');
+            
+            const wrapper = document.createElement('div');
+            wrapper.className = 'thumb-wrapper';
+            wrapper.id = `thumb-idx-${index}`;
+            
+            const img = document.createElement('img');
+            img.src = photo.imgData;
+            wrapper.appendChild(img);
 
-// ── PHASE 3: BUILD — manifold-3d boolean union ────────────────────────────────
-// Euler angles (degrees) to rotate a primitive into world space
-function axisRotEuler(fromY, toAxis){
-  // Compute rotation from [0,1,0] to toAxis
-  const def=new THREE.Vector3(0,1,0);
-  const ax=new THREE.Vector3(...toAxis).normalize();
-  const q=new THREE.Quaternion().setFromUnitVectors(def,ax);
-  const eu=new THREE.Euler().setFromQuaternion(q,'XYZ');
-  return[eu.x*180/Math.PI,eu.y*180/Math.PI,eu.z*180/Math.PI];}
+            // Overlay numeric identification elements
+            const label = document.createElement('div');
+            label.style.position = 'absolute';
+            label.style.bottom = '2px'; label.style.right = '4px';
+            label.style.fontSize = '9px'; label.style.color = 'var(--primary)';
+            label.innerText = `#${index}`;
+            wrapper.appendChild(label);
 
-async function runBuild(){
-  phase=3;
-  $('p2').style.display='none';$('p3').style.display='block';
-  $('bDownload').disabled=true;
-  $('buildLog').textContent='';
-  ptGroup.visible=false;primGroup.visible=false;resultGroup.clear();
-  glc.style.pointerEvents='auto';oc.enabled=true;
-  sts('BUILDING...');info('Loading manifold engine…');
-  log('Loading manifold-3d WASM…');
-  let Manifold;
-  try{
-    const mod=await import('https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js');
-    const wasm=await mod.default();wasm.setup();
-    Manifold=wasm.Manifold;
-    log('manifold-3d ready ✔');}
-  catch(e){
-    log('manifold-3d failed — using fallback mesh merge');
-    log('(result may not be fully watertight at seams)');
-    fallbackBuild();return;}
+            wrapper.onclick = () => launchCalibrationSequence(index);
+            strip.appendChild(wrapper);
+        }
 
-  const sf=projectScale?.scaleFactor??1;
-  const active=primitives.filter(p=>p.enabled);
-  log(`Building ${active.length} primitives…`);
+        // SCALE CALIBRATION CONTROL INTERFACES
+        function launchCalibrationSequence(index) {
+            activeCalibrationIndex = index;
+            calibrationTaps = [];
+            
+            const photo = capturedPhotos[index];
+            const modal = document.getElementById('calibration-modal');
+            const calCanvas = document.getElementById('calibration-canvas');
+            const ctx = calCanvas.getContext('2d');
 
-  let result=null;
-  for(const pr of active){
-    log(`  ${pr.type.toUpperCase()} at [${pr.center.map(x=>(x/sf*1000).toFixed(0)).join(',')}]mm`);
-    let m;
-    try{
-      if(pr.type==='sphere'){
-        m=new Manifold(Manifold.sphere(pr.radius,48));}
-      else if(pr.type==='box'){
-        m=new Manifold(Manifold.cube(pr.halfExtents.map(x=>x*2),true));
-        // Apply OBB rotation via Euler
-        const eu=new THREE.Euler().setFromRotationMatrix(
-          new THREE.Matrix4().makeBasis(new THREE.Vector3(...pr.axes[0]),
-            new THREE.Vector3(...pr.axes[1]),new THREE.Vector3(...pr.axes[2])));
-        m=m.rotate([eu.x*180/Math.PI,eu.y*180/Math.PI,eu.z*180/Math.PI]);}
-      else if(pr.type==='cylinder'||pr.type==='cone'){
-        const rTop=pr.type==='cone'?.001:pr.radius;
-        m=new Manifold(Manifold.cylinder(pr.height,pr.radius,rTop,48,true));
-        const rot=axisRotEuler([0,1,0],pr.axis||[0,1,0]);
-        m=m.rotate(rot);}
-      m=m.translate(pr.center);
-      result=result?result.add(m):m;
-    }catch(e){log(`  WARN: ${pr.type} failed: ${e.message.slice(0,40)}`);continue;}
-  }
+            const trackingImg = new Image();
+            trackingImg.src = photo.imgData;
+            trackingImg.onload = () => {
+                calCanvas.width = trackingImg.width;
+                calCanvas.height = trackingImg.height;
+                ctx.drawImage(trackingImg, 0, 0);
+                modal.style.display = 'flex';
+            };
+        }
 
-  if(!result){log('ERROR: no primitives built');sts('BUILD FAILED');return;}
-  log('Running boolean union…');
-  await new Promise(r=>setTimeout(r,20));
-  try{
-    const mesh=result.getMesh();
-    log(`Mesh: ${mesh.triVerts.length/3|0} triangles`);
-    // Convert to flat vertex array for STL
-    const verts=mesh.triVerts;
-    const props=mesh.vertProperties;
-    const flat=new Float32Array(verts.length*3);
-    for(let i=0;i<verts.length;i++){
-      const v=verts[i]*3;flat[i*3]=props[v];flat[i*3+1]=props[v+1];flat[i*3+2]=props[v+2];}
-    resultVerts=flat;
-    // Display
-    const geo=new THREE.BufferGeometry();
-    const tris=new Float32Array(verts.length*3);
-    for(let i=0;i<verts.length;i+=3){
-      for(let k=0;k<3;k++){const v=verts[i+k]*3;tris[(i+k)*3]=props[v];tris[(i+k)*3+1]=props[v+1];tris[(i+k)*3+2]=props[v+2];}
-    }
-    geo.setAttribute('position',new THREE.Float32BufferAttribute(tris,3));
-    geo.computeVertexNormals();
-    const mat=new THREE.MeshStandardMaterial({color:0x33ddcc,roughness:.35,metalness:.15,side:THREE.DoubleSide});
-    const rm=new THREE.Mesh(geo,mat);
-    resultGroup.add(rm);resultGroup.visible=true;
-    geo.computeBoundingBox();
-    const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
-    const bs=new THREE.Vector3();geo.boundingBox.getSize(bs);
-    oc.target.copy(bc);cam3.position.set(bc.x,bc.y,bc.z+Math.max(.5,Math.max(bs.x,bs.y,bs.z)*1.8));
-    cam3.lookAt(bc);oc.update();
-    const dimsMm=bs.toArray().map(x=>(x/sf*1000).toFixed(0)).join('×');
-    sts('BUILD COMPLETE');info(`${(verts.length/3|0).toLocaleString()} triangles · ${dimsMm}mm`);
-    log(`Done ✔  ${dimsMm}mm · watertight manifold`);
-    $('bDownload').disabled=false;
-  }catch(e){
-    log('Manifold error: '+e.message);
-    log('Falling back to primitive mesh merge…');
-    fallbackBuild();}
-}
+        function handleCalibrationCanvasTap(e) {
+            if(calibrationTaps.length >= 2) calibrationTaps = [];
+            
+            const rect = e.target.getBoundingClientRect();
+            const x = ((e.clientX - rect.left) / rect.width) * e.target.width;
+            const y = ((e.clientY - rect.top) / rect.height) * e.target.height;
+            
+            calibrationTaps.push({x, y});
+            redrawCalibrationCanvasOverlay();
+        }
 
-function fallbackBuild(){
-  // Merge all primitive meshes without boolean ops (not guaranteed watertight)
-  const allPos=[];
-  for(const pr of primitives.filter(p=>p.enabled)){
-    const m=makePrimMesh(pr,false);
-    m.updateMatrix();
-    const geo=m.geometry.clone();geo.applyMatrix4(m.matrix);
-    const pos=geo.attributes.position;
-    // Convert indexed geometry to non-indexed
-    const idx=geo.index;
-    if(idx){for(let i=0;i<idx.count;i++){const v=idx.getX(i)*3;allPos.push(pos.array[v],pos.array[v+1],pos.array[v+2]);}}
-    else{for(let i=0;i<pos.count;i++){allPos.push(pos.array[i*3],pos.array[i*3+1],pos.array[i*3+2]);}}
-    m.geometry.dispose();m.material.dispose();}
-  resultVerts=new Float32Array(allPos);
-  const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(resultVerts.slice(),3));
-  geo.computeVertexNormals();
-  const mat=new THREE.MeshStandardMaterial({color:0x33ddcc,roughness:.35,metalness:.15,side:THREE.DoubleSide});
-  resultGroup.add(new THREE.Mesh(geo,mat));resultGroup.visible=true;
-  const sf=projectScale?.scaleFactor??1;
-  geo.computeBoundingBox();
-  const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
-  const bs=new THREE.Vector3();geo.boundingBox.getSize(bs);
-  oc.target.copy(bc);cam3.position.set(bc.x,bc.y,bc.z+Math.max(.5,Math.max(bs.x,bs.y,bs.z)*1.8));
-  cam3.lookAt(bc);oc.update();
-  const dimsMm=bs.toArray().map(x=>(x/sf*1000).toFixed(0)).join('×');
-  sts('BUILD COMPLETE (fallback)');info(`${(resultVerts.length/9|0).toLocaleString()} triangles · ${dimsMm}mm`);
-  log(`Fallback complete ✔  ${dimsMm}mm`);
-  $('bDownload').disabled=false;}
+        function redrawCalibrationCanvasOverlay() {
+            const calCanvas = document.getElementById('calibration-canvas');
+            const ctx = calCanvas.getContext('2d');
+            
+            const photo = capturedPhotos[activeCalibrationIndex];
+            const trackingImg = new Image();
+            trackingImg.src = photo.imgData;
+            
+            ctx.drawImage(trackingImg, 0, 0);
+            
+            ctx.strokeStyle = '#ff00ff';
+            ctx.fillStyle = '#ff00ff';
+            ctx.lineWidth = 3;
 
-$('bBuild').onclick=runBuild;
+            calibrationTaps.forEach((pt, i) => {
+                ctx.beginPath();
+                ctx.arc(pt.x, pt.y, 6, 0, 2*Math.PI);
+                ctx.fill();
+                ctx.fillText(` PT ${i+1}`, pt.x + 8, pt.y - 4);
+            });
 
-// ── STL EXPORT ────────────────────────────────────────────────────────────────
-function dlSTL(v){
-  const n=v.length/9|0,buf=new ArrayBuffer(84+n*50),dv2=new DataView(buf);
-  const h=new TextEncoder().encode('P3dK Extrapolation v1');
-  for(let i=0;i<Math.min(80,h.length);i++)dv2.setUint8(i,h[i]);
-  dv2.setUint32(80,n,true);let o=84;
-  for(let i=0;i<n;i++){
-    const b=i*9;
-    const ax=v[b],ay=v[b+1],az=v[b+2],bx=v[b+3],by=v[b+4],bz=v[b+5],cx=v[b+6],cy=v[b+7],cz=v[b+8];
-    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz2=cz-az;
-    const qx=uy*vz2-uz*vy,qy=uz*vx-ux*vz2,qz=ux*vy-uy*vx,ql=Math.hypot(qx,qy,qz)||1;
-    dv2.setFloat32(o,qx/ql,true);dv2.setFloat32(o+4,qy/ql,true);dv2.setFloat32(o+8,qz/ql,true);o+=12;
-    dv2.setFloat32(o,ax,true);dv2.setFloat32(o+4,ay,true);dv2.setFloat32(o+8,az,true);o+=12;
-    dv2.setFloat32(o,bx,true);dv2.setFloat32(o+4,by,true);dv2.setFloat32(o+8,bz,true);o+=12;
-    dv2.setFloat32(o,cx,true);dv2.setFloat32(o+4,cy,true);dv2.setFloat32(o+8,cz,true);o+=12;
-    dv2.setUint16(o,0,true);o+=2;}
-  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
-  a.download='p3dk-extrap-'+ts+'.stl';a.click();}
-$('bDownload').onclick=()=>{if(resultVerts)dlSTL(resultVerts);};
+            if(calibrationTaps.length === 2) {
+                ctx.beginPath();
+                ctx.moveTo(calibrationTaps[0].x, calibrationTaps[0].y);
+                ctx.lineTo(calibrationTaps[1].x, calibrationTaps[1].y);
+                ctx.stroke();
+            }
+        }
 
-// ── PROJECT SAVE/LOAD ─────────────────────────────────────────────────────────
-async function saveProject(){
-  const zip=new JSZip();
-  const meta={name:'P3dK Project',created:new Date().toISOString(),
-    photoCount:photos.length,scale:projectScale||null,primitives:[]};
-  primitives.forEach(pr=>{
-    const d={type:pr.type,center:pr.center,enabled:pr.enabled};
-    if(pr.type==='sphere')d.radius=pr.radius;
-    if(pr.type==='box'){d.halfExtents=pr.halfExtents;d.axes=pr.axes;}
-    if(pr.type==='cylinder'||pr.type==='cone'){d.axis=pr.axis;d.radius=pr.radius;d.height=pr.height;}
-    meta.primitives.push(d);});
-  zip.file('meta.json',JSON.stringify(meta,null,2));
-  const phDir=zip.folder('photos'),dpDir=zip.folder('depths'),poDir=zip.folder('poses');
-  for(let i=0;i<photos.length;i++){
-    phDir.file(`${i}.jpg`,photos[i].jpeg);
-    dpDir.file(`${i}.bin`,photos[i].depth.buffer);
-    poDir.file(`${i}.json`,JSON.stringify({...photos[i].pose,dW:photos[i].dW,dH:photos[i].dH}));
-  }
-  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download=`p3dk-${new Date().toISOString().slice(0,10)}.p3dk`;
-  a.click();}
+        function computeCalibrationScaleFactor() {
+            if(calibrationTaps.length !== 2) {
+                alert("SELECT TWO SPECIFIC REFERENCE VERTICES ON DRAW OVERLAY TO ENGAGE METRIC SCALE COEFFICIENTS.");
+                return;
+            }
 
-// ── NEW PROJECT ───────────────────────────────────────────────────────────────
-$('bNew').onclick=()=>{
-  photos=[];primitives.slice().forEach(p=>removePrimitive(p.id));
-  primitives=[];selectedPrim=null;projectScale=null;resultVerts=null;cloudPts=null;
-  $('strip').innerHTML='';$('fcount').textContent='0';
-  ptGroup.clear();primGroup.clear();resultGroup.clear();
-  $('bProcess').disabled=true;$('bCapture').disabled=!depthPipe;
-  phase=1;vid.style.opacity='1';oc.enabled=false;glc.style.pointerEvents='none';
-  $('p3').style.display='none';$('p2').style.display='none';$('p1').style.display='block';
-  sts('READY TO CAPTURE');info('Take 2+ photos from different angles');};
+            const inputMm = parseFloat(document.getElementById('cal-distance-input').value);
+            if(!inputMm || inputMm <= 0) {
+                alert("INPUT VALID POSITIVE DISTANCE BOUND VALUE PARAMETERS.");
+                return;
+            }
 
-// ── SENSOR INIT ───────────────────────────────────────────────────────────────
-async function startCamera(){
-  const stream=await navigator.mediaDevices.getUserMedia({
-    video:{facingMode:{ideal:'environment'},width:{ideal:1080}}});
-  vid.srcObject=stream;
-  await new Promise((res,rej)=>{vid.onloadedmetadata=()=>vid.play().then(res).catch(rej);vid.onerror=rej});
-  chip('cCA','ok','Cam ✔');}
+            const targetDistanceMeters = inputMm / 1000.0;
+            const photo = capturedPhotos[activeCalibrationIndex];
+            
+            // Extract spatial coordinates from unprojected pixel map structures
+            const unprojectPoint = (pt) => {
+                const u = pt.x; const v = pt.y;
+                const idx = Math.floor(v) * photo.width + Math.floor(u);
+                
+                // Safety bound check mapping across array length boundaries
+                const boundedIdx = Math.max(0, Math.min(photo.depthMap.length - 1, idx));
+                const Z = photo.depthMap[boundedIdx] || 1.0; 
 
-function setupGyroHandler(){
-  window.addEventListener('deviceorientation',e=>{
-    if(!e.alpha&&!e.beta&&!e.gamma)return;
-    hasGyro=true;chip('cGY','ok','Gyro ✔');
-    const a=e.alpha?THREE.MathUtils.degToRad(e.alpha):0;
-    const b=e.beta?THREE.MathUtils.degToRad(e.beta):0;
-    const g=e.gamma?THREE.MathUtils.degToRad(e.gamma):0;
-    const ori=window.orientation?THREE.MathUtils.degToRad(window.orientation):0;
-    dQ.setFromEuler(new THREE.Euler(b,a,-g,'YXZ'));
-    dQ.multiply(new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)));
-    dQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-ori));
-  });}
+                // Basic default pinhole mathematical projection calculation matrices
+                const FOV = THREE.MathUtils.degToRad(60); 
+                const X = (u / photo.width - 0.5) * 2 * Z * Math.tan(FOV / 2);
+                const Y = (0.5 - v / photo.height) * 2 * Z * Math.tan(FOV / 2);
+                return new THREE.Vector3(X, Y, Z);
+            };
 
-// ── BUTTON WIRING ─────────────────────────────────────────────────────────────
-$('bCapture').onclick=()=>capturePhoto();
-$('bProcess').onclick=()=>goPhase2();
-$('bScale').onclick=()=>{
-  if(!photos.length){info('Capture a photo first, then tap SCALE');return;}
-  openScaleModal(photos.length-1);};
+            const p3d1 = unprojectPoint(calibrationTaps[0]);
+            const p3d2 = unprojectPoint(calibrationTaps[1]);
+            
+            const rawUnprojectedDistance = p3d1.distanceTo(p3d2);
+            if(rawUnprojectedDistance === 0) return;
 
-// ── RESIZE ────────────────────────────────────────────────────────────────────
-window.addEventListener('resize',()=>{
-  cam3.aspect=innerWidth/innerHeight;cam3.updateProjectionMatrix();
-  rend.setSize(innerWidth,innerHeight);hud.width=innerWidth;hud.height=innerHeight;});
+            // Compute scaling relation factors mapping to absolute target meters
+            const computedScaleFactor = targetDistanceMeters / rawUnprojectedDistance;
+            
+            photo.scaleFactor = computedScaleFactor;
+            globalScaleFactor = computedScaleFactor; // Propagate universally as baseline default scale index configuration
 
-// ── BOOT ─────────────────────────────────────────────────────────────────────
-async function boot(){
-  sts('LOADING...');info('Starting camera and neural depth model…');
-  pb.style.transition='none';pb.style.width='3%';
-  // Camera
-  try{await startCamera();}
-  catch(e){chip('cCA','warn','Cam ✗');info('Camera: '+e.message.slice(0,35));}
-  // Gyro (non-iOS passive)
-  window.addEventListener('deviceorientation',e=>{
-    if(!e.alpha&&!e.beta&&!e.gamma)return;
-    if(hasGyro)return;hasGyro=true;chip('cGY','ok','Gyro ✔');setupGyroHandler();
-  },{once:true});
-  // DA2
-  const MODEL_TO=90000;let mt;
-  const timeout=new Promise((_,r)=>{mt=setTimeout(()=>r(new Error('Model timeout')),MODEL_TO);});
-  try{
-    depthPipe=await Promise.race([
-      pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{
-        progress_callback:p=>{
-          if(p.status==='downloading'||p.status==='loading'){
-            const pct=p.progress??(p.loaded&&p.total?p.loaded/p.total*100:50);
-            pb.style.width=(3+pct*.9)+'%';
-            if(p.loaded&&p.total)info(`Depth model: ${Math.round(pct)}% (${Math.round(p.loaded/1048576)}/${Math.round(p.total/1048576)}MB)`);
-          }
-        }}),timeout]);
-    clearTimeout(mt);pb.style.width='100%';setTimeout(()=>pb.style.width='0%',500);
-    chip('cMD','ok','DA2 ✔');
-    sts('READY');info('Take 2+ photos from different angles · tap ⬤');
-    $('bCapture').disabled=false;
-    $('shutterLbl').textContent='CAPTURE';
-    // iOS gyro in click
-    $('bCapture').addEventListener('click',async()=>{
-      if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'&&!hasGyro){
-        try{const p=await DeviceOrientationEvent.requestPermission();
-          if(p==='granted'){chip('cGY','ok','Gyro ✔');setupGyroHandler();}
-        }catch(e){}
-      }},{once:true});
-  }catch(e){
-    clearTimeout(mt);chip('cMD','warn','Model ✗');
-    sts('MODEL FAILED');info(e.message.slice(0,50));
-    $('bCapture').textContent='RETRY';
-    $('bCapture').disabled=false;
-    $('bCapture').onclick=()=>boot();}
-}
-boot();
-</script>
+            document.getElementById(`thumb-idx-${activeCalibrationIndex}`).classList.add('calibrated');
+            document.getElementById('calibration-modal').style.display = 'none';
+            
+            logTerminal(`CALIBRATION SEEDED VIA ACQUISITION RECORD [${activeCalibrationIndex}]. TRANSFORM FACTOR BOUND: ${computedScaleFactor.toFixed(4)}x`);
+        }
+
+        // VIEW LAYOUT TRANSITION SWAP MANAGEMENT
+        function switchMode(targetMode) {
+            appMode = targetMode;
+            const camContainer = document.getElementById('camera-container');
+            const threeContainer = document.getElementById('three-container');
+            const pCapture = document.getElementById('panel-capture-controls');
+            const pExtract = document.getElementById('panel-extract-controls');
+
+            if(targetMode === 'CAPTURE') {
+                camContainer.style.opacity = '1';
+                camContainer.style.zIndex = '2';
+                threeContainer.style.zIndex = '1';
+                pCapture.style.display = 'block';
+                pExtract.style.display = 'none';
+                document.getElementById('go-capture-btn').classList.add('success');
+                document.getElementById('go-extract-btn').classList.remove('success');
+            } else {
+                camContainer.style.opacity = '0';
+                camContainer.style.zIndex = '1';
+                threeContainer.style.zIndex = '2';
+                pCapture.style.display = 'none';
+                pExtract.style.display = 'flex';
+                document.getElementById('go-capture-btn').classList.remove('success');
+                document.getElementById('go-extract-btn').classList.add('success');
+                
+                // Auto trigger reconstruction build on initial entrance to processing pane engine spaces
+                buildGlobalPointCloudScene();
+            }
+        }
+
+        // NATIVE THREE.JS WEBGL CONTAINER STACK SETUP
+        function setupThreeEngine() {
+            const container = document.getElementById('three-container');
+            
+            threeScene = new THREE.Scene();
+            threeScene.background = new THREE.Color(0x050505);
+
+            threeCamera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.01, 50.0);
+            threeCamera.position.set(0, 0, 1.5);
+
+            threeRenderer = new THREE.WebGLRenderer({ antialias: true });
+            threeRenderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(threeRenderer.domElement);
+
+            threeControls = new THREE.OrbitControls(threeCamera, threeRenderer.domElement);
+            threeControls.enableDamping = true;
+            threeControls.dampingFactor = 0.05;
+
+            // Ambient lighting conditions optimization variables
+            const ambientLight = new THREE.AmbientLight(0x404040, 2.0);
+            threeScene.add(ambientLight);
+            
+            const dirLight1 = new THREE.DirectionalLight(0xffffff, 1.5);
+            dirLight1.position.set(5, 10, 7);
+            threeScene.add(dirLight1);
+
+            const dirLight2 = new THREE.DirectionalLight(0x00ffff, 0.8);
+            dirLight2.position.set(-5, -5, -5);
+            threeScene.add(dirLight2);
+
+            // Establish coordinate debugging tracking lines explicitly mapping space centers
+            const gridHelper = new THREE.GridHelper(2, 20, 0x00ffff, 0x222222);
+            gridHelper.position.y = -0.5;
+            threeScene.add(gridHelper);
+
+            window.addEventListener('resize', () => {
+                threeCamera.aspect = container.clientWidth / container.clientHeight;
+                threeCamera.updateProjectionMatrix();
+                threeRenderer.setSize(container.clientWidth, container.clientHeight);
+            });
+
+            function animLoop() {
+                requestAnimationFrame(animLoop);
+                threeControls.update();
+                threeRenderer.render(threeScene, threeCamera);
+            }
+            animLoop();
+        }
+
+        // UNIFIED POINT CLOUD SYNTHESIS PIPELINE
+        function buildGlobalPointCloudScene() {
+            if(unifiedPointCloudMesh) {
+                threeScene.remove(unifiedPointCloudMesh);
+                unifiedPointCloudMesh.geometry.dispose();
+                unifiedPointCloudMesh.material.dispose();
+                unifiedPointCloudMesh = null;
+            }
+
+            const allPoints = [];
+            const allColors = [];
+            
+            const FOV = THREE.MathUtils.degToRad(60);
+            const tanFOV = Math.tan(FOV / 2);
+            
+            // Reusable loop processing variables definition
+            const localPos = new THREE.Vector3();
+            const colorObj = new THREE.Color();
+
+            // Default fallback matching metrics if explicit photo calibration stages are missing
+            const activeScale = globalScaleFactor || 1.0;
+
+            capturedPhotos.forEach((photo) => {
+                const photoScale = photo.scaleFactor || activeScale;
+                const mapW = photo.width;
+                const mapH = photo.height;
+                const depthData = photo.depthMap;
+
+                // Step allocations iterating over explicit 40x40 resolution grids
+                const stepX = mapW / GRID_RES;
+                const stepY = mapH / GRID_RES;
+
+                // Percentile Culling Boundaries Pre-checks Execution
+                const sortedDepths = [...depthData].sort((a,b) => a-b);
+                const p5Value = sortedDepths[Math.floor(sortedDepths.length * 0.05)];
+                const p95Value = sortedDepths[Math.floor(sortedDepths.length * 0.95)];
+
+                for(let gi=0; gi<GRID_RES; gi++) {
+                    for(let gj=0; gj<GRID_RES; gj++) {
+                        const u = Math.floor(gj * stepX + stepX/2);
+                        const v = Math.floor(gi * stepY + stepY/2);
+                        const idx = v * mapW + u;
+                        
+                        const Z = depthData[idx];
+                        
+                        // Execute Adaptive Percentile Boundary Culling
+                        if(Z < p5Value || Z > p95Value) continue;
+
+                        // Native Pinhole Calculation Models Configuration Passthrough
+                        localPos.x = (u / mapW - 0.5) * 2 * Z * tanFOV;
+                        localPos.y = (0.5 - v / mapH) * 2 * Z * tanFOV;
+                        localPos.z = Z;
+
+                        // Apply Metric Scaling Factors Allocation Matrix
+                        localPos.multiplyScalar(photoScale);
+
+                        // Align coordinate structures natively to Gyro Telemetry Orientation Quaternions
+                        localPos.applyQuaternion(photo.gyro);
+
+                        allPoints.push(localPos.x, localPos.y, localPos.z);
+                        
+                        // Cyberpunk hue shading gradient calculations based on vertical relative locations
+                        colorObj.setHSL(0.5, 1.0, 0.3 + (localPos.y * 0.5));
+                        allColors.push(colorObj.r, colorObj.g, colorObj.b);
+                    }
+                }
+            });
+
+            const pointCloudGeom = new THREE.BufferGeometry();
+            pointCloudGeom.setAttribute('position', new THREE.Float32BufferAttribute(allPoints, 3));
+            pointCloudGeom.setAttribute('color', new THREE.Float32BufferAttribute(allColors, 3));
+
+            const pointCloudMat = new THREE.PointsMaterial({
+                size: 0.015,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.85
+            });
+
+            unifiedPointCloudMesh = new THREE.Points(pointCloudGeom, pointCloudMat);
+            threeScene.add(unifiedPointCloudMesh);
+            
+            // Adjust scene camera positioning mechanics natively around bounding dimensions
+            pointCloudGeom.computeBoundingSphere();
+            const bSphere = pointCloudGeom.boundingSphere;
+            if(bSphere && bSphere.radius > 0) {
+                threeControls.target.copy(bSphere.center);
+                threeCamera.position.set(bSphere.center.x, bSphere.center.y, bSphere.center.z + bSphere.radius * 2.5);
+            }
+            
+            logTerminal(`SYNTHESIZED GLOBAL RECONSTRUCTION CLOUD CONTAINER. COUNT: ${allPoints.length / 3} NODES.`);
+        }
+
+        // EXTRACT PHASE: VOXEL GRID CLUSTERING & MATHEMATICAL PCA FITTING
+        async function executeAutoFitPipeline() {
+            if(opLocked || !unifiedPointCloudMesh) return;
+            try {
+                opLocked = true;
+                document.getElementById('global-status').innerText = "STATUS: CLUSTERING_DATA";
+                logTerminal("ENGAGING O(N) VOXEL FLOOD-FILL SEGMENTATION ENGINE...");
+
+                const positions = unifiedPointCloudMesh.geometry.attributes.position.array;
+                if(positions.length === 0) {
+                    alert("POINT CLOUD TRACKING SPACE IS VACANT. CAPTURE DATA SCENARIOS INITIALLY.");
+                    return;
+                }
+
+                // 1. Build Voxel Hash Index Array Map structures
+                const voxelSize = 0.04; // 40mm bounding allocation cubes tracking resolution
+                const voxelGrid = new Map();
+
+                for(let i=0; i<positions.length; i+=3) {
+                    const px = positions[i];
+                    const py = positions[i+1];
+                    const pz = positions[i+2];
+
+                    const vx = Math.floor(px / voxelSize);
+                    const vy = Math.floor(py / voxelSize);
+                    const vz = Math.floor(pz / voxelSize);
+                    const key = `${vx},${vy},${vz}`;
+
+                    if(!voxelGrid.has(key)) voxelGrid.set(key, []);
+                    voxelGrid.get(key).push(new THREE.Vector3(px, py, pz));
+                }
+
+                // 2. Linear O(N) Flood-Fill Neighbor Tracking Sequences
+                const unvisitedKeys = new Set(voxelGrid.keys());
+                const clusters = [];
+
+                const getNeighbors = (keyStr) => {
+                    const [vx, vy, vz] = keyStr.split(',').map(Number);
+                    const neighbors = [];
+                    for(let dx=-1; dx<=1; dx++) {
+                        for(let dy=-1; dy<=1; dy++) {
+                            for(let dz=-1; dz<=1; dz++) {
+                                if(dx===0 && dy===0 && dz===0) continue;
+                                const nk = `${vx+dx},${vy+dy},${vz+dz}`;
+                                if(unvisitedKeys.has(nk)) neighbors.push(nk);
+                            }
+                        }
+                    }
+                    return neighbors;
+                };
+
+                for (const startKey of unvisitedKeys) {
+                    unvisitedKeys.delete(startKey);
+                    const currentClusterPoints = [...voxelGrid.get(startKey)];
+                    
+                    const queue = [startKey];
+                    while(queue.length > 0) {
+                        const activeKey = queue.shift();
+                        const neighbors = getNeighbors(activeKey);
+                        
+                        for(const nKey of neighbors) {
+                            unvisitedKeys.delete(nKey);
+                            currentClusterPoints.push(...voxelGrid.get(nKey));
+                            queue.push(nKey);
+                        }
+                    }
+
+                    // Keep robust geometric datasets matching clear volumetric thresholds
+                    if(currentClusterPoints.length >= 25) {
+                        clusters.push(currentClusterPoints);
+                    }
+                }
+
+                logTerminal(`DISCOVERED [${clusters.length}] INDEPENDENT GEOMETRIC DENSITY CLUSTERS.`);
+                
+                // Flush previous primitive generation stacks dynamically
+                clearAllTrackingPrimitives();
+
+                // 3. Mathematical PCA Fitting & Evaluation iterations per discovered cluster
+                clusters.forEach((clusterPts, cIdx) => {
+                    fitClusterToMathematicalPrimitive(clusterPts, cIdx);
+                });
+
+                rebuildPrimitiveListUI();
+                document.getElementById('run-build-btn').disabled = (trackingPrimitives.length === 0);
+
+            } catch (err) {
+                console.error(err);
+                logTerminal(`ANOMALY COLLAPSE ENCOUNTERED DURING CLUSTERING STAGES: ${err.message}`);
+            } finally {
+                document.getElementById('global-status').innerText = "STATUS: READY_";
+                opLocked = false;
+            }
+        }
+
+        function fitClusterToMathematicalPrimitive(points, index) {
+            // Compute explicit cluster spatial centroid positioning
+            const centroid = new THREE.Vector3();
+            points.forEach(p => centroid.add(p));
+            centroid.divideScalar(points.length);
+
+            // Compute Covariance Matrix coefficients
+            let cxx=0, cyy=0, czz=0, cxy=0, cxz=0, cyz=0;
+            points.forEach(p => {
+                const dx = p.x - centroid.x;
+                const dy = p.y - centroid.y;
+                const dz = p.z - centroid.z;
+                cxx += dx*dx; cyy += dy*dy; czz += dz*dz;
+                cxy += dx*dy; cxz += dx*dz; cyz += dy*dz;
+            });
+            const normVal = points.length || 1;
+            let covMat = [
+                [cxx/normVal, cxy/normVal, cxz/normVal],
+                [cxy/normVal, cyy/normVal, cyz/normVal],
+                [cxz/normVal, cyz/normVal, czz/normVal]
+            ];
+
+            // Power Iteration Math Core Model Engine Algorithm Execution (20 cycles precision target checking)
+            const extractEigenvector = (matrix) => {
+                let v = [Math.random(), Math.random(), Math.random()];
+                // Normalize initial random orientation vector layout parameters
+                let len = Math.sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]) || 1.0;
+                v = [v[0]/len, v[1]/len, v[2]/len];
+
+                for(let iter=0; iter<20; iter++) {
+                    let w = [
+                        matrix[0][0]*v[0] + matrix[0][1]*v[1] + matrix[0][2]*v[2],
+                        matrix[1][0]*v[0] + matrix[1][1]*v[1] + matrix[1][2]*v[2],
+                        matrix[2][0]*v[0] + matrix[2][1]*v[1] + matrix[2][2]*v[2]
+                    ];
+                    let normW = Math.sqrt(w[0]*w[0] + w[1]*w[1] + w[2]*w[2]) || 1.0;
+                    v = [w[0]/normW, w[1]/normW, w[2]/normW];
+                }
+                
+                // Compute eigenvalue mapping scalar relation
+                let Av = [
+                    matrix[0][0]*v[0] + matrix[0][1]*v[1] + matrix[0][2]*v[2],
+                    matrix[1][0]*v[0] + matrix[1][1]*v[1] + matrix[1][2]*v[2],
+                    matrix[2][0]*v[0] + matrix[2][1]*v[1] + matrix[2][2]*v[2]
+                ];
+                let lambda = v[0]*Av[0] + v[1]*Av[1] + v[2]*Av[2];
+                return { vector: new THREE.Vector3(v[0], v[1], v[2]), value: lambda };
+            };
+
+            // Extract First Principal Components Coordinate Array Layer
+            const e1Result = extractEigenvector(covMat);
+            const v0 = e1Result.vector;
+            const l0 = e1Result.value;
+
+            // Matrix Deflation Core Step Execution: C' = C - λ₀(v₀⊗v₀)
+            covMat[0][0] -= l0 * (v0.x * v0.x); covMat[0][1] -= l0 * (v0.x * v0.y); covMat[0][2] -= l0 * (v0.x * v0.z);
+            covMat[1][0] -= l0 * (v0.y * v0.x); covMat[1][1] -= l0 * (v0.y * v0.y); covMat[1][2] -= l0 * (v0.y * v0.z);
+            covMat[2][0] -= l0 * (v0.z * v0.x); covMat[2][1] -= l0 * (v0.z * v0.y); covMat[2][2] -= l0 * (v0.z * v0.z);
+
+            // Extract Secondary Axis Sequence Boundary Line Properties
+            const e2Result = extractEigenvector(covMat);
+            const v1 = e2Result.vector;
+            const l1 = e2Result.value;
+
+            // Third component extracted mathematically using standard cross vector definitions
+            const v2 = new THREE.Vector3().crossVectors(v0, v1).normalize();
+            
+            // Extent bounds tracing projection evaluation mapping
+            let min0=Infinity, max0=-Infinity;
+            let min1=Infinity, max1=-Infinity;
+            let min2=Infinity, max2=-Infinity;
+
+            points.forEach(p => {
+                const diff = new THREE.Vector3().subVectors(p, centroid);
+                const proj0 = diff.dot(v0);
+                const proj1 = diff.dot(v1);
+                const proj2 = diff.dot(v2);
+
+                if(proj0 < min0) min0 = proj0; if(proj0 > max0) max0 = proj0;
+                if(proj1 < min1) min1 = proj1; if(proj1 > max1) max1 = proj1;
+                if(proj2 < min2) min2 = proj2; if(proj2 > max2) max2 = proj2;
+            });
+
+            const extent0 = max0 - min0;
+            const extent1 = max1 - min1;
+            const extent2 = max2 - min2;
+
+            // Classification matching algorithm across ratio properties checks
+            let shapeType = 'BOX';
+            const ratio1 = extent1 / extent0;
+            const ratio2 = extent2 / extent0;
+
+            if (ratio1 > 0.85 && ratio2 > 0.85) {
+                shapeType = 'SPHERE';
+            } else if (ratio1 > 0.75 && ratio2 < 0.6) {
+                shapeType = 'CYLINDER';
+            }
+
+            // Correct Adjusted Centroid calculations shifting center offsets dynamically along OBB properties boundaries
+            const adjustedCentroid = centroid.clone()
+                .addScaledVector(v0, (min0 + max0) / 2)
+                .addScaledVector(v1, (min1 + max1) / 2)
+                .addScaledVector(v2, (min2 + max2) / 2);
+
+            // Generate structural alignment transformation orientations
+            const transformMatrix = new THREE.Matrix4().makeBasis(v0, v1, v2);
+            const computedRotation = new THREE.Quaternion().setFromRotationMatrix(transformMatrix);
+
+            const assignedExtents = new THREE.Vector3(extent0, extent1, extent2);
+            
+            // Adjust primitive specifics based on unique geometric configuration definitions
+            if(shapeType === 'SPHERE') {
+                const calculatedRadius = (extent0 + extent1 + extent2) / 6; // Average radius computation bounds
+                assignedExtents.set(calculatedRadius * 2, calculatedRadius * 2, calculatedRadius * 2);
+            } else if(shapeType === 'CYLINDER') {
+                const radialRadius = (extent1 + extent2) / 4;
+                assignedExtents.set(radialRadius * 2, extent0, radialRadius * 2); // Axis 1 mapped to main direction length
+            }
+
+            instantiatePrimitiveMeshPayload(shapeType, adjustedCentroid, computedRotation, assignedExtents);
+        }
+
+        function instantiatePrimitiveMeshPayload(type, pos, rot, extents) {
+            let geom;
+            const meshColor = type === 'SPHERE' ? 0x00ffff : (type === 'BOX' ? xffb000 : 0x00ff99);
+
+            if(type === 'SPHERE') {
+                geom = new THREE.SphereGeometry(extents.x / 2, 24, 24);
+            } else if(type === 'BOX') {
+                geom = new THREE.BoxGeometry(extents.x, extents.y, extents.z);
+            } else if(type === 'CYLINDER') {
+                // Cylinders generated natively vertically along Y mapping bounds. Rotate alignment appropriately later.
+                geom = new THREE.CylinderGeometry(extents.x / 2, extents.x / 2, extents.y, 24);
+            }
+
+            const matSolid = new THREE.MeshStandardMaterial({
+                color: meshColor,
+                transparent: true,
+                opacity: 0.35,
+                roughness: 0.4,
+                metalness: 0.2
+            });
+
+            const matWire = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                wireframe: true,
+                transparent: true,
+                opacity: 0.4
+            });
+
+            const sMesh = new THREE.Mesh(geom, matSolid);
+            const wMesh = new THREE.Mesh(geom, matWire);
+
+            sMesh.position.copy(pos);
+            sMesh.quaternion.copy(rot);
+            
+            // Custom orientation adjustment for Cylinders since default three.js geometry shapes point vertically
+            if(type === 'CYLINDER') {
+                sMesh.rotateX(Math.PI / 2);
+            }
+
+            sMesh.add(wMesh);
+            threeScene.add(sMesh);
+
+            trackingPrimitives.push({
+                id: Date.now() + Math.random(),
+                type: type,
+                position: pos.clone(),
+                rotation: rot.clone(),
+                extents: extents.clone(),
+                mesh: sMesh,
+                wireframe: wMesh
+            });
+        }
+
+        function manualInjectPrimitive(type) {
+            // Evaluate centroid spatial targets natively to project manual elements into workspace sights
+            const defaultPos = new THREE.Vector3(0, 0, 0);
+            if(unifiedPointCloudMesh && unifiedPointCloudMesh.geometry.boundingSphere) {
+                defaultPos.copy(unifiedPointCloudMesh.geometry.boundingSphere.center);
+            }
+            
+            instantiatePrimitiveMeshPayload(type, defaultPos, new THREE.Quaternion(), new THREE.Vector3(0.15, 0.15, 0.15));
+            rebuildPrimitiveListUI();
+            document.getElementById('run-build-btn').disabled = false;
+            logTerminal(`MANUALLY INJECTED PRIMITIVE SHAPE SLOT: [${type}]`);
+        }
+
+        function clearAllTrackingPrimitives() {
+            trackingPrimitives.forEach(p => {
+                threeScene.remove(p.mesh);
+                p.mesh.geometry.dispose();
+                p.mesh.material.dispose();
+                p.wireframe.material.dispose();
+            });
+            trackingPrimitives = [];
+            currentSelectedPrimitive = null;
+            document.getElementById('primitive-sliders').style.display = 'none';
+        }
+
+        // INTERACTIVE PRIMITIVE SLIDERS & LIST UI INTEGRATION
+        function rebuildPrimitiveListUI() {
+            const listContainer = document.getElementById('primitive-list');
+            listContainer.innerHTML = '';
+
+            trackingPrimitives.forEach((pr, idx) => {
+                const item = document.createElement('div');
+                item.className = 'primitive-item';
+                if(currentSelectedPrimitive && currentSelectedPrimitive.id === pr.id) item.classList.add('active');
+
+                // Convert metric outputs internally to cleanly scaled millimeter dimensions for display readability
+                let dimStr = "";
+                if(pr.type === 'SPHERE') dimStr = `R:${Math.round((pr.extents.x / 2)*1000)}mm`;
+                else if(pr.type === 'CYLINDER') dimStr = `R:${Math.round((pr.extents.x / 2)*1000)} H:${Math.round(pr.extents.y*1000)}mm`;
+                else dimStr = `${Math.round(pr.extents.x*1000)}x${Math.round(pr.extents.y*1000)}x${Math.round(pr.extents.z*1000)}mm`;
+
+                item.innerHTML = `<div><strong>[${pr.type}]</strong> <span style="font-size:10px; color:#aaa;">${dimStr}</span></div>`;
+                item.onclick = () => selectActivePrimitive(pr);
+                
+                listContainer.appendChild(item);
+            });
+        }
+
+        function selectActivePrimitive(primitive) {
+            // Reset opacity weights parameters across historical array selections
+            trackingPrimitives.forEach(p => {
+                p.mesh.material.opacity = 0.35;
+                p.wireframe.material.color.setHex(0xffffff);
+                p.wireframe.material.opacity = 0.4;
+            });
+
+            currentSelectedPrimitive = primitive;
+            rebuildPrimitiveListUI();
+
+            // Set highlighted emphasis visibility transformations properties configurations
+            primitive.mesh.material.opacity = 0.55;
+            primitive.wireframe.material.color.setHex(0x00ffff);
+            primitive.wireframe.material.opacity = 0.9;
+
+            // Trigger slider controls block alignment display metrics mapping updates
+            const panel = document.getElementById('primitive-sliders');
+            panel.style.display = 'block';
+
+            updateSliderControlLimits(primitive);
+        }
+
+        function updateSliderControlLimits(pr) {
+            const s1 = document.getElementById('sl-dim1');
+            const s2 = document.getElementById('sl-dim2');
+            const s3 = document.getElementById('sl-dim3');
+
+            const l1 = document.getElementById('lbl-dim1');
+            const l2 = document.getElementById('lbl-dim2');
+            const l3 = document.getElementById('lbl-dim3');
+
+            // Map standard meter definitions cleanly to integer input sliders fields mapping mm lengths
+            if(pr.type === 'SPHERE') {
+                document.getElementById('sg-dim1').style.display = 'block';
+                document.getElementById('sg-dim2').style.display = 'none';
+                document.getElementById('sg-dim3').style.display = 'none';
+                l1.innerText = "RADIUS (mm)";
+                s1.value = Math.round((pr.extents.x / 2) * 1000);
+            } else if(pr.type === 'CYLINDER') {
+                document.getElementById('sg-dim1').style.display = 'block';
+                document.getElementById('sg-dim2').style.display = 'block';
+                document.getElementById('sg-dim3').style.display = 'none';
+                l1.innerText = "RADIUS (mm)";
+                s1.value = Math.round((pr.extents.x / 2) * 1000);
+                l2.innerText = "HEIGHT (mm)";
+                s2.value = Math.round(pr.extents.y * 1000);
+            } else {
+                document.getElementById('sg-dim1').style.display = 'block';
+                document.getElementById('sg-dim2').style.display = 'block';
+                document.getElementById('sg-dim3').style.display = 'block';
+                l1.innerText = "WIDTH X (mm)";  s1.value = Math.round(pr.extents.x * 1000);
+                l2.innerText = "HEIGHT Y (mm)"; s2.value = Math.round(pr.extents.y * 1000);
+                l3.innerText = "DEPTH Z (mm)";  s3.value = Math.round(pr.extents.z * 1000);
+            }
+        }
+
+        function setupSliderListeners() {
+            const handleSliderModification = () => {
+                if(!currentSelectedPrimitive) return;
+                const pr = currentSelectedPrimitive;
+                
+                const v1 = parseFloat(document.getElementById('sl-dim1').value) / 1000;
+                const v2 = parseFloat(document.getElementById('sl-dim2').value) / 1000;
+                const v3 = parseFloat(document.getElementById('sl-dim3').value) / 1000;
+
+                // Re-apply geometrical parameters scaling modifications natively inline onto Three targets
+                if(pr.type === 'SPHERE') {
+                    pr.extents.set(v1*2, v1*2, v1*2);
+                    pr.mesh.scale.set(v1*2 / pr.mesh.geometry.parameters.radius / 2, v1*2 / pr.mesh.geometry.parameters.radius / 2, v1*2 / pr.mesh.geometry.parameters.radius / 2);
+                } else if(pr.type === 'CYLINDER') {
+                    pr.extents.set(v1*2, v2, v1*2);
+                    // Cylinder geometry adaptation metrics
+                    pr.mesh.scale.set(v1*2 / (pr.mesh.geometry.parameters.radiusTop*2), v2 / pr.mesh.geometry.parameters.height, v1*2 / (pr.mesh.geometry.parameters.radiusBottom*2));
+                } else {
+                    pr.extents.set(v1, v2, v3);
+                    pr.mesh.scale.set(v1 / pr.mesh.geometry.parameters.width, v2 / pr.mesh.geometry.parameters.height, v3 / pr.mesh.geometry.parameters.depth);
+                }
+                
+                // Track non-blocking textual interface dynamic parameter adjustment updates
+                let labelUpdateStr = pr.type === 'SPHERE' ? `R:${Math.round(v1*1000)}mm` : (pr.type === 'CYLINDER' ? `R:${Math.round(v1*1000)} H:${Math.round(v2*1000)}mm` : `${Math.round(v1*1000)}x${Math.round(v2*1000)}x${Math.round(v3*1000)}mm`);
+                console.log(`Dynamic update: ${labelUpdateStr}`);
+            };
+
+            document.getElementById('sl-dim1').oninput = handleSliderModification;
+            document.getElementById('sl-dim2').oninput = handleSliderModification;
+            document.getElementById('sl-dim3').oninput = handleSliderModification;
+            
+            // Re-render display labels on slider release sequences
+            document.getElementById('sl-dim1').onchange = rebuildPrimitiveListUI;
+            document.getElementById('sl-dim2').onchange = rebuildPrimitiveListUI;
+            document.getElementById('sl-dim3').onchange = rebuildPrimitiveListUI;
+        }
+
+        function executeDeleteSelectedPrimitive() {
+            if(!currentSelectedPrimitive) return;
+            threeScene.remove(currentSelectedPrimitive.mesh);
+            currentSelectedPrimitive.mesh.geometry.dispose();
+            currentSelectedPrimitive.mesh.material.dispose();
+            
+            trackingPrimitives = trackingPrimitives.filter(p => p.id !== currentSelectedPrimitive.id);
+            currentSelectedPrimitive = null;
+            document.getElementById('primitive-sliders').style.display = 'none';
+            
+            rebuildPrimitiveListUI();
+            document.getElementById('run-build-btn').disabled = (trackingPrimitives.length === 0);
+            logTerminal("REMOVED GEOMETRIC PRIMITIVE OBJECT TARGET FRAME.");
+        }
+
+        // PHASE 3: SOLID ASSEMBLY VIA MANIFOLD-3D BOOLEAN UNION ENGINE
+        let compiledSolidMeshBuffer = null; // Stores extracted flat Float32 parsing array data maps safely
+
+        async function executeManifoldUnionPipeline() {
+            if(opLocked || trackingPrimitives.length === 0) return;
+            try {
+                opLocked = true;
+                document.getElementById('global-status').innerText = "STATUS: SOLVING_BOOLEANS";
+                logTerminal("ENGAGING MANIFOLD-3D EXACT SOLID MODELER ENGINE ASSEMBLY...");
+
+                // Verify if external industrial wasm library initialized smoothly
+                if(typeof Module === 'undefined' || !Module.Manifold) {
+                    logTerminal("MANIFOLD WASM NOT DETECTED. ENGAGING BASIC GEOMETRIC VISUAL VISUALIZATION SEAM FALLBACK...");
+                    executeFallbackMeshMergePipeline();
+                    return;
+                }
+
+                const { Manifold, Mesh } = Module;
+                
+                // Track historical union aggregation states sequentially
+                let trackingSolidAccumulator = null;
+
+                for(let i=0; i<trackingPrimitives.length; i++) {
+                    const pr = trackingPrimitives[i];
+                    
+                    // Force matrices validation updates locally before copying coordinate definitions
+                    pr.mesh.updateMatrixWorld(true);
+                    
+                    // Extract analytical flat mathematical definitions parsing from standard three buffer targets
+                    const tempGeom = pr.mesh.geometry.clone();
+                    tempGeom.applyMatrix4(pr.mesh.matrixWorld);
+
+                    const posAttr = tempGeom.attributes.position;
+                    const indexAttr = tempGeom.index;
+
+                    const vertBuffer = new Float32Array(posAttr.count * 3);
+                    for(let vIdx=0; vIdx<posAttr.count*3; vIdx++) vertBuffer[vIdx] = posAttr.array[vIdx];
+
+                    let triIndexBuffer;
+                    if(indexAttr) {
+                        triIndexBuffer = new Uint32Array(indexAttr.count);
+                        for(let tIdx=0; tIdx<indexAttr.count; tIdx++) triIndexBuffer[tIdx] = indexAttr.array[tIdx];
+                    } else {
+                        // Generate linear non-indexed fallback array mappings cleanly if explicitly undefined
+                        triIndexBuffer = new Uint32Array(posAttr.count);
+                        for(let tIdx=0; tIdx<posAttr.count; tIdx++) triIndexBuffer[tIdx] = tIdx;
+                    }
+
+                    // Encapsulate structural allocations securely inside native WASM container definitions
+                    const manifoldMeshInput = {
+                        numProp: 3,
+                        triVerts: triIndexBuffer,
+                        vertProperties: vertBuffer
+                    };
+
+                    const primitiveSolidInstance = Manifold(manifoldMeshInput);
+                    tempGeom.dispose();
+
+                    if(!trackingSolidAccumulator) {
+                        trackingSolidAccumulator = primitiveSolidInstance;
+                    } else {
+                        const previousAccumulatorState = trackingSolidAccumulator;
+                        trackingSolidAccumulator = Module.union(previousAccumulatorState, primitiveSolidInstance);
+                        
+                        // Explicitly purge intermediate allocation spaces to avoid webassembly heap leaks
+                        previousAccumulatorState.delete();
+                        primitiveSolidInstance.delete();
+                    }
+                    logTerminal(`[UNION ASSIMILATION STAGE] ADDED ELEMENT ELEMENT AT INDEX ENTRY MATCHES: [${i}]`);
+                }
+
+                // Extract final solid manifold mesh mapping calculations back to application storage spaces
+                const combinedMeshOutput = trackingSolidAccumulator.getMesh();
+                trackingSolidAccumulator.delete();
+
+                // Convert flat analytical data array targets directly into updated visual rendering items
+                renderFinalAssembledSolidMesh(combinedMeshOutput.vertProperties, combinedMeshOutput.triVerts);
+                document.getElementById('export-stl-btn').disabled = false;
+
+            } catch (err) {
+                console.error(err);
+                logTerminal(`UNION SOLVER COLLAPSE ENCOUNTERED: ${err.message}. REDIRECTING ENGINE FALLBACK STRUCTS.`);
+                executeFallbackMeshMergePipeline();
+            } finally {
+                document.getElementById('global-status').innerText = "STATUS: READY_";
+                opLocked = false;
+            }
+        }
+
+        function renderFinalAssembledSolidMesh(verts, tris) {
+            // Remove previous instances from current display scene
+            clearAllTrackingPrimitives();
+            if(unifiedPointCloudMesh) threeScene.remove(unifiedPointCloudMesh);
+
+            const finalGeom = new THREE.BufferGeometry();
+            finalGeom.setAttribute('position', new THREE.BufferAttribute(verts, 3));
+            finalGeom.setIndex(new THREE.BufferAttribute(tris, 1));
+            finalGeom.computeVertexNormals();
+
+            const finalMat = new THREE.MeshStandardMaterial({
+                color: 0x00ffff,
+                roughness: 0.2,
+                metalness: 0.5,
+                side: THREE.DoubleSide
+            });
+
+            const finalMesh = new THREE.Mesh(finalGeom, finalMat);
+            threeScene.add(finalMesh);
+
+            // Persist output array buffer elements references to make binary export tasks functional
+            compiledSolidMeshBuffer = { verts, tris };
+            logTerminal("WATERTIGHT MANIFOLD TARGET EXPORT ENGINE SPACE ALLOCATED SUCCESSFULLY.");
+        }
+
+        function executeFallbackMeshMergePipeline() {
+            logTerminal("RUNNING GEOMETRIC SEAM FALLBACK CONCATENATION PROCESS PACKING SEAMS...");
+            
+            // Build simple merged group tracking visualization components directly
+            const fallbackGroup = new THREE.Group();
+            
+            trackingPrimitives.forEach(pr => {
+                const cloneInstance = pr.mesh.clone();
+                // Ensure opacity values scale uniformly for visibility optimization
+                cloneInstance.material = new THREE.MeshStandardMaterial({ color: 0x00ffff, wireframe: false });
+                fallbackGroup.add(cloneInstance);
+            });
+
+            threeScene.add(fallbackGroup);
+            document.getElementById('export-stl-btn').disabled = false;
+            logTerminal("WARNING: RECONSTRUCTED MODEL CONTAINS OPEN SEAMS. NON-MANIFOLD SEAMS PRESERVED.");
+        }
+
+        // BINARY STL EXPORT COMPILATION PASS
+        function triggerSTLExport() {
+            if(!compiledSolidMeshBuffer) {
+                alert("EXECUTE PRODUCTION UNION SEAMS ASSEMBLY PRIOR TO INITIATING FILES SAVES.");
+                return;
+            }
+
+            logTerminal("COMPILING EXPORT STREAM FORMATS (BINARY STL ENGINE)...");
+            const { verts, tris } = compiledSolidMeshBuffer;
+            
+            const totalFaces = tris.length / 3;
+            const bufferSize = 84 + (totalFaces * 50);
+            const arrayBuffer = new ArrayBuffer(bufferSize);
+            const dataView = new DataView(arrayBuffer);
+
+            // 80-byte header allocation space configuration mapping
+            for(let i=0; i<80; i++) dataView.setUint8(i, 0);
+            dataView.setUint32(80, totalFaces, true);
+
+            let offset = 84;
+            for(let i=0; i<tris.length; i+=3) {
+                // Triangles face index definitions lookup tracking variables maps
+                const idx0 = tris[i] * 3;
+                const idx1 = tris[i+1] * 3;
+                const idx2 = tris[i+2] * 3;
+
+                // Extract structural vertex data configurations mapping
+                const v0 = { x: verts[idx0], y: verts[idx0+1], z: verts[idx0+2] };
+                const v1 = { x: verts[idx1], y: verts[idx1+1], z: verts[idx1+2] };
+                const v2 = { x: verts[idx2], y: verts[idx2+1], z: verts[idx2+2] };
+
+                // Compute explicit structural geometric face normal coordinates values
+                const edge1 = new THREE.Vector3(v1.x - v0.x, v1.y - v0.y, v1.z - v0.z);
+                const edge2 = new THREE.Vector3(v2.x - v0.x, v2.y - v0.y, v2.z - v0.z);
+                const faceNormal = new THREE.Vector3().crossVectors(edge1, edge2).normalize();
+
+                // Seed data configuration updates across binary streams sequentially
+                dataView.setFloat32(offset, faceNormal.x, true);
+                dataView.setFloat32(offset+4, faceNormal.y, true);
+                dataView.setFloat32(offset+8, faceNormal.z, true);
+
+                dataView.setFloat32(offset+12, v0.x, true);
+                dataView.setFloat32(offset+16, v0.y, true);
+                dataView.setFloat32(offset+20, v0.z, true);
+
+                dataView.setFloat32(offset+24, v1.x, true);
+                dataView.setFloat32(offset+28, v1.y, true);
+                dataView.setFloat32(offset+32, v1.z, true);
+
+                dataView.setFloat32(offset+36, v2.x, true);
+                dataView.setFloat32(offset+40, v2.y, true);
+                dataView.setFloat32(offset+44, v2.z, true);
+
+                dataView.setUint16(offset+48, 0, true); // Attribute byte count alignment verification spacer
+                offset += 50;
+            }
+
+            const stlBlob = new Blob([arrayBuffer], { type: 'application/octet-stream' });
+            triggerSystemDownloadLink(stlBlob, "extrapolation_model_output.stl");
+            logTerminal("STL STREAM ARCHIVE PACKAGE COMMITTED AND DOWNLOADED.");
+        }
+
+        // PROJECT PACKAGE FILE MANAGEMENT (.P3DK ZIP INTEGRATION)
+        async function triggerP3DKExport() {
+            logTerminal("CONSTRUCTING ENCAPSULATED NATIVE .P3DK SEEDED ARCHIVE MATRIX...");
+            const zipInstance = new JSZip();
+
+            // Metadata payload compilation processing loop definitions mapping data objects setup
+            const metadataPayload = {
+                globalScaleFactor: globalScaleFactor,
+                photos: capturedPhotos.map((p, idx) => ({
+                    id: p.id,
+                    index: idx,
+                    width: p.width,
+                    height: p.height,
+                    gyroQuaternion: [p.gyro.x, p.gyro.y, p.gyro.z, p.gyro.w],
+                    scaleFactor: p.scaleFactor
+                }))
+            };
+
+            zipInstance.file("project_manifest.json", JSON.stringify(metadataPayload, null, 2));
+
+            // Populate binary tracking segments inline safely within archive mapping spaces
+            capturedPhotos.forEach((photo, idx) => {
+                // Extract base64 image streams payload allocations cleanly
+                const imageBase64Data = photo.imgData.split(',')[1];
+                zipInstance.file(`capture_frame_${idx}.jpg`, imageBase64Data, { base64: true });
+                
+                // Pack float element definitions mapping array buffers data safely
+                const depthMapDataBuffer = photo.depthMap.buffer;
+                zipInstance.file(`depth_map_${idx}.bin`, depthMapDataBuffer);
+            });
+
+            try {
+                const completedZipBlob = await zipInstance.generateAsync({ type: "blob" });
+                triggerSystemDownloadLink(completedZipBlob, "session_snapshot_package.p3dk");
+                logTerminal(".P3DK SYSTEM COMPACT ARCHIVE FILE DISPATCHED.");
+            } catch (ex) {
+                console.error(ex);
+                logTerminal(`ZIP GENERATION ERROR CRASH: ${ex.message}`);
+            }
+        }
+
+        function triggerSystemDownloadLink(blobData, filename) {
+            const tempLink = document.createElement('a');
+            tempLink.href = URL.createObjectURL(blobData);
+            tempLink.download = filename;
+            document.body.appendChild(tempLink);
+            tempLink.click();
+            document.body.removeChild(tempLink);
+        }
+
+        // RESET ENGINE ENGINE CLEANUP ROUTINES
+        function resetEngineState() {
+            if(!confirm("CONFIRM TOTAL PIPELINE FLUSH? ALL NON-SAVED SCENARIOS COLLAPSE REVERSIBLY.")) return;
+            
+            logTerminal("PURGING SYSTEM MEMORY CACHE MATRIX ARTIFACTS...");
+            clearAllTrackingPrimitives();
+
+            if(unifiedPointCloudMesh) {
+                threeScene.remove(unifiedPointCloudMesh);
+                unifiedPointCloudMesh.geometry.dispose();
+                unifiedPointCloudMesh.material.dispose();
+                unifiedPointCloudMesh = null;
+            }
+
+            capturedPhotos.length = 0;
+            globalScaleFactor = null;
+            compiledSolidMeshBuffer = null;
+
+            document.getElementById('photo-strip').innerHTML = '';
+            document.getElementById('frame-counter').innerText = "CAPTURED FRAMES: 0";
+            document.getElementById('go-extract-btn').disabled = true;
+            document.getElementById('run-build-btn').disabled = true;
+            document.getElementById('export-stl-btn').disabled = true;
+
+            switchMode('CAPTURE');
+            logTerminal("RECONSTRUCTION CACHE SPACE PURGED TO BASE FACTORY CONDITION CLEAN SPECIFICATIONS.");
+        }
+    </script>
 </body>
 </html>
