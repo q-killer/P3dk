@@ -121,6 +121,7 @@ body,html{width:100%;height:100dvh;overflow:hidden;background:var(--bg);
 /* ── VIEW TOGGLES ────────────────────────────────────────────────────── */
 #viewToggles{display:flex;gap:5px;align-items:center;margin-bottom:4px;font-size:10px;color:#aaa}
 #viewToggles label{display:flex;align-items:center;gap:3px;cursor:pointer}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
 </style>
 </head>
 <body>
@@ -212,7 +213,13 @@ body,html{width:100%;height:100dvh;overflow:hidden;background:var(--bg);
       <button id="bAutoFit" class="btn am">⚡ AUTO-FIT PRIMITIVES</button>
       <button id="bAR" class="btn" style="margin-top:4px;font-size:11px">🎥 AR PREVIEW</button>
       <div class=sec>EXPORT</div>
-      <button id="bBuild" class="btn" disabled>∴ MANIFOLD UNION → STL</button>
+      <button id="bBuild" class="btn" disabled>↺ FORCE REBUILD</button>
+      <!-- Auto-build status strip -->
+      <div id="stlStrip" style="display:flex;align-items:center;gap:7px;margin-top:5px;padding:6px 8px;background:rgba(0,0,0,.35);border:1px solid rgba(0,255,255,.1);font-size:10px;min-height:28px">
+        <span id="stlDot" style="width:7px;height:7px;border-radius:50%;background:#333;flex-shrink:0;transition:background .3s"></span>
+        <span id="stlMsg" style="color:#555;flex:1">no primitives yet</span>
+        <button id="bDlSTL" class="btn go" style="margin:0;padding:3px 10px;font-size:9px;width:auto" disabled>↓ STL</button>
+      </div>
       <div id="log"></div>
       <div class=g2>
         <button id="bBack" class="btn mg" style="margin:0;font-size:10px">← BACK</button>
@@ -278,6 +285,13 @@ let primitives=[];
 let nextId=1,selPrim=null,cloudPts=null,resultVerts=null;
 const dQ=new THREE.Quaternion();
 let hasGyro=false,gyroSetup=false;
+
+// ── AUTO-BUILD STATE ──────────────────────────────────────────────────────────
+let manifoldCached=null;   // manifold-3d Manifold class, cached after first load
+let autoBuildTimer=null;   // debounce handle
+let autoBuildBusy=false;   // prevents overlapping builds
+let autoBuildGen=0;        // generation counter — stale builds are discarded
+let latestSTLVerts=null;   // most recent completed STL vertex array
 
 // ── AR PREVIEW STATE ──────────────────────────────────────────────────────────
 let arOn=false;              // AR preview active
@@ -915,27 +929,36 @@ function addPrimitive(pr){
   pr.id=nextId++;pr.enabled=true;
   pr.meshSolid=makePrimMesh(pr,false);pr.meshWire=makePrimMesh(pr,true);
   primGroup.add(pr.meshSolid);primGroup.add(pr.meshWire);
-  primitives.push(pr);renderPrimList();updateBuildBtn();}
+  primitives.push(pr);renderPrimList();updateBuildBtn();
+  scheduleAutoBuild(); // start building immediately
+}
 
 function removePrimitive(id){
   const i=primitives.findIndex(p=>p.id===id);if(i<0)return;
   const pr=primitives[i];
   [pr.meshSolid,pr.meshWire].forEach(m=>{m.geometry.dispose();m.material.dispose();primGroup.remove(m);});
   primitives.splice(i,1);if(selPrim?.id===id)selectPrim(null);
-  renderPrimList();updateBuildBtn();}
+  renderPrimList();updateBuildBtn();
+  scheduleAutoBuild(); // rebuild without deleted primitive
+}
 
 function refreshPrimMesh(pr){
   [pr.meshSolid,pr.meshWire].forEach(m=>{m.geometry.dispose();m.material.dispose();primGroup.remove(m);});
   pr.meshSolid=makePrimMesh(pr,false);pr.meshWire=makePrimMesh(pr,true);
   primGroup.add(pr.meshSolid);primGroup.add(pr.meshWire);
-  if(selPrim?.id===pr.id){pr.meshSolid.material.opacity=.52;pr.meshWire.material.color.setHex(0xffffff);}}
+  if(selPrim?.id===pr.id){pr.meshSolid.material.opacity=.52;pr.meshWire.material.color.setHex(0xffffff);}
+  scheduleAutoBuild(); // slider moved — rebuild after 350ms quiet period
+}
 
 function selectPrim(pr){
   if(selPrim){selPrim.meshSolid.material.opacity=.33;selPrim.meshWire.material.color.setHex(PCOL[selPrim.type]);}
   selPrim=pr;
   if(pr){pr.meshSolid.material.opacity=.52;pr.meshWire.material.color.setHex(0xffffff);buildParamEditor(pr);}
   else{$('primEd').style.display='none';}
-  renderPrimList();}
+  renderPrimList();
+  // Selection signals user intent — kick off build if not already running
+  if(pr)scheduleAutoBuild();
+}
 
 function renderPrimList(){
   const el=$('primList');el.innerHTML='';
@@ -1027,6 +1050,156 @@ $('cbCloud').onchange=()=>{ptGroup.visible=$('cbCloud').checked;};
 $('cbPrim').onchange=()=>{primGroup.visible=$('cbPrim').checked;};
 
 // ── MANIFOLD BUILD ────────────────────────────────────────────────────────────
+// ── AUTO-BUILD ENGINE ─────────────────────────────────────────────────────────
+// The moment any primitive is selected, added, removed, or adjusted, the STL
+// begins rebuilding in the background. The download button always holds the
+// most recently completed result. No manual "BUILD" step required.
+
+// Status strip helper
+function stlStatus(state,msg){
+  const dot=$('stlDot'),txt=$('stlMsg'),dl=$('bDlSTL');
+  const cols={idle:'#333',pending:'#ffb000',building:'#00ffff',ready:'#00ff99',error:'#f04'};
+  dot.style.background=cols[state]||'#333';
+  if(state==='building')dot.style.animation='pulse 0.8s infinite';
+  else dot.style.animation='';
+  txt.style.color=state==='ready'?'var(--g)':state==='error'?'#f04':state==='building'?'var(--c)':'#888';
+  txt.textContent=msg;
+  dl.disabled=!latestSTLVerts;}
+
+// Load manifold-3d once, cache it for all subsequent auto-builds
+async function loadManifoldCached(){
+  if(manifoldCached)return manifoldCached;
+  const mod=await import('https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js');
+  const wasm=await mod.default();wasm.setup();
+  manifoldCached=wasm.Manifold;
+  return manifoldCached;
+}
+
+// Pre-compute rotation Euler angles from THREE.js axes/quaternion.
+// Done on the main thread so the build logic stays framework-free.
+function serializePrimitive(pr){
+  const s={type:pr.type,center:[...pr.center],enabled:pr.enabled};
+  if(pr.type==='sphere'){s.radius=pr.radius;}
+  else if(pr.type==='box'){
+    s.halfExtents=[...pr.halfExtents];
+    const eu=new THREE.Euler().setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(
+        new THREE.Vector3(...pr.axes[0]),
+        new THREE.Vector3(...pr.axes[1]),
+        new THREE.Vector3(...pr.axes[2])));
+    s.rotEulerDeg=[eu.x*180/Math.PI,eu.y*180/Math.PI,eu.z*180/Math.PI];
+  }else{
+    s.radius=pr.radius;s.height=pr.height;
+    const q=new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0,1,0),
+      new THREE.Vector3(...(pr.axis||[0,1,0])).normalize());
+    const eu=new THREE.Euler().setFromQuaternion(q,'XYZ');
+    s.rotEulerDeg=[eu.x*180/Math.PI,eu.y*180/Math.PI,eu.z*180/Math.PI];
+    if(pr.type==='cone')s.isCone=true;
+  }
+  return s;
+}
+
+// Build one manifold primitive from a serialized descriptor
+function buildManifoldPrim(Manifold,s){
+  let m;
+  if(s.type==='sphere'){
+    m=new Manifold(Manifold.sphere(s.radius,48));
+  }else if(s.type==='box'){
+    m=new Manifold(Manifold.cube(s.halfExtents.map(x=>x*2),true));
+    if(s.rotEulerDeg)m=m.rotate(s.rotEulerDeg);
+  }else{
+    const rTop=s.isCone?0.001:s.radius;
+    m=new Manifold(Manifold.cylinder(s.height,s.radius,rTop,48,true));
+    if(s.rotEulerDeg)m=m.rotate(s.rotEulerDeg);
+  }
+  return m.translate(s.center);
+}
+
+// Schedule an auto-build — debounced so rapid slider changes merge into one build
+function scheduleAutoBuild(){
+  const active=primitives.filter(p=>p.enabled);
+  if(!active.length){stlStatus('idle','no primitives');$('bDlSTL').disabled=true;return;}
+  stlStatus('pending','queued…');
+  clearTimeout(autoBuildTimer);
+  autoBuildTimer=setTimeout(runAutoBuild,350); // 350ms quiet period
+}
+
+// Run the actual build — loads manifold (cached), unions all primitives, stores result
+async function runAutoBuild(){
+  const active=primitives.filter(p=>p.enabled);
+  if(!active.length)return;
+  if(autoBuildBusy){
+    // Another build is running — re-schedule for after it finishes
+    clearTimeout(autoBuildTimer);
+    autoBuildTimer=setTimeout(runAutoBuild,200);return;
+  }
+  autoBuildBusy=true;
+  const myGen=++autoBuildGen; // this build's generation ID
+  stlStatus('building',`building ${active.length} primitive${active.length>1?'s':''}…`);
+  logLine(`⚙ auto-build #${myGen}: ${active.length} primitives`);
+
+  try{
+    // Serialise on main thread (needs THREE.js) before any async yield
+    const serialised=active.map(serializePrimitive);
+    // Yield to let the UI repaint with the "building" indicator
+    await new Promise(r=>setTimeout(r,0));
+    if(myGen!==autoBuildGen){autoBuildBusy=false;return;} // superseded
+
+    const Manifold=await loadManifoldCached();
+    if(myGen!==autoBuildGen){autoBuildBusy=false;return;}
+
+    let result=null;
+    for(const s of serialised){
+      try{result=result?result.add(buildManifoldPrim(Manifold,s)):buildManifoldPrim(Manifold,s);}
+      catch(e){logLine(`  skip ${s.type}: ${e.message.slice(0,35)}`);}
+    }
+    if(!result||myGen!==autoBuildGen){autoBuildBusy=false;return;}
+
+    const mesh=result.getMesh();
+    const verts=mesh.triVerts,props=mesh.vertProperties;
+    const flat=new Float32Array(verts.length*3);
+    for(let i=0;i<verts.length;i++){const vi=verts[i]*3;flat[i*3]=props[vi];flat[i*3+1]=props[vi+1];flat[i*3+2]=props[vi+2];}
+
+    if(myGen!==autoBuildGen){autoBuildBusy=false;return;} // stale
+
+    // Commit result
+    latestSTLVerts=flat;resultVerts=flat;
+    const triCount=(flat.length/9|0).toLocaleString();
+    const sf=projectScale?.scaleFactor??1;
+
+    // Update 3D result mesh without switching phase
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(flat.slice(),3));
+    geo.computeVertexNormals();
+    resGroup.clear();
+    const mat=new THREE.MeshStandardMaterial({color:0x33ddcc,roughness:.35,metalness:.15,side:THREE.DoubleSide,transparent:true,opacity:.0});
+    const rm=new THREE.Mesh(geo,mat);resGroup.add(rm);
+    // Gentle fade-in so it doesn't flash over the AR/cloud view
+    setTimeout(()=>{mat.opacity=.0;},0);
+
+    geo.computeBoundingBox();
+    const bs=new THREE.Vector3();geo.boundingBox.getSize(bs);
+    const dimsMm=bs.toArray().map(x=>(x/sf*1000).toFixed(0)).join('×');
+
+    stlStatus('ready',`✔ ${triCount} tris · ${dimsMm}mm — ready`);
+    logLine(`  ✔ #${myGen} done — ${triCount} tris`);
+    $('bDlSTL').disabled=false;
+
+    // Flash the download button green briefly
+    const dl=$('bDlSTL');
+    dl.style.background='var(--g)';dl.style.color='#000';
+    setTimeout(()=>{dl.style.background='';dl.style.color='';},900);
+
+  }catch(e){
+    if(myGen===autoBuildGen){
+      stlStatus('error','build failed — '+e.message.slice(0,35));
+      logLine(`  ✗ #${myGen} error: ${e.message.slice(0,50)}`);
+    }
+  }
+  autoBuildBusy=false;
+}
+
 async function runBuild(){
   $('bBuild').disabled=true;$('log').textContent='';
   const active=primitives.filter(p=>p.enabled);
@@ -1142,7 +1315,8 @@ async function saveProject(){
 function newProject(){
   photos=[];primitives.slice().forEach(p=>removePrimitive(p.id));
   primitives=[];selPrim=null;projectScale=null;resultVerts=null;cloudPts=null;
-  // Reset AR preview state
+  clearTimeout(autoBuildTimer);autoBuildBusy=false;autoBuildGen++;latestSTLVerts=null;
+  stlStatus('idle','no primitives');
   if(arOn){arOn=false;$('camWrap').style.opacity='0';$('camWrap').style.zIndex='2';
     const btn=$('bAR');if(btn){btn.style.borderColor='var(--bdr)';btn.style.color='var(--c)';btn.textContent='🎥 AR PREVIEW';}}
   arRefGray=null;arRefKP=null;arRefDesc=null;arDeltaQ.identity();
@@ -1158,7 +1332,10 @@ $('bProcess').onclick=()=>goPhase2();
 $('bTabCap').onclick=()=>goPhase1();
 $('bTabExt').onclick=()=>{if(photos.length>=2)goPhase2();else toast('Need 2+ photos first');};
 $('bBack').onclick=()=>goPhase1();
-$('bBuild').onclick=()=>runBuild();
+$('bBuild').onclick=()=>{
+  // Force rebuild — bypasses debounce, runs immediately
+  clearTimeout(autoBuildTimer);runAutoBuild();};
+$('bDlSTL').onclick=()=>{if(latestSTLVerts)dlSTL(latestSTLVerts);else toast('No STL ready yet');};
 $('bNew').onclick=()=>newProject();
 // Save project (shown in build panel)
 document.addEventListener('keydown',e=>{if(e.key==='s'&&(e.ctrlKey||e.metaKey)){e.preventDefault();saveProject();}});
