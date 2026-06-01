@@ -3,7 +3,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<title>P3dK Metaball Scanner v11.1</title>
+<title>P3dK WebXR Native Scanner</title>
+<!-- Safe Global CDN Dependencies (No modular bare-specifier import risks) -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/MarchingCubes.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
@@ -20,8 +21,8 @@ body { background:#030712; color:#0ff; font-family:'Courier New',monospace; widt
 #hud-root * { pointer-events:auto; }
 #vid { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; opacity:0.85; }
 #hud { position:absolute; inset:0; z-index:2; pointer-events:none; }
-#inset { position:absolute; bottom:110px; right:12px; width:160px; height:160px; border:1.5px solid rgba(0,255,255,.4); z-index:10; background:#030712; transition:all 0.5s ease; }
-#inset.fullscreen { bottom:0; right:0; width:100vw; height:100vh; border:none; z-index:40; }
+#inset { position:absolute; inset:0; width:100vw; height:100dvh; z-index:5; background:transparent; pointer-events:none; transition:all 0.5s ease; }
+#inset.fullscreen { background:#020617; pointer-events:auto; z-index:40; }
 #top, #bot { position:absolute; left:0; right:0; z-index:20; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px 12px; }
 #top { top:0; display:flex; justify-content:space-between; align-items:center; }
 #bot { bottom:0; padding:10px 12px 16px; }
@@ -33,11 +34,10 @@ body { background:#030712; color:#0ff; font-family:'Courier New',monospace; widt
 .btn.go { border-color:#0f9; color:#0f9; }
 .btn.go2 { border-color:#ffb000; color:#ffb000; }
 .btn.go3 { border-color:#ff00ff; color:#ff00ff; }
-.dot { width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,255,255,.3); background:rgba(0,0,0,.5); }
+.dot { width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,255,255,.3); background:rgba(0,0,0,.5); transition: background-color 0.3s; }
 .dot.active { background:#0ff; box-shadow:0 0 8px #0ff; transform:scale(1.2); }
 .slider-group { width:100%; max-width:320px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#888; }
 .slider-group input { width:60%; accent-color:#0f9; }
-#stats { position:fixed; top:50px; left:12px; z-index:30; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px; font-size:10px; display:flex; flex-direction:column; gap:4px; pointer-events:none; }
 #toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0f9; color:#000; padding:12px 24px; font-weight:bold; border-radius:3px; z-index:120; box-shadow:0 0 15px rgba(16,185,129,0.5); opacity:0; pointer-events:none; transition:opacity 0.3s, transform 0.3s; text-align:center; max-width:90vw; }
 #toast.show { opacity:1; transform:translate(-50%, -10px); }
 .loader-text { animation: pulse 1.5s infinite; }
@@ -47,7 +47,7 @@ body { background:#030712; color:#0ff; font-family:'Courier New',monospace; widt
 <script>
 window.addEventListener('error', function(e) {
     const bs = document.getElementById('bs');
-    if (bs) { bs.innerText = "CRITICAL BOOT ERROR: " + (e.message || "Failed to parse system library"); bs.style.color = '#f55'; }
+    if (bs) { bs.innerText = "CRITICAL BOOT ERROR: " + (e.message || "Module failed"); bs.style.color = '#f55'; }
 });
 </script>
 </head>
@@ -67,13 +67,13 @@ window.addEventListener('error', function(e) {
 
     <div id="bot">
         <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:10px;">
-            <div id="legacy-ui">
-                <div style="font-size:9px; color:#888; margin-bottom:4px;">SECTORS</div>
+            <div>
+                <div style="font-size:9px; color:#888; margin-bottom:4px;">ANGULAR COVERAGE</div>
                 <div id="sectors" style="display:flex;gap:6px;"></div>
             </div>
             <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end;">
-                <div id="cc" style="font-size:16px; font-weight:bold;">0 FRAMES</div>
-                <label style="font-size:9px; color:#888; cursor:pointer; margin-top:4px;"><input type="checkbox" id="chk-tt" checked> TURNTABLE MODE</label>
+                <div id="cc" style="font-size:16px; font-weight:bold;">0 PHOTOS</div>
+                <label id="lbl-tt" style="font-size:9px; color:#888; cursor:pointer; margin-top:4px;"><input type="checkbox" id="chk-tt" checked> TURNTABLE MODE</label>
                 <label style="font-size:9px; color:#888; cursor:pointer; margin-top:2px;"><input type="checkbox" id="chk-sym" checked> SYMMETRY FILL</label>
             </div>
         </div>
@@ -126,13 +126,12 @@ window.addEventListener('error', function(e) {
 <script type="module">
 import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0';
 
-// OPTIMIZATION: Reduced point sampling resolution (RES = 24 instead of 45) to cut math iterations by 3.2x
 const MAX_P = 16, RES = 24, V_SZ = 0.015, R2D = 180 / Math.PI, tanH = Math.tan(Math.PI / 6);
 const $ = id => document.getElementById(id), lC = m => $('clg').innerText = m;
 const showToast = msg => { const t=$('toast'); if(!t)return; t.innerText=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4500); };
 const yieldLoop = () => new Promise(r => setTimeout(r, 0)); 
 
-const state = { mode: '', pipe:null, rmbg:null, pht:[], rawPts:[], dsPts:[], spatialHash:new Map(), cR:new THREE.Quaternion(), lQ:null, sQ:null, aV:0, lCap:0, lck:false, wMesh:null, scan:false, vw:640, vh:480, scaleFactor:1, mnX:0, mnY:0, mnZ:0, lastCamPos: null };
+const state = { mode: '', pipe:null, rmbg:null, pht:[], rawPts:[], dsPts:[], spatialHash:new Map(), cR:new THREE.Quaternion(), lQ:null, sQ:null, aV:0, lCap:0, lck:false, wMesh:null, scan:false, vw:640, vh:480, scaleFactor:1, mnX:0, mnY:0, mnZ:0, lastCamPos: null, centroid: new THREE.Vector3(0,0,0) };
 
 let iScn, iCam, iRnd, iCtl, hCtx, ManifoldClass = null, livePointsGroup;
 const dCtx = document.createElement('canvas').getContext('2d', {willReadFrequently:true}); dCtx.canvas.width = dCtx.canvas.height = 128;
@@ -157,11 +156,13 @@ function initThreeJS() {
     iRnd = new THREE.WebGLRenderer({ antialias:true, alpha:true }); 
     iRnd.setSize(window.innerWidth, window.innerHeight); 
     
+    // Transparent Viewport Overlay during active capture
+    const insetDiv = $('inset');
     iRnd.domElement.style.position = 'absolute';
     iRnd.domElement.style.inset = '0';
-    iRnd.domElement.style.zIndex = '5';
-    iRnd.domElement.style.pointerEvents = 'none'; 
-    document.body.appendChild(iRnd.domElement);
+    iRnd.domElement.style.width = '100%';
+    iRnd.domElement.style.height = '100%';
+    insetDiv.appendChild(iRnd.domElement);
 
     iRnd.toneMapping = THREE.ACESFilmicToneMapping; iRnd.outputEncoding = THREE.sRGBEncoding;
     const pmrem = new THREE.PMREMGenerator(iRnd); iScn.environment = pmrem.fromScene(new THREE.Scene(), 0.04).texture;
@@ -250,7 +251,7 @@ function renderXRLoop(time, frame) {
     const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
     const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
 
-    // OPTIMIZATION: Reduced the 6DoF capture translation delta threshold (from 8cm to 3cm) for quick continuous capture
+    // Capture translation delta threshold
     const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
     if (!state.lastCamPos) state.lastCamPos = camPos.clone();
     
@@ -258,29 +259,67 @@ function renderXRLoop(time, frame) {
         state.lastCamPos.copy(camPos);
         const depthInfo = frame.getDepthInformation(view);
         if (depthInfo) {
-            accumulateDepthFrame(depthInfo, camMatrix, invProj);
-            state.pht.push({ pq: camMatrix }); 
-            $('cc').innerText = `${state.pht.length} FRAMES`;
-            if (state.pht.length >= 100) finalize(); // Cap dense cloud
+            accumulateDepthFrame(depthInfo, camMatrix, invProj, view);
+            
+            // Safe variable type preservation (Quaternions used, no matrix pollution)
+            const rotQ = new THREE.Quaternion().setFromRotationMatrix(camMatrix);
+            state.pht.push({ pq: [rotQ.x, rotQ.y, rotQ.z, rotQ.w], pos: [camPos.x, camPos.y, camPos.z] }); 
+            
+            // Dynamic Centennial Sector Calculation
+            updateCentroidSectors(camPos);
+            
+            $('cc').innerText = `${state.pht.length} PHOTOS`;
+            if (state.pht.length >= 100) finalize(); 
         }
     }
     
     iRnd.render(iScn, iCam); 
 }
 
-function accumulateDepthFrame(depth, camMatrix, invProj) {
-    // OPTIMIZATION: Step changed to 0.04 (downsampled grid) to speed up math, but capturing at high frequency
+function updateCentroidSectors(camPos) {
+    if (state.rawPts.length < 10) return;
+    
+    // Calculate running target center of mass
+    let sumX=0, sumY=0, sumZ=0;
+    const step = Math.max(1, Math.floor(state.rawPts.length / 50));
+    let sampleCount = 0;
+    for (let i = 0; i < state.rawPts.length; i += step) {
+        sumX += state.rawPts[i].x; sumY += state.rawPts[i].y; sumZ += state.rawPts[i].z;
+        sampleCount++;
+    }
+    state.centroid.set(sumX/sampleCount, sumY/sampleCount, sumZ/sampleCount);
+    
+    // Compute current viewing vector relative to tracked center
+    const viewDir = new THREE.Vector3().copy(camPos).sub(state.centroid).normalize();
+    const yaw = Math.atan2(viewDir.x, viewDir.z); // Horizontal angle in radians
+    const sectorIndex = Math.floor((((yaw * R2D) + 360) % 360) / 45) % 8;
+    
+    const dot = $(`s${sectorIndex}`);
+    if (dot) dot.classList.add('active');
+}
+
+function accumulateDepthFrame(depth, camMatrix, invProj, view) {
     const STEP = 0.04; 
     const addedPoints = [];
+    const proj = view.projectionMatrix;
+    const p00 = proj[0];
+    const p11 = proj[5];
+    const p20 = proj[8];
+    const p21 = proj[9];
+
     for (let ny = 0; ny < 1; ny += STEP) {
         for (let nx = 0; nx < 1; nx += STEP) {
             const d = depth.getDepthInMeters(nx, ny);  
             if (!d || d < 0.1 || d > 1.2) continue; 
             
-            const ndc = new THREE.Vector3(nx*2-1, (1-ny)*2-1, 0.5);
-            const ray = ndc.clone().applyMatrix4(invProj);
-            ray.divideScalar(ray.z === 0 ? 1 : -ray.z);  
-            const viewPt = ray.multiplyScalar(d);          
+            const x_ndc = nx * 2 - 1;
+            const y_ndc = (1 - ny) * 2 - 1;
+
+            const z_view = -d;
+            const x_view = (x_ndc - p20) * d / p00;
+            const y_view = (y_ndc - p21) * d / p11;
+
+            const viewPt = new THREE.Vector3(x_view, y_view, z_view);
             const world = viewPt.applyMatrix4(camMatrix);
             
             const normDist = Math.max(0, Math.min(1, (d - 0.1) / 1.1));
@@ -332,12 +371,7 @@ function bootLegacy() {
 async function loadAIEngine() {
     $('bs').innerText = 'STARTING COMPILER...';
     try {
-        const pCb = p => { 
-            if(p.status==='progress') { 
-                $('bp').style.width=Math.round(p.progress)+'%'; 
-                $('bs').innerText=`LOADING AI... ${(p.loaded/(1024**2)).toFixed(1)}MB`; 
-            } 
-        };
+        const pCb = p => { if(p.status==='progress') { $('bp').style.width=Math.round(p.progress)+'%'; $('bs').innerText=`LOADING AI... ${(p.loaded/(1024**2)).toFixed(1)}MB`; } };
         const optsGPU = { device: 'webgpu', dtype: 'fp16', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
         const optsRmbgGPU = { device: 'webgpu', dtype: 'q8', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
         const optsCPU = { progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
@@ -396,7 +430,6 @@ function evalQuality() {
 }
 
 function captureGate() {
-    // OPTIMIZATION: Reduced loop-hold delay from 1400ms to 400ms for fast sequential captures
     if(!state.scan||state.lck||performance.now()-state.lCap<400||state.quality<58 || state.mode !== 'gyro-da2') return;
     if(state.aV>0.12) return lC("STABILIZE...");
     if(state.pht.length>=MAX_P) {
@@ -422,7 +455,6 @@ function smoothDepthMap(raw, W, H) {
 async function doCaptureLegacy() {
     state.lck=true; state.lCap=performance.now(); lC("CAPTURING..."); navigator.vibrate?.([35]);
     
-    // OPTIMIZATION: Shrunk crop resolution to 256px. Cuts neural inference cost by 400%!
     const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=256;
     sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 256, 256); 
     
@@ -458,7 +490,6 @@ async function doCaptureLegacy() {
     state.pht.push({ depth, aMask, dW:res.predicted_depth.width, dH:res.predicted_depth.height, pq, rgb, isT:(chkT && chkT.checked) });
     let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
     
-    // Low-density preview projection
     const pts=[], cols=[], q=new THREE.Quaternion(...pq);
     for(let y=0; y<RES; y++) {
         for(let x=0; x<RES; x++) {
@@ -484,6 +515,11 @@ async function doCaptureLegacy() {
         $('btn-finalize').style.display = 'block';
     }
 
+    // Highlight sector dots based on legacy virtual turntable angle rotation
+    const sectorIndex = Math.floor((((state.pht.length * 45) + 360) % 360) / 45) % 8;
+    const lDot = $(`s${sectorIndex}`);
+    if (lDot) lDot.classList.add('active');
+
     state.lck=false;
 }
 
@@ -502,8 +538,13 @@ $('btn-manual-capture').onclick = () => {
                 const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
                 const depthInfo = frame.getDepthInformation(view);
                 if (depthInfo) {
-                    accumulateDepthFrame(depthInfo, camMatrix, invProj);
-                    state.pht.push({ pq: camMatrix });
+                    accumulateDepthFrame(depthInfo, camMatrix, invProj, view);
+                    
+                    const rotQ = new THREE.Quaternion().setFromRotationMatrix(camMatrix);
+                    const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
+                    state.pht.push({ pq: [rotQ.x, rotQ.y, rotQ.z, rotQ.w], pos: [camPos.x, camPos.y, camPos.z] });
+                    updateCentroidSectors(camPos);
+                    
                     $('cc').innerText = `${state.pht.length} FRAMES`;
                     if (state.pht.length >= 3) $('btn-finalize').style.display = 'block';
                 }
@@ -542,6 +583,14 @@ async function finalize() {
     
     $('btn-manual-capture').style.display = 'none';
     $('btn-finalize').style.display = 'none';
+    
+    // Clear transparent overlays and display completed mesh on dark background
+    livePointsGroup.clear();
+    const vid = $('vid'); if(vid) vid.style.display = 'none';
+    const hd = $('hud'); if(hd) hd.style.display = 'none';
+    
+    // Transition viewport to solid inspector state
+    $('inset').classList.add('fullscreen'); 
     iRnd.domElement.style.pointerEvents = 'auto'; 
     iCtl.enabled = true;
 
@@ -549,8 +598,10 @@ async function finalize() {
     
     await yieldLoop();
 
+    // Re-pack legacy points into global point cache state safely
     if (state.mode === 'gyro-da2') {
-        const rawPts=[]; let allD=[];
+        const legacyPts=[]; 
+        let allD=[];
         state.pht.forEach(ph=>{for(let i=0;i<ph.depth.length;i+=100)if(Number.isFinite(ph.depth[i]))allD.push(ph.depth[i]);});
         const medZ = allD.sort((a,b)=>a-b)[Math.floor(allD.length/2)] || 0.35, sF = 0.35/medZ; state.scaleFactor = sF;
 
@@ -571,11 +622,13 @@ async function finalize() {
                         const dy = ph.depth[(v+1)*ph.dW + u] - ph.depth[(v-1)*ph.dW + u];
                         grad = Math.hypot(dx, dy);
                     }
+                    pt.col = new THREE.Color(ph.rgb[(v*ph.dW+u)*4]/255, ph.rgb[(v*ph.dW+u)*4+1]/255, ph.rgb[(v*ph.dW+u)*4+2]/255);
                     pt.conf = Math.max(0.2, Math.min(1.0, 1.0 - (grad * 10)));
-                    if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) state.rawPts.push(pt);
+                    if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) legacyPts.push(pt);
                 }
             }
         }
+        state.rawPts = legacyPts;
     }
     
     const rPts = state.rawPts;
@@ -709,6 +762,7 @@ async function buildWatertightMesh() {
             col[i] = (sumR/totalW/255)*aoCoeff; col[i+1] = (sumG/totalW/255)*aoCoeff; col[i+2] = (sumB/totalW/255)*aoCoeff;
         }
     } else {
+        // BUG 1 RESOLVED: Map point colors onto vertices via high-speed voxel map search
         for(let i=0; i<pos.length; i+=3) {
             if(i%3000===0) await yieldLoop(); 
             const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
@@ -729,10 +783,6 @@ async function buildWatertightMesh() {
     }
     
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-
-    livePointsGroup.clear();
-    const vid = $('vid'); if(vid) vid.style.display = 'none';
-    const hd = $('hud'); if(hd) hd.style.display = 'none';
 
     iScn.children.filter(c=>c.isMesh).forEach(m=>{m.geometry.dispose();m.material.dispose();iScn.remove(m);});
     state.wMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, metalness:0.12, roughness:0.58, envMapIntensity:1.0 })); 
@@ -806,7 +856,6 @@ if($('dl-glb')) {
 }
 
 if($('rs')) $('rs').onclick = () => location.reload();
-window.onload = boot;
 </script>
 </body>
 </html>
