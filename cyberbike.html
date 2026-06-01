@@ -167,7 +167,830 @@
         }
         #trip-btn:active { background: var(--primary); color: #fff; }
         #trip-btn.dimmed { opacity: 0.15; border-color: transparent; box-shadow: none; }
-        #trip-btn.dimmed:hover { opacity: 1; border-
+        #trip-btn.dimmed:hover { opacity: 1; border-color: var(--danger); color: var(--danger); }
+
+        .clickable { cursor: pointer; pointer-events: auto; }
+        .nav-color { color: var(--nav); }
+
+        /* Modals */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
+        .modal-content { background: var(--modal-bg); border: 2px solid var(--primary); border-radius: 15px; padding: 20px; width: 80%; max-height: 80%; overflow-y: auto; text-align: left; box-shadow: 0 10px 40px rgba(0,0,0,0.4); pointer-events: auto; }
+        .modal-content h3 { text-align: center; margin-top: 0; letter-spacing: 2px; color: var(--secondary); font-weight: 900; }
+        .dest-item { padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .dest-item:hover { background: rgba(128,128,128,0.1); }
+        .dest-name { font-weight: 900; font-size: 14px; color: var(--primary); }
+        .dest-dist { font-size: 12px; color: var(--secondary); font-weight: 900; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 12px; color: var(--primary); font-weight: 900; margin-bottom: 5px; }
+        .input-group input { width: 100%; padding: 10px; background: transparent; border: 1px solid var(--secondary); color: var(--primary); font-family: inherit; font-size: 16px; font-weight: 900; border-radius: 5px; box-sizing: border-box; }
+        .modal-close { display: block; margin: 20px auto 0 auto; background: transparent; border: 2px solid var(--danger); color: var(--danger); padding: 10px 20px; font-weight: 900; cursor: pointer; border-radius: 8px; font-family: inherit; text-transform: uppercase; width: 100%; }
+
+        @keyframes flashWarning { 0%, 100% { fill: var(--danger); color: var(--danger); opacity: 1; } 50% { fill: #fff; color: #fff; opacity: 0.5; } }
+        .alert-flash { animation: flashWarning 0.5s infinite; font-weight: 900; text-shadow: 0 0 10px var(--danger); }
+        .up-green { color: var(--nav); } .down-red { color: var(--danger); }
+    </style>
+</head>
+<body>
+
+    <div id="hud-wrapper">
+        <div id="hud-pod">
+            
+            <canvas id="vector-canvas"></canvas>
+
+            <div class="float-ctrl" onclick="UX.toggleFullscreen()" title="Toggle Fullscreen">[ ⛶ ]</div>
+
+            <div class="overlay top-hdg"><span id="heading">000</span>°</div>
+
+            <!-- Left Side: Altitude & Fuel -->
+            <div class="overlay left-avionics">
+                <div class="lbl" style="margin-top:0;">⛰️ ALT</div>
+                <div class="val"><span id="altitude">0</span><span class="unit">FT</span></div>
+                <div class="sub-val" id="vsi">0 FPM</div>
+
+                <div class="lbl clickable" onclick="Avionics.openFuel()" style="text-decoration: underline dotted; text-underline-offset: 2px;">⛽ FUEL</div>
+                <div class="val"><span id="fuel-rem">5.0</span><span class="unit">G</span></div>
+                <div class="sub-val" id="time-rem">TTE: 2:30</div>
+            </div>
+
+            <!-- Right Side: Speed, Distance, Time, Nav Targeting -->
+            <div class="overlay right-stats">
+                <div class="speed-value" id="speed">0</div>
+                <div class="speed-unit">MPH</div>
+
+                <div class="lbl">📏 DIST</div>
+                <div class="val"><span id="distance">0.0</span><span class="unit">MI</span></div>
+
+                <div class="lbl">⏱️ TIME</div>
+                <div class="val" id="trip-time">00:00</div>
+
+                <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="text-decoration: underline dotted; text-underline-offset: 2px; margin-top: 6px;">🎯 WPT</div>
+                <div class="val clickable nav-color" onclick="Avionics.openDest()" style="margin: 0;"><span id="dest-id">NONE</span></div>
+                <div class="sub-val nav-color" id="dest-eta" style="line-height: 1.0;">-- MI | ETA --:--</div>
+            </div>
+
+            <svg id="svg-bezel">
+                <defs>
+                    <path id="top-curve"    d="M 19 160 A 141 141 0 0 1 301 160" />
+                    <path id="bottom-curve" d="M 7 160 A 153 153 0 0 0 313 160" />
+                    <filter id="svg-halo">
+                        <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="var(--halo)"/>
+                        <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="var(--halo)"/>
+                    </filter>
+                </defs>
+                <text font-family="var(--font-main)" font-size="12" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
+                    <textPath href="#top-curve"    startOffset="26%" text-anchor="middle" id="svg-ats"   fill="var(--secondary)">✈️ OFF</textPath>
+                    <textPath href="#top-curve"    startOffset="74%" text-anchor="middle" id="svg-craft" fill="var(--secondary)">[ 🛩️ C182 ]</textPath>
+                    <!-- Bottom GPS text -->
+                    <textPath href="#bottom-curve" startOffset="28%" text-anchor="middle" id="svg-gps"   fill="var(--secondary)">🛰️ SRCH</textPath>
+                    <textPath href="#bottom-curve" startOffset="50%" text-anchor="middle" id="svg-wx"    fill="var(--secondary)">☁️ WX SCAN</textPath>
+                </text>
+            </svg>
+
+            <!-- Transparent Hit-Zones -->
+            <button id="craft-btn" onclick="Avionics.toggleCraft()" title="Toggle Craft Mode"></button>
+            <button id="wx-btn" onclick="Avionics.cycleTheme()" title="Toggle Day/Night Theme"></button>
+            <!-- GPS Simulator Toggle Hit-Zone -->
+            <button id="gps-btn" onclick="Simulator.toggle()" title="Toggle Live Simulation"></button>
+
+            <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="dest-modal" class="modal">
+        <div class="modal-content">
+            <h3>🎯 WAYPOINT</h3>
+            <div id="dest-list">Scanning airspace...</div>
+            <button class="modal-close" onclick="document.getElementById('dest-modal').style.display='none'">CANCEL</button>
+        </div>
+    </div>
+
+    <div id="fuel-modal" class="modal">
+        <div class="modal-content">
+            <h3>⛽ FUEL CALIBRATION</h3>
+            <div class="input-group">
+                <label>TANK CAPACITY (GAL)</label>
+                <input type="number" id="input-fuel-cap" step="0.5" value="5.0">
+            </div>
+            <div class="input-group">
+                <label>EST. BURN RATE (GPH)</label>
+                <input type="number" id="input-burn-rate" step="0.1" value="2.0">
+            </div>
+            <button class="modal-close" onclick="Avionics.saveFuel()" style="border-color: var(--nav); color: var(--nav);">SAVE & CALIBRATE</button>
+            <button class="modal-close" onclick="document.getElementById('fuel-modal').style.display='none'">CANCEL</button>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * CYBERBIKE AERO MATRIX - COMPLETE ENGINE W/ LIVE SIMULATOR
+         */
+
+        const CFG = { RADAR_RANGE_MILES: 15, AUTO_START_MPH: 5.0, FILTER_FACTOR: 0.15, EARTH_RADIUS: 3958.8, TO_RAD: Math.PI / 180, MAX_G: 2.0 };
+
+        const STATE = {
+            active: false, craftMode: 0, 
+            baseTheme: "", themeOverride: "auto", 
+            lat: null, lon: null, hdg: 0, altFt: 0, spdMph: 0,
+            lastLat: null, lastLon: null, lastAltFt: 0, lastTs: 0,
+            apiLat: null, apiLon: null, apiTime: 0, lastTemp: null,
+            dist: 0, startTs: 0, moveCount: 0, fuelCap: 5.0, burnRate: 2.0,
+            airports: [], traffic: [], obstacles: [], activeDest: null,
+            windSpeed: 0, windDir: 0, gX: 0, gY: 0, leanAngle: 0, pitchAngle: 0, gridScroll: 0, tcasAudioPlayed: false,
+            isFullscreen: false, w: 320, h: 320, cx: 160, cy: 160, r: 155
+        };
+
+        let watchId = null; let trafficInterval = null;
+
+        const UX = {
+            wrapper: document.getElementById('hud-wrapper'),
+            isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0, lastTap: 0,
+
+            initDrag: function() {
+                this.wrapper.addEventListener('mousedown', this.dragStart.bind(this), {passive: false});
+                document.addEventListener('mousemove', this.drag.bind(this), {passive: false});
+                document.addEventListener('mouseup', this.dragEnd.bind(this));
+                
+                this.wrapper.addEventListener('touchstart', this.dragStart.bind(this), {passive: false});
+                document.addEventListener('touchmove', this.drag.bind(this), {passive: false});
+                document.addEventListener('touchend', this.dragEnd.bind(this));
+            },
+            dragStart: function(e) {
+                if (e.target.tagName.toLowerCase() === 'button' || e.target.classList.contains('clickable') || e.target.tagName.toLowerCase() === 'input') return;
+                
+                // Native double-tap logic (bypasses Android WebView zooming restrictions)
+                const now = Date.now();
+                if (now - this.lastTap < 300) { this.toggleFullscreen(); this.lastTap = 0; return; }
+                this.lastTap = now;
+
+                this.isDragging = true;
+                if (e.type === 'touchstart') { this.startX = e.touches[0].clientX - this.initialX; this.startY = e.touches[0].clientY - this.initialY; } 
+                else { this.startX = e.clientX - this.initialX; this.startY = e.clientY - this.initialY; }
+            },
+            drag: function(e) {
+                if (!this.isDragging || STATE.isFullscreen) return;
+                e.preventDefault();
+                if (e.type === 'touchmove') { this.initialX = e.touches[0].clientX - this.startX; this.initialY = e.touches[0].clientY - this.startY; } 
+                else { this.initialX = e.clientX - this.startX; this.initialY = e.clientY - this.startY; }
+                this.wrapper.style.transform = `translate(${this.initialX}px, ${this.initialY}px)`;
+            },
+            dragEnd: function(e) { this.isDragging = false; },
+            
+            toggleFullscreen: function() {
+                if (!STATE.isFullscreen) {
+                    STATE.isFullscreen = true;
+                    // Attempt native fullscreen, gracefully catch strict OS denials
+                    try { const fsPromise = document.documentElement.requestFullscreen(); if(fsPromise) fsPromise.catch(e => {}); } catch (err) {}
+                } else {
+                    STATE.isFullscreen = false;
+                    try { if (document.fullscreenElement && document.exitFullscreen) { const xPromise = document.exitFullscreen(); if(xPromise) xPromise.catch(e => {}); } } catch (err) {}
+                }
+                UX.handleResize();
+            },
+            
+            handleResize: function() {
+                const pod = document.getElementById('hud-pod');
+                const canvas = document.getElementById('vector-canvas');
+                const svg = document.getElementById('svg-bezel');
+                const dpr = window.devicePixelRatio || 1;
+
+                if (STATE.isFullscreen || document.fullscreenElement) {
+                    STATE.w = window.innerWidth;
+                    STATE.h = window.innerHeight;
+                    STATE.cx = STATE.w / 2;
+                    STATE.cy = STATE.h / 2;
+                    STATE.r = Math.min(STATE.w, STATE.h) / 2 - 10; 
+                    
+                    UX.wrapper.classList.add('fullscreen-mode');
+                    pod.style.width = STATE.w + 'px';
+                    pod.style.height = STATE.h + 'px';
+                    pod.style.borderRadius = '0%';
+                    pod.style.borderWidth = '0px';
+                } else {
+                    STATE.w = 320; STATE.h = 320; STATE.cx = 160; STATE.cy = 160; STATE.r = 155;
+                    
+                    UX.wrapper.classList.remove('fullscreen-mode');
+                    UX.wrapper.style.transform = `translate(${UX.initialX}px, ${UX.initialY}px)`;
+                    pod.style.width = '320px'; pod.style.height = '320px';
+                    pod.style.borderRadius = '50%'; pod.style.borderWidth = '2px';
+                }
+                
+                // Scale Canvas mathematically for High-DPI Sharpness without blur
+                canvas.width = STATE.w * dpr;
+                canvas.height = STATE.h * dpr;
+                canvas.style.width = STATE.w + 'px'; 
+                canvas.style.height = STATE.h + 'px';
+                Graphics.ctx.setTransform(1, 0, 0, 1, 0, 0); 
+                Graphics.ctx.scale(dpr, dpr);
+
+                // Morph the SVG paths to precisely fit the new dimensions
+                svg.setAttribute('width', STATE.w);
+                svg.setAttribute('height', STATE.h);
+                
+                const rTop = STATE.r - 14; const rBot = STATE.r - 2;
+                document.getElementById('top-curve').setAttribute('d', `M ${STATE.cx - rTop} ${STATE.cy} A ${rTop} ${rTop} 0 0 1 ${STATE.cx + rTop} ${STATE.cy}`);
+                document.getElementById('bottom-curve').setAttribute('d', `M ${STATE.cx - rBot} ${STATE.cy} A ${rBot} ${rBot} 0 0 0 ${STATE.cx + rBot} ${STATE.cy}`);
+
+                // Realocate the transparent touch zones dynamically over the text
+                const craftBtn = document.getElementById('craft-btn');
+                let angleCraft = (1 - 0.74) * Math.PI; // 74% offset on 180deg arc
+                craftBtn.style.left = (STATE.cx + Math.cos(angleCraft) * rTop - 35) + 'px';
+                craftBtn.style.top = (STATE.cy - Math.sin(angleCraft) * rTop - 25) + 'px';
+                
+                const wxBtn = document.getElementById('wx-btn');
+                wxBtn.style.left = (STATE.cx - 60) + 'px';
+                wxBtn.style.top = (STATE.cy + rBot - 20) + 'px';
+
+                const gpsBtn = document.getElementById('gps-btn');
+                let angleGps = (1 - 0.28) * Math.PI; // 28% offset
+                gpsBtn.style.left = (STATE.cx - Math.cos(angleGps) * rBot - 35) + 'px';
+                gpsBtn.style.top = (STATE.cy + Math.sin(angleGps) * rBot - 25) + 'px';
+
+                if (!STATE.active) Graphics.renderHUD(); 
+            }
+        };
+
+        const MathUtils = {
+            getDistAndBearing: function(lat1, lon1, lat2, lon2) {
+                const dLat = (lat2 - lat1) * CFG.TO_RAD, dLon = (lon2 - lon1) * CFG.TO_RAD;
+                const rLat1 = lat1 * CFG.TO_RAD, rLat2 = lat2 * CFG.TO_RAD;
+                const a = Math.pow(Math.sin(dLat/2), 2) + Math.cos(rLat1) * Math.cos(rLat2) * Math.pow(Math.sin(dLon/2), 2);
+                const dist = CFG.EARTH_RADIUS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                const y = Math.sin(dLon) * Math.cos(rLat2), x = Math.cos(rLat1) * Math.sin(rLat2) - Math.sin(rLat1) * Math.cos(rLat2) * Math.cos(dLon);
+                const brg = (Math.atan2(y, x) * (180 / Math.PI) + 360) % 360;
+                return { dist, brg };
+            },
+            say: function(text) {
+                if (!('speechSynthesis' in window)) return;
+                window.speechUtterances = window.speechUtterances || [];
+                const utterance = new SpeechSynthesisUtterance(text);
+                window.speechUtterances.push(utterance);
+                utterance.onend = function() { window.speechUtterances = window.speechUtterances.filter(u => u !== utterance); };
+                window.speechSynthesis.speak(utterance);
+            }
+        };
+
+        const API = {
+            applyTheme: function() {
+                let finalTheme = STATE.baseTheme;
+                if (STATE.themeOverride === 'day') finalTheme = '';
+                if (STATE.themeOverride === 'night') finalTheme = 'night-mode';
+                const classes = [finalTheme, (STATE.craftMode === 1) ? 'ufo-mode' : ''].filter(Boolean);
+                document.body.className = classes.join(' ');
+            },
+
+            fetchEnvironment: async function(lat, lon) {
+                try {
+                    const osmQuery = `[out:json][timeout:10];((node|way|relation)["aeroway"="aerodrome"](around:5000,${lat},${lon});(node|way|relation)["natural"="peak"](around:5000,${lat},${lon});(node|way|relation)["man_made"~"tower|mast|communications_tower"](around:5000,${lat},${lon}););out center;`;
+                    const osmRes = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(osmQuery)}`);
+                    const osmData = await osmRes.json();
+                    STATE.obstacles = osmData.elements.map(el => {
+                        const elLat = el.lat ?? el.center?.lat; const elLon = el.lon ?? el.center?.lon;
+                        if (elLat == null || elLon == null) return null; 
+                        let t = 'unknown'; if (el.tags?.aeroway) t = 'aerodrome'; else if (el.tags?.natural) t = 'peak'; else if (el.tags?.man_made) t = 'tower';
+                        return { lat: elLat, lon: elLon, name: el.tags?.name, type: t };
+                    }).filter(Boolean); 
+                    STATE.airports = STATE.obstacles.filter(o => o.type === 'aerodrome');
+                } catch (e) {}
+
+                try {
+                    const wxRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&windspeed_unit=mph`);
+                    const data = await wxRes.json();
+                    const cw = data.current_weather, daily = data.daily, wxSvg = document.getElementById('svg-wx');
+                    STATE.windSpeed = cw.windspeed; STATE.windDir = cw.winddirection;
+
+                    let icon = "❓", theme = "day-mode";
+                    if (cw.weathercode <= 3) { icon = cw.weathercode === 0 ? (cw.is_day ? "☀️" : "🌕") : "⛅"; }
+                    else if (cw.weathercode == 45 || cw.weathercode == 48) { icon = "🌫️"; theme = "weather-mode"; }
+                    else if (cw.weathercode >= 51 && cw.weathercode <= 82) { icon = "🌧️"; theme = "weather-mode"; }
+                    else if (cw.weathercode >= 95) { icon = "⛈️"; theme = "weather-mode"; }
+
+                    if (cw.is_day === 0 && theme === "day-mode") theme = "night-mode";
+                    const currentHour = new Date().getHours();
+                    if (theme === "day-mode" && (currentHour >= 19 || currentHour < 7)) theme = "night-mode";
+
+                    STATE.baseTheme = theme === "day-mode" ? "" : theme;
+                    API.applyTheme();
+
+                    const temp = Math.round(cw.temperature), high = Math.round(daily.temperature_2m_max[0]), low = Math.round(daily.temperature_2m_min[0]);
+                    let trendArrow = "▶", trendColor = "var(--secondary)";
+                    if (STATE.lastTemp !== null) {
+                        if (temp > STATE.lastTemp) { trendArrow = "▲"; trendColor = "var(--danger)"; }
+                        else if (temp < STATE.lastTemp) { trendArrow = "▼"; trendColor = "var(--wind)"; }
+                    }
+                    STATE.lastTemp = temp;
+
+                    wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan fill="${trendColor}" font-size="14">${trendArrow}</tspan><tspan> H:${high}° L:${low}°</tspan>`;
+
+                    if (cw.weathercode == 45 || cw.weathercode == 48 || cw.weathercode >= 95) wxSvg.classList.add("alert-flash");
+                    else { wxSvg.classList.remove("alert-flash"); wxSvg.setAttribute("fill", "var(--primary)"); }
+                } catch (e) { document.getElementById('svg-wx').textContent = "☁️ WX: ERR"; }
+            },
+
+            fetchTraffic: async function() {
+                if (!STATE.active || STATE.lat === null) return;
+                const atsSvg = document.getElementById('svg-ats');
+                if(!atsSvg.classList.contains("alert-flash")) { atsSvg.textContent = "✈️ SCAN"; atsSvg.setAttribute("fill", "var(--secondary)"); }
+                try {
+                    const res = await fetch(`https://opensky-network.org/api/states/all?lamin=${STATE.lat-0.5}&lomin=${STATE.lon-0.5}&lamax=${STATE.lat+0.5}&lomax=${STATE.lon+0.5}`);
+                    const data = await res.json();
+                    STATE.traffic = data.states ? data.states.map(s => ({ lon: s[5], lat: s[6], alt: s[7] ? s[7]*3.28084 : 0 })).filter(t => t.lat && t.lon) : [];
+                } catch (e) {}
+            }
+        };
+
+        const Hardware = {
+            handleMotion: function(e) {
+                let cx = (e.accelerationIncludingGravity?.x || 0) / 9.81, cy = (e.accelerationIncludingGravity?.y || 0) / 9.81;
+                STATE.gX = (cx * CFG.FILTER_FACTOR) + (STATE.gX * (1 - CFG.FILTER_FACTOR));
+                STATE.gY = (cy * CFG.FILTER_FACTOR) + (STATE.gY * (1 - CFG.FILTER_FACTOR));
+                if (!STATE.active) requestAnimationFrame(Graphics.renderHUD);
+            },
+            handleOrientation: function(e) {
+                STATE.leanAngle = Math.round(e.gamma || 0); 
+                let rawPitch = Math.round(e.beta || 0); if (rawPitch > 90) rawPitch -= 180;
+                STATE.pitchAngle = rawPitch - 45; 
+                if (!STATE.active) requestAnimationFrame(Graphics.renderHUD);
+            }
+        };
+
+        const Avionics = {
+            toggleCraft: function() {
+                STATE.craftMode = (STATE.craftMode + 1) % 3;
+                const toggleSvg = document.getElementById('svg-craft');
+                
+                if (STATE.craftMode === 1) {
+                    toggleSvg.textContent = "[ 🛸 UFO ]"; toggleSvg.setAttribute('fill', 'var(--primary)'); MathUtils.say("Alien technology engaged");
+                } else if (STATE.craftMode === 2) {
+                    toggleSvg.textContent = "[ 🚴 BIKE ]"; toggleSvg.setAttribute('fill', 'var(--secondary)'); MathUtils.say("Cyber bike engaged");
+                } else {
+                    toggleSvg.textContent = "[ 🛩️ C182 ]"; toggleSvg.setAttribute('fill', 'var(--secondary)'); MathUtils.say("Standard avionics engaged");
+                }
+                
+                API.applyTheme();
+                if(!STATE.active) Graphics.renderHUD(); 
+            },
+            cycleTheme: function() {
+                const modes = ['auto', 'day', 'night'];
+                STATE.themeOverride = modes[(modes.indexOf(STATE.themeOverride) + 1) % modes.length];
+                MathUtils.say(STATE.themeOverride + " mode");
+                API.applyTheme();
+            },
+            openFuel: function() { document.getElementById('input-fuel-cap').value = STATE.fuelCap; document.getElementById('input-burn-rate').value = STATE.burnRate; document.getElementById('fuel-modal').style.display = 'flex'; },
+            saveFuel: function() { STATE.fuelCap = parseFloat(document.getElementById('input-fuel-cap').value) || 5.0; STATE.burnRate = parseFloat(document.getElementById('input-burn-rate').value) || 2.0; document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1); document.getElementById('fuel-modal').style.display = 'none'; },
+            openDest: function() {
+                const list = document.getElementById('dest-list'); document.getElementById('dest-modal').style.display = 'flex';
+                if (STATE.airports.length === 0) { list.innerHTML = "<p style='text-align:center; font-weight: 900;'>Radar acquiring local aerodromes...<br>Wait for GPS lock.</p>"; return; }
+                list.innerHTML = `<div class="dest-item" onclick="Avionics.setDest(-1)"><span class="dest-name" style="color:var(--danger)">❌ CLEAR WAYPOINT</span></div>`;
+                let sortedAp = [...STATE.airports].map(ap => { ap.currentDist = STATE.lat ? MathUtils.getDistAndBearing(STATE.lat, STATE.lon, ap.lat, ap.lon).dist : 999; return ap; }).sort((a,b) => a.currentDist - b.currentDist);
+                sortedAp.forEach((ap) => {
+                    const isSelected = STATE.activeDest && STATE.activeDest.lat === ap.lat; const dStr = ap.currentDist === 999 ? "??" : ap.currentDist.toFixed(1); const safeName = ap.name || 'AERODROME';
+                    list.innerHTML += `<div class="dest-item" style="${isSelected ? 'background:rgba(16, 185, 129, 0.15)' : ''}" onclick="Avionics.setDest(${ap.lat}, ${ap.lon}, '${safeName.replace(/'/g, "\\'")}')"><span class="dest-name">${safeName}</span><span class="dest-dist">${dStr} MI</span></div>`;
+                });
+            },
+            setDest: function(lat, lon, name) {
+                if (lat === -1) { STATE.activeDest = null; document.getElementById('dest-id').innerText = "NONE"; document.getElementById('dest-eta').innerText = "-- MI | ETA --:--"; } 
+                else { STATE.activeDest = { lat, lon, name }; document.getElementById('dest-id').innerText = name ? name.substring(0, 8).toUpperCase() : "WPT"; MathUtils.say("Waypoint entered"); }
+                document.getElementById('dest-modal').style.display = 'none';
+            }
+        };
+
+        const Simulator = {
+            active: false, interval: null, angle: 0,
+            baseLat: 41.5833, baseLon: -87.5000, // Easter Egg Base Coords
+            toggle: function() {
+                const gpsSvg = document.getElementById('svg-gps');
+                if (this.active) {
+                    this.active = false; clearInterval(this.interval);
+                    gpsSvg.textContent = "🛰️ SRCH"; gpsSvg.setAttribute('fill', 'var(--secondary)');
+                    Engine.initGPS();
+                } else {
+                    this.active = true;
+                    if(watchId) navigator.geolocation.clearWatch(watchId);
+                    gpsSvg.textContent = "🛰️ SIM"; gpsSvg.setAttribute('fill', 'var(--wind)');
+                    MathUtils.say("Simulation mode engaged");
+                    if(!STATE.active) Engine.toggleTrip(); 
+
+                    this.interval = setInterval(() => {
+                        this.angle += 0.03; 
+                        const hdg = (this.angle * 180 / Math.PI) % 360;
+                        
+                        const mockPos = {
+                            coords: {
+                                latitude: this.baseLat + Math.sin(this.angle) * 0.05,
+                                longitude: this.baseLon + Math.cos(this.angle) * 0.05,
+                                heading: hdg, speed: 38, altitude: 450
+                            },
+                            timestamp: Date.now()
+                        };
+                        
+                        // Fake a banked turn in the IMU
+                        STATE.leanAngle = -25;
+                        Engine.processGPS(mockPos);
+                    }, 1000);
+                }
+            }
+        };
+
+        const Graphics = {
+            ctx: document.getElementById('vector-canvas').getContext('2d'),
+            
+            drawCessna: function(x, y, roll, isDark) {
+                const ctx = Graphics.ctx; ctx.save(); ctx.translate(x, y); ctx.scale(1.2, 1.2);
+                ctx.rotate(roll * CFG.TO_RAD);
+
+                const invRoll = -roll * CFG.TO_RAD; ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
+                ctx.shadowOffsetX = 8 * Math.cos(invRoll) - 15 * Math.sin(invRoll); ctx.shadowOffsetY = 8 * Math.sin(invRoll) + 15 * Math.cos(invRoll);
+
+                const baseColor = isDark ? '#4a0000' : '#ffffff', shadeColor = isDark ? '#1a0000' : '#94a3b8', highlightColor = isDark ? '#7a0000' : '#f8fafc', glassColor = isDark ? 'rgba(20, 0, 0, 0.9)' : 'rgba(15, 23, 42, 0.85)';
+                
+                ctx.fillStyle = shadeColor; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-12, 12, 24, 4, 2); else ctx.fillRect(-12, 12, 24, 4); ctx.fill();
+                ctx.fillStyle = baseColor; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-12, 12, 24, 1.5, 0.75); else ctx.fillRect(-12, 12, 24, 1.5); ctx.fill(); 
+                ctx.fillStyle = shadeColor; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-35, -4, 70, 8, 4); else ctx.fillRect(-35, -4, 70, 8); ctx.fill();
+                ctx.fillStyle = baseColor; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(-35, -4, 70, 2.5, 1.25); else ctx.fillRect(-35, -4, 70, 2.5); ctx.fill(); 
+
+                let fuseGrad = ctx.createLinearGradient(-5, 0, 5, 0); fuseGrad.addColorStop(0, shadeColor); fuseGrad.addColorStop(0.3, highlightColor); fuseGrad.addColorStop(1, shadeColor);
+                ctx.fillStyle = fuseGrad; ctx.beginPath(); ctx.moveTo(0, -22); ctx.bezierCurveTo(6, -18, 5, 2, 2, 15); ctx.lineTo(-2, 15); ctx.bezierCurveTo(-5, 2, -6, -18, 0, -22); ctx.fill();
+
+                ctx.shadowColor = 'transparent'; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0; ctx.shadowBlur = 0;
+                ctx.fillStyle = glassColor; ctx.beginPath(); ctx.moveTo(0, -11); ctx.quadraticCurveTo(4, -8, 3, -3); ctx.lineTo(-3, -3); ctx.quadraticCurveTo(-4, -8, 0, -11); ctx.fill();
+                let tailGrad = ctx.createLinearGradient(-1, 0, 1, 0); tailGrad.addColorStop(0, shadeColor); tailGrad.addColorStop(1, highlightColor);
+                ctx.fillStyle = tailGrad; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(1.5, 16); ctx.lineTo(0, 18); ctx.lineTo(-1.5, 16); ctx.closePath(); ctx.fill();
+                
+                ctx.save(); ctx.translate(0, -22); 
+                if (STATE.active) {
+                    let blurGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 16); 
+                    blurGrad.addColorStop(0, isDark ? 'rgba(255, 50, 50, 0.4)' : 'rgba(0, 0, 0, 0.25)'); blurGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                    ctx.fillStyle = blurGrad; ctx.beginPath(); ctx.ellipse(0, 0, 16, 2, 0, 0, Math.PI * 2); ctx.fill();
+                }
+
+                let pAngle = Math.PI / 4; 
+                if (STATE.active) { let rpm = 20 - Math.min(STATE.spdMph / 10, 15); pAngle = Date.now() / rpm; }
+                
+                let bx1 = Math.cos(pAngle) * 15, by1 = Math.sin(pAngle) * 2;
+                let bx2 = Math.cos(pAngle + Math.PI/2) * 15, by2 = Math.sin(pAngle + Math.PI/2) * 2;
+                
+                ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(-bx1, -by1); ctx.lineTo(bx1, by1); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(-bx2, -by2); ctx.lineTo(bx2, by2); ctx.stroke();
+                
+                ctx.fillStyle = isDark ? '#ef4444' : '#94a3b8'; ctx.beginPath(); ctx.ellipse(0, 0, 2, 1.5, 0, 0, Math.PI * 2); ctx.fill();
+                ctx.restore(); 
+
+                ctx.beginPath(); ctx.arc(0, 15, 1.5, 0, Math.PI * 2); ctx.fillStyle = isDark ? '#ff0000' : '#ef4444'; ctx.shadowBlur = 6; ctx.shadowColor = isDark ? '#ff0000' : '#ef4444'; ctx.fill();
+                ctx.restore();
+            },
+            drawUFO: function(x, y, roll) {
+                const ctx = Graphics.ctx; ctx.save(); ctx.translate(x, y); ctx.scale(1.1, 1.1);
+                ctx.rotate(roll * CFG.TO_RAD);
+
+                const invRoll = -roll * CFG.TO_RAD; ctx.shadowColor = 'rgba(57, 255, 20, 0.25)'; ctx.shadowBlur = 15;
+                ctx.shadowOffsetX = 8 * Math.cos(invRoll) - 15 * Math.sin(invRoll); ctx.shadowOffsetY = 8 * Math.sin(invRoll) + 15 * Math.cos(invRoll);
+
+                const primaryColor = getComputedStyle(document.body).getPropertyValue('--primary').trim();
+                const secColor = getComputedStyle(document.body).getPropertyValue('--secondary').trim();
+                const isDark = document.body.classList.contains('night-mode') || document.body.classList.contains('weather-mode');
+                const hullMid = isDark ? '#222' : '#94a3b8', hullBase = isDark ? '#050505' : '#334155';
+                const hullLight = isDark ? '#555' : '#cbd5e1', hullDark = isDark ? '#0a0a0a' : '#475569';
+
+                let lowerGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 26); lowerGrad.addColorStop(0, hullMid); lowerGrad.addColorStop(1, hullBase);
+                ctx.fillStyle = lowerGrad; ctx.beginPath(); ctx.ellipse(0, 0, 26, 8, 0, 0, Math.PI*2); ctx.fill();
+                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+
+                let time = Date.now() / (150 - Math.min(STATE.spdMph, 120));
+                for(let i=0; i<8; i++) {
+                    let angle = time + (i * Math.PI / 4), lx = Math.cos(angle) * 25, ly = Math.sin(angle) * 7.5;
+                    if (ly > -1) { ctx.fillStyle = secColor; ctx.beginPath(); ctx.ellipse(lx, ly, 3, 1.5, 0, 0, Math.PI*2); ctx.fill(); ctx.shadowColor = secColor; ctx.shadowBlur = 8; ctx.fill(); ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+                }
+
+                let upperGrad = ctx.createLinearGradient(-10, -15, 10, 5); upperGrad.addColorStop(0, hullLight); upperGrad.addColorStop(0.5, hullMid); upperGrad.addColorStop(1, hullDark);
+                ctx.fillStyle = upperGrad; ctx.beginPath(); ctx.ellipse(0, -2, 16, 6, 0, 0, Math.PI*2); ctx.fill();
+                let domeGrad = ctx.createRadialGradient(0, -6, 1, 0, -4, 10); domeGrad.addColorStop(0, '#fff'); domeGrad.addColorStop(0.3, primaryColor); domeGrad.addColorStop(1, '#000');
+                ctx.fillStyle = domeGrad; ctx.beginPath(); ctx.ellipse(0, -5, 10, 5, 0, 0, Math.PI*2); ctx.fill();
+
+                ctx.shadowColor = secColor; ctx.shadowBlur = 15; ctx.fillStyle = '#fff';
+                ctx.beginPath(); ctx.ellipse(0, 7, 8, 2, 0, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(-12, 5, 4, 1, 0, 0, Math.PI*2); ctx.fill(); ctx.beginPath(); ctx.ellipse(12, 5, 4, 1, 0, 0, Math.PI*2); ctx.fill(); 
+                ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+                ctx.beginPath(); ctx.ellipse(0, -7, 4, 1.5, 0, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1.0;
+                ctx.restore();
+            },
+            drawBike: function(x, y, roll, isDark) {
+                const ctx = Graphics.ctx; ctx.save(); ctx.translate(x, y); ctx.scale(1.2, 1.2);
+                ctx.rotate(roll * CFG.TO_RAD);
+                
+                const invRoll = -roll * CFG.TO_RAD; ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
+                ctx.shadowOffsetX = 8 * Math.cos(invRoll) - 15 * Math.sin(invRoll); ctx.shadowOffsetY = 8 * Math.sin(invRoll) + 15 * Math.cos(invRoll);
+
+                const shirtCol = getComputedStyle(document.body).getPropertyValue('--wind').trim();
+                const bikeCol = isDark ? '#475569' : '#94a3b8';
+
+                // Front Tire
+                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-1.5, -25, 3, 15, 1.5); else ctx.fillRect(-1.5, -25, 3, 15); ctx.fill();
+                // Handlebars
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -18); ctx.lineTo(12, -18); ctx.stroke();
+                // Frame
+                ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, -18); ctx.stroke();
+                // Rear Tire
+                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-2, 5, 4, 18, 2); else ctx.fillRect(-2, 5, 4, 18); ctx.fill();
+
+                let cycle = STATE.active ? Date.now() / (300 - Math.min(STATE.spdMph * 2, 250)) : 0;
+                let lpY = -2 + Math.cos(cycle)*5, rpY = -2 + Math.cos(cycle + Math.PI)*5;
+                let lkX = -7, lkY = 2 + Math.cos(cycle - 0.5)*3, rkX = 7, rkY = 2 + Math.cos(cycle + Math.PI - 0.5)*3;
+
+                ctx.fillStyle = '#ddd'; ctx.fillRect(-5, lpY-2, 3, 4); ctx.fillRect(2, rpY-2, 3, 4);
+                
+                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
+                ctx.beginPath(); ctx.moveTo(-3, 8); ctx.lineTo(lkX, lkY); ctx.lineTo(-4, lpY); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(3, 8); ctx.lineTo(rkX, rkY); ctx.lineTo(4, rpY); ctx.stroke();
+
+                ctx.fillStyle = '#0f172a'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-4, 5, 8, 6, 3); else ctx.fillRect(-4, 5, 8, 6); ctx.fill();
+
+                ctx.shadowColor = 'transparent';
+                ctx.fillStyle = shirtCol; ctx.beginPath(); ctx.moveTo(-5, 6); ctx.lineTo(-8, -8); ctx.quadraticCurveTo(0, -11, 8, -8); ctx.lineTo(5, 6); ctx.fill();
+                ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-8, -8); ctx.lineTo(-12, -18); ctx.stroke(); ctx.beginPath(); ctx.moveTo(8, -8); ctx.lineTo(12, -18); ctx.stroke(); 
+
+                let helmG = ctx.createRadialGradient(0, -12, 1, 0, -9, 7); helmG.addColorStop(0, '#cbd5e1'); helmG.addColorStop(1, '#475569');
+                ctx.fillStyle = helmG; ctx.beginPath(); ctx.ellipse(0, -10, 5, 7, 0, 0, Math.PI*2); ctx.fill();
+
+                ctx.restore();
+            },
+            renderHUD: function() {
+                const ctx = Graphics.ctx; ctx.clearRect(0, 0, STATE.w, STATE.h);
+                const isDark = document.body.classList.contains('night-mode') || STATE.craftMode === 1;
+
+                // --- 3D SYNTHETIC VISION SYSTEM ---
+                ctx.save(); ctx.beginPath(); 
+                if (STATE.isFullscreen) { ctx.rect(0, 0, STATE.w, STATE.h); } 
+                else { ctx.arc(STATE.cx, STATE.cy, STATE.r, 0, Math.PI * 2); }
+                ctx.clip();
+                
+                ctx.save(); ctx.translate(STATE.cx, STATE.cy); ctx.rotate(STATE.leanAngle * CFG.TO_RAD); 
+                let pitchOffset = STATE.pitchAngle * 2; 
+
+                let skyGrad = ctx.createLinearGradient(0, -STATE.h, 0, pitchOffset);
+                skyGrad.addColorStop(0, isDark ? ((STATE.craftMode===1) ? 'rgba(57, 255, 20, 0.05)' : 'rgba(255, 51, 51, 0.15)') : 'rgba(14, 165, 233, 0.2)'); skyGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                ctx.fillStyle = skyGrad; ctx.fillRect(-STATE.w, -STATE.h, STATE.w * 2, STATE.h + pitchOffset);
+
+                const groundBase = getComputedStyle(document.body).getPropertyValue('--nav').trim();
+                let groundGrad = ctx.createLinearGradient(0, pitchOffset, 0, STATE.h);
+                groundGrad.addColorStop(0, isDark ? ((STATE.craftMode===1) ? 'rgba(57, 255, 20, 0.15)' : 'rgba(15, 23, 42, 0.5)') : groundBase.replace(')', ', 0.3)').replace('rgb', 'rgba'));
+                groundGrad.addColorStop(1, 'rgba(0, 0, 0, 0.9)');
+                ctx.fillStyle = groundGrad; ctx.fillRect(-STATE.w, pitchOffset, STATE.w * 2, STATE.h);
+
+                ctx.strokeStyle = isDark ? ((STATE.craftMode===1) ? 'rgba(57, 255, 20, 0.2)' : 'rgba(255, 255, 255, 0.15)') : 'rgba(255, 255, 255, 0.25)'; ctx.lineWidth = 1;
+                const FOV = 200, CAM_H = 0.05; 
+                STATE.gridScroll += (STATE.spdMph / 3600) * 1.5; if (STATE.gridScroll > 0.5) STATE.gridScroll -= 0.5; 
+
+                ctx.beginPath();
+                for (let d = 0; d <= 3.5; d += 0.5) {
+                    let depth = d - STATE.gridScroll; if (depth < 0.05) continue;
+                    let scale = FOV / depth, sy = pitchOffset + (CAM_H * scale);
+                    if (sy > pitchOffset && sy < STATE.h) { ctx.moveTo(-10 * scale, sy); ctx.lineTo(10 * scale, sy); }
+                }
+                for (let x = -10; x <= 10; x += 0.5) {
+                    let s1 = FOV / 0.05, s2 = FOV / 3.5; ctx.moveTo(x * s1, pitchOffset + (CAM_H * s1)); ctx.lineTo(x * s2, pitchOffset + (CAM_H * s2));
+                }
+                ctx.stroke();
+
+                if (STATE.lat !== null && STATE.lon !== null && STATE.active) {
+                    STATE.obstacles.forEach(obs => {
+                        const {dist, brg} = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
+                        if (dist > 3.0 || dist < 0.1) return; 
+                        let relAngle = (brg - STATE.hdg) * CFG.TO_RAD;
+                        while(relAngle > Math.PI) relAngle -= 2*Math.PI; while(relAngle < -Math.PI) relAngle += 2*Math.PI;
+                        if (Math.abs(relAngle) > Math.PI / 2.5) return; 
+                        const scale = FOV / (Math.cos(relAngle) * dist), screenX = (Math.sin(relAngle) * dist) * scale, baseSy = pitchOffset + (CAM_H * scale); 
+                        if (baseSy < pitchOffset) return; 
+
+                        let color = 'rgba(255, 0, 255, 0.6)', objH = 0.03, tag = "WPT";
+                        if (obs.type === 'aerodrome') { color = (STATE.craftMode===1) ? 'rgba(57, 255, 20, 0.8)' : 'rgba(16, 185, 129, 0.8)'; objH = 0.01; tag = "APT"; } 
+                        else if (obs.type === 'peak') { color = (STATE.craftMode===1) ? 'rgba(176, 38, 255, 0.7)' : 'rgba(234, 179, 8, 0.7)'; objH = 0.04; tag = "PEAK"; } 
+                        else if (obs.type === 'tower') { color = 'rgba(239, 68, 68, 0.8)'; objH = 0.06; tag = "TWR"; }
+
+                        const topSy = pitchOffset + ((CAM_H - objH) * scale);
+                        ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+                        ctx.beginPath(); ctx.ellipse(screenX, baseSy, 2.5 * scale, 1 * scale, 0, 0, Math.PI*2); ctx.stroke(); 
+                        ctx.beginPath(); ctx.ellipse(screenX, topSy, 1.5 * scale, 0.5 * scale, 0, 0, Math.PI*2); ctx.stroke(); 
+                        ctx.beginPath(); ctx.moveTo(screenX - (2.5*scale), baseSy); ctx.lineTo(screenX - (1.5*scale), topSy); ctx.stroke();
+                        ctx.beginPath(); ctx.moveTo(screenX + (2.5*scale), baseSy); ctx.lineTo(screenX + (1.5*scale), topSy); ctx.stroke();
+                        ctx.fillStyle = color.replace('0.8', '0.2').replace('0.7', '0.2').replace('0.6', '0.2');
+                        ctx.beginPath(); ctx.moveTo(screenX - (2.5*scale), baseSy); ctx.lineTo(screenX - (1.5*scale), topSy); ctx.lineTo(screenX + (1.5*scale), topSy); ctx.lineTo(screenX + (2.5*scale), baseSy); ctx.fill();
+                        ctx.fillStyle = color; ctx.font = `bold ${Math.max(7, 8 * scale)}px ${(STATE.craftMode===1) ? 'Orbitron' : 'monospace'}`; ctx.textAlign = 'center'; ctx.fillText(tag, screenX, topSy - (4 * scale));
+                    });
+                }
+                ctx.restore(); ctx.restore(); 
+
+                // --- 2D RADAR RINGS ---
+                const radarColor = getComputedStyle(document.body).getPropertyValue('--radar-ring').trim();
+                ctx.strokeStyle = radarColor; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, STATE.r * 0.33, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, STATE.r * 0.66, 0, Math.PI * 2); ctx.stroke();
+                ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, STATE.r * 0.98, 0, Math.PI * 2); ctx.stroke();
+
+                ctx.save(); ctx.translate(STATE.cx, STATE.cy); ctx.rotate(STATE.leanAngle * CFG.TO_RAD);
+                const secColor = getComputedStyle(document.body).getPropertyValue('--secondary').trim();
+                ctx.strokeStyle = secColor; ctx.globalAlpha = 0.5; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(-STATE.r, 0); ctx.lineTo(STATE.r, 0); ctx.stroke();
+                let slipX = Math.max(Math.min((STATE.gX / CFG.MAX_G) * (STATE.r * 0.8), STATE.r/2), -STATE.r/2); 
+                ctx.beginPath(); ctx.arc(slipX, 15, 4, 0, Math.PI * 2); ctx.fillStyle = secColor; ctx.globalAlpha = 1.0; ctx.fill();
+                ctx.restore();
+
+                let trafficWarningLocal = false;
+
+                if (STATE.lat !== null && STATE.lon !== null && STATE.active) {
+                    if (STATE.activeDest) {
+                        const {dist, brg} = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
+                        const relAngle = (brg - STATE.hdg - 90) * CFG.TO_RAD; 
+                        const navColor = getComputedStyle(document.body).getPropertyValue('--nav').trim();
+                        ctx.save(); ctx.beginPath(); ctx.moveTo(STATE.cx, STATE.cy);
+                        let pX, pY;
+                        if (dist <= CFG.RADAR_RANGE_MILES) { pX = STATE.cx + Math.cos(relAngle) * ((dist / CFG.RADAR_RANGE_MILES) * STATE.r); pY = STATE.cy + Math.sin(relAngle) * ((dist / CFG.RADAR_RANGE_MILES) * STATE.r); } 
+                        else { pX = STATE.cx + Math.cos(relAngle) * STATE.r; pY = STATE.cy + Math.sin(relAngle) * STATE.r; }
+                        ctx.lineTo(pX, pY); ctx.strokeStyle = navColor; ctx.globalAlpha = 0.6; ctx.setLineDash([5, 5]); ctx.lineWidth = 2; ctx.stroke();
+                        if (dist <= CFG.RADAR_RANGE_MILES) { ctx.beginPath(); ctx.arc(pX, pY, 8, 0, Math.PI*2); ctx.strokeStyle = navColor; ctx.globalAlpha = 1.0; ctx.setLineDash([]); ctx.stroke(); }
+                        ctx.restore();
+                    }
+
+                    if (STATE.windSpeed > 0) {
+                        const wRelAngle = (STATE.windDir - STATE.hdg - 90) * CFG.TO_RAD;
+                        const wX = STATE.cx + Math.cos(wRelAngle) * STATE.r, wY = STATE.cy + Math.sin(wRelAngle) * STATE.r;
+                        const tipX = STATE.cx + Math.cos(wRelAngle) * (STATE.r - 20), tipY = STATE.cy + Math.sin(wRelAngle) * (STATE.r - 20);
+                        const windColor = getComputedStyle(document.body).getPropertyValue('--wind').trim();
+                        ctx.beginPath(); ctx.moveTo(wX, wY); ctx.lineTo(tipX, tipY); ctx.strokeStyle = windColor; ctx.lineWidth = 2; ctx.stroke();
+                        ctx.beginPath(); ctx.arc(tipX, tipY, 3, 0, Math.PI * 2); ctx.fillStyle = windColor; ctx.fill();
+                    }
+
+                    STATE.traffic.forEach(trk => {
+                        const {dist, brg} = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, trk.lat, trk.lon);
+                        const altDiff = Math.abs(trk.alt - STATE.altFt);
+                        if (dist < 3.0 && altDiff < 1500) trafficWarningLocal = true;
+                        if (dist <= CFG.RADAR_RANGE_MILES) {
+                            const relAngle = (brg - STATE.hdg - 90) * CFG.TO_RAD; 
+                            const pX = STATE.cx + Math.cos(relAngle) * ((dist / CFG.RADAR_RANGE_MILES) * STATE.r);
+                            const pY = STATE.cy + Math.sin(relAngle) * ((dist / CFG.RADAR_RANGE_MILES) * STATE.r);
+                            ctx.fillStyle = (STATE.craftMode===1) ? 'rgba(176, 38, 255, 0.9)' : 'rgba(234, 179, 8, 0.9)'; 
+                            ctx.beginPath(); ctx.arc(pX, pY, 5, 0, Math.PI * 2); ctx.fill();
+                            ctx.font = `10px ${(STATE.craftMode===1) ? 'Orbitron' : 'monospace'}`; ctx.fillStyle = (STATE.craftMode===1) ? 'rgba(176, 38, 255, 1.0)' : 'rgba(234, 179, 8, 1.0)';
+                            let altStr = ((trk.alt - STATE.altFt) / 100).toFixed(0); ctx.fillText(altStr > 0 ? "+"+altStr : altStr, pX + 6, pY - 6);
+                        }
+                    });
+                }
+
+                let craftBank = -STATE.leanAngle; 
+                let craftShiftX = -(STATE.leanAngle / 90) * 15 - (STATE.gX / CFG.MAX_G) * 15; 
+                let craftShiftY = -(STATE.pitchAngle / 90) * 15 + (STATE.gY / CFG.MAX_G) * 15;
+
+                if (STATE.craftMode === 1) { 
+                    Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank); 
+                } else if (STATE.craftMode === 2) {
+                    Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank, isDark);
+                } else { 
+                    Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank, isDark); 
+                }
+
+                const atsSvg = document.getElementById('svg-ats');
+                if (trafficWarningLocal) {
+                    atsSvg.textContent = "⚠️ TRFC"; atsSvg.setAttribute('fill', 'var(--danger)'); atsSvg.classList.add("alert-flash");
+                    if (!STATE.tcasAudioPlayed) { MathUtils.say("Traffic alert"); STATE.tcasAudioPlayed = true; }
+                } else {
+                    STATE.tcasAudioPlayed = false; atsSvg.classList.remove("alert-flash");
+                    if (STATE.traffic.length > 0) { atsSvg.textContent = "✈️ LINK"; atsSvg.setAttribute('fill', 'var(--primary)'); }
+                    else { atsSvg.textContent = "✈️ OFF"; atsSvg.setAttribute('fill', 'var(--secondary)'); }
+                }
+
+                if (STATE.active && STATE.startTs > 0) {
+                    const elapsed = Date.now() - STATE.startTs;
+                    const h = Math.floor(elapsed / 3600000), m = Math.floor((elapsed % 3600000) / 60000).toString().padStart(2, '0'), s = Math.floor((elapsed % 60000) / 1000).toString().padStart(2, '0');
+                    document.getElementById('trip-time').innerText = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+                    const hrs = elapsed / 3600000, fuel = Math.max(0, STATE.fuelCap - (hrs * STATE.burnRate));
+                    document.getElementById('fuel-rem').innerText = fuel.toFixed(1);
+                    if (fuel > 0) {
+                        const tte = fuel / STATE.burnRate; document.getElementById('time-rem').innerText = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
+                        document.getElementById('time-rem').className = tte < 0.5 ? "sub-val down-red" : "sub-val";
+                    }
+                }
+
+                if (STATE.active || STATE.gridScroll > 0.001) requestAnimationFrame(Graphics.renderHUD);
+            }
+        };
+
+        const Engine = {
+            toggleTrip: function() {
+                const btn = document.getElementById('trip-btn');
+                if (!STATE.active) {
+                    STATE.active = true; STATE.startTs = Date.now();
+                    btn.innerText = "END TRIP"; btn.classList.add("btn-danger"); btn.classList.add("dimmed");
+                    requestAnimationFrame(Graphics.renderHUD); 
+                    trafficInterval = setInterval(API.fetchTraffic, 15000);
+                    MathUtils.say("Flight Log Started");
+                } else {
+                    STATE.active = false; btn.innerText = "START TRIP"; btn.classList.remove("btn-danger"); btn.classList.remove("dimmed");
+                    if (trafficInterval) clearInterval(trafficInterval);
+                    STATE.traffic = []; STATE.airports = []; STATE.activeDest = null;
+                    document.getElementById('dest-id').innerText = "NONE"; document.getElementById('dest-eta').innerText = "-- MI | ETA --:--";
+                    document.getElementById('trip-time').innerText = "00:00";
+                    API.applyTheme(); Graphics.renderHUD(); 
+                }
+            },
+            
+            processGPS: function(position) {
+                const gpsSvg = document.getElementById('svg-gps');
+                gpsSvg.textContent = "🛰️ 3D"; gpsSvg.setAttribute('fill', 'var(--primary)');
+
+                STATE.lat = position.coords.latitude; STATE.lon = position.coords.longitude;
+                if (position.coords.heading != null && !isNaN(position.coords.heading)) STATE.hdg = position.coords.heading;
+                const timestamp = position.timestamp;
+                STATE.spdMph = (position.coords.speed || 0) * 2.23694; STATE.altFt = (position.coords.altitude || 0) * 3.28084;
+                
+                document.getElementById('speed').innerText = Math.round(STATE.spdMph);
+                document.getElementById('heading').innerText = Math.round(STATE.hdg).toString().padStart(3, '0');
+                document.getElementById('altitude').innerText = Math.round(STATE.altFt);
+
+                if (!STATE.active) {
+                    if (STATE.spdMph > CFG.AUTO_START_MPH) { STATE.moveCount++; if (STATE.moveCount >= 3) Engine.toggleTrip(); } 
+                    else { STATE.moveCount = 0; }
+                }
+
+                if (STATE.active && STATE.lastTs > 0) {
+                    const timeDiffHours = (timestamp - STATE.lastTs) / 3600000;
+                    if (STATE.lastLat !== null && STATE.lastLon !== null) {
+                        STATE.dist += MathUtils.getDistAndBearing(STATE.lastLat, STATE.lastLon, STATE.lat, STATE.lon).dist;
+                        document.getElementById('distance').innerText = STATE.dist.toFixed(1);
+                    }
+
+                    if (timeDiffHours > 0) {
+                        let vsi = (STATE.altFt - STATE.lastAltFt) / (timeDiffHours * 60);
+                        let vsiEl = document.getElementById('vsi'); vsiEl.innerText = `${vsi > 0 ? '+' : ''}${Math.round(vsi)} FPM`;
+                        vsiEl.className = vsi > 100 ? "sub-val up-green" : vsi < -100 ? "sub-val down-red" : "sub-val";
+                    }
+                    
+                    if (STATE.activeDest) {
+                        const {dist} = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
+                        let etaStr = "--:--";
+                        if (STATE.spdMph > 5) {
+                            const etaMs = Date.now() + ((dist / STATE.spdMph) * 3600000);
+                            const etaDate = new Date(etaMs);
+                            etaStr = `${etaDate.getHours().toString().padStart(2,'0')}:${etaDate.getMinutes().toString().padStart(2,'0')}`;
+                        }
+                        document.getElementById('dest-eta').innerText = `${dist.toFixed(1)} MI | ETA ${etaStr}`;
+                    }
+                }
+                
+                STATE.lastLat = STATE.lat; STATE.lastLon = STATE.lon; STATE.lastAltFt = STATE.altFt; STATE.lastTs = timestamp;
+                const now = Date.now();
+                if (STATE.apiLat === null || MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.apiLat, STATE.apiLon).dist > 1.5 || (now - STATE.apiTime) > 900000) {
+                    API.fetchEnvironment(STATE.lat, STATE.lon); STATE.apiLat = STATE.lat; STATE.apiLon = STATE.lon; STATE.apiTime = now;
+                }
+            },
+
+            initGPS: function() {
+                const gpsSvg = document.getElementById('svg-gps');
+                gpsSvg.textContent = "🛰️ SRCH"; gpsSvg.setAttribute('fill', 'var(--secondary)');
+                if ("geolocation" in navigator) {
+                    watchId = navigator.geolocation.watchPosition(Engine.processGPS, (e) => {
+                        gpsSvg.textContent = "🛰️ DENIED"; gpsSvg.setAttribute('fill', 'var(--danger)');
+                    }, { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 });
+                } else {
+                    gpsSvg.textContent = "🛰️ NONE"; gpsSvg.setAttribute('fill', 'var(--danger)');
+                }
+            },
+
+            init: function() {
+                UX.initDrag();
+                UX.handleResize();
+                window.addEventListener('resize', UX.handleResize);
+
+                window.addEventListener('devicemotion', Hardware.handleMotion); 
+                window.addEventListener('deviceorientation', Hardware.handleOrientation);
+
+                document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
+                
+                const hr = new Date().getHours();
+                const isNight = (hr >= 19 || hr < 7);
+                
+                STATE.baseTheme = isNight ? 'night-mode' : '';
+                STATE.craftMode = isNight ? 1 : 0; 
+                
+                const toggleSvg = document.getElementById('svg-craft');
+                if (STATE.craftMode === 1) {
+                    toggleSvg.textContent = "[ 🛸 UFO ]";
+                    toggleSvg.setAttribute('fill', 'var(--primary)');
+                } else {
+                    toggleSvg.textContent = "[ 🛩️ C182 ]";
+                    toggleSvg.setAttribute('fill', 'var(--secondary)');
+                }
+
+                API.applyTheme();
+                Graphics.renderHUD(); 
+                
+                this.initGPS();
+            }
+        };
+
+        Engine.init();
+    </script>
+</body>
+</html>
 
 
 ```
