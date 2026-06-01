@@ -101,12 +101,12 @@ window.addEventListener('error', function(e) {
         
         <div style="flex-grow:1; min-height:80px;"></div> 
 
-        <!-- Advanced SDF Metaball Controls -->
         <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(0,255,255,0.2); padding:16px; width:100%; max-width:360px; margin-bottom:16px;">
             <div style="color:#0f9; font-weight:bold; margin-bottom:12px; font-size:11px;">FUSION CONFIGURATION</div>
             <div class="slider-group"><span>RESOLUTION</span><input type="range" id="sl-res" min="32" max="128" step="8" value="64"></div>
-            <div class="slider-group"><span>BLOB SIZE</span><input type="range" id="sl-str" min="0.0001" max="0.01" step="0.0001" value="0.0015"></div>
-            <div class="slider-group"><span>TIGHTNESS</span><input type="range" id="sl-iso" min="10" max="200" step="5" value="80"></div>
+            <!-- BUG FIX 3: Default Metaball Intersection Values Recalibrated for Metric Normalized Bounding Box -->
+            <div class="slider-group"><span>BLOB SIZE</span><input type="range" id="sl-str" min="0.0001" max="0.02" step="0.0001" value="0.004"></div>
+            <div class="slider-group"><span>TIGHTNESS</span><input type="range" id="sl-iso" min="10" max="200" step="5" value="40"></div>
             <div class="slider-group"><span>FALLOFF</span><input type="range" id="sl-sub" min="1" max="20" step="1" value="8"></div>
             <div class="slider-group"><span>DECIMATION</span><input type="range" id="sl-det" min="0.05" max="1.0" step="0.05" value="0.25"></div>
             <div class="slider-group" style="margin-top:10px; justify-content:flex-end;">
@@ -116,6 +116,7 @@ window.addEventListener('error', function(e) {
 
         <div style="width:100%; max-width:360px; display:flex; flex-direction:column;">
             <button id="dl-stl" class="btn go">↓ EXPORT WATERTIGHT STL</button>
+            <button id="dl-glb" class="btn go3">↓ EXPORT COLOR GLB</button>
             <button id="dl-ply" class="btn go2">↓ EXPORT COLOR PLY</button>
             <button id="rs" class="btn" style="border:1px dashed #555; background:transparent; margin-top:8px;">⟳ SCAN ANOTHER</button>
         </div>
@@ -156,7 +157,6 @@ function initThreeJS() {
     iRnd = new THREE.WebGLRenderer({ antialias:true, alpha:true }); 
     iRnd.setSize(window.innerWidth, window.innerHeight); 
     
-    // Transparent Viewport Overlay during active capture
     const insetDiv = $('inset');
     iRnd.domElement.style.position = 'absolute';
     iRnd.domElement.style.inset = '0';
@@ -179,6 +179,18 @@ function initThreeJS() {
     iScn.add(livePointsGroup);
 }
 
+window.onload = () => {
+    for(let i=0; i<MAX_P; i++) $('sectors').innerHTML += `<div id="s${i}" class="dot"></div>`;
+    env.allowLocalModels = false; 
+    env.useBrowserCache = true;
+    if(env.backends && env.backends.onnx) env.backends.onnx.logLevel = 'fatal';
+    setTimeout(checkSandboxSupport, 1000);
+};
+
+function checkSandboxSupport() {
+    if (!navigator.xr) $('sandbox-alert').style.display = 'block';
+}
+
 // ----------------------------------------------------------------------
 // SENSOR ROUTING (WebXR vs Legacy fallbacks)
 // ----------------------------------------------------------------------
@@ -187,6 +199,7 @@ $('btn-start').onclick = async () => {
     $('sandbox-alert').style.display = 'none';
     $('loader-bar-wrap').style.display = 'block';
     $('bs').innerText = 'INITIALIZING SYSTEM...';
+
     try { initThreeJS(); } catch (err) { $('bs').innerText = "THREE.JS INIT FAILED: " + err.message; return; }
 
     if (navigator.xr && typeof navigator.xr.isSessionSupported === 'function') {
@@ -212,13 +225,6 @@ $('btn-start').onclick = async () => {
     bootLegacy();
 };
 
-function checkSandboxSupport() {
-    if (!navigator.xr) {
-        $('sandbox-alert').style.display = 'block';
-    }
-}
-setTimeout(checkSandboxSupport, 1000);
-
 // ----------------------------------------------------------------------
 // TIER 1: WEBXR METRIC DEPTH RENDERING
 // ----------------------------------------------------------------------
@@ -228,7 +234,6 @@ function initXRSession(session) {
     $('vid').style.display = 'none'; 
     $('legacy-ui').style.display = 'none';
     $('btn-finalize').style.display = 'block';
-    $('btn-finalize').onclick = finalize;
     document.body.style.background = 'transparent';
     state.scan = true;
     
@@ -251,7 +256,6 @@ function renderXRLoop(time, frame) {
     const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
     const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
 
-    // Capture translation delta threshold
     const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
     if (!state.lastCamPos) state.lastCamPos = camPos.clone();
     
@@ -259,16 +263,13 @@ function renderXRLoop(time, frame) {
         state.lastCamPos.copy(camPos);
         const depthInfo = frame.getDepthInformation(view);
         if (depthInfo) {
-            accumulateDepthFrame(depthInfo, camMatrix, invProj, view);
+            accumulateDepthFrame(depthInfo, camMatrix, invProj);
             
-            // Safe variable type preservation (Quaternions used, no matrix pollution)
             const rotQ = new THREE.Quaternion().setFromRotationMatrix(camMatrix);
             state.pht.push({ pq: [rotQ.x, rotQ.y, rotQ.z, rotQ.w], pos: [camPos.x, camPos.y, camPos.z] }); 
-            
-            // Dynamic Centennial Sector Calculation
             updateCentroidSectors(camPos);
             
-            $('cc').innerText = `${state.pht.length} PHOTOS`;
+            $('cc').innerText = `${state.pht.length} FRAMES`;
             if (state.pht.length >= 100) finalize(); 
         }
     }
@@ -278,8 +279,6 @@ function renderXRLoop(time, frame) {
 
 function updateCentroidSectors(camPos) {
     if (state.rawPts.length < 10) return;
-    
-    // Calculate running target center of mass
     let sumX=0, sumY=0, sumZ=0;
     const step = Math.max(1, Math.floor(state.rawPts.length / 50));
     let sampleCount = 0;
@@ -289,37 +288,27 @@ function updateCentroidSectors(camPos) {
     }
     state.centroid.set(sumX/sampleCount, sumY/sampleCount, sumZ/sampleCount);
     
-    // Compute current viewing vector relative to tracked center
     const viewDir = new THREE.Vector3().copy(camPos).sub(state.centroid).normalize();
-    const yaw = Math.atan2(viewDir.x, viewDir.z); // Horizontal angle in radians
+    const yaw = Math.atan2(viewDir.x, viewDir.z); 
     const sectorIndex = Math.floor((((yaw * R2D) + 360) % 360) / 45) % 8;
     
     const dot = $(`s${sectorIndex}`);
     if (dot) dot.classList.add('active');
 }
 
-function accumulateDepthFrame(depth, camMatrix, invProj, view) {
+function accumulateDepthFrame(depth, camMatrix, invProj) {
     const STEP = 0.04; 
     const addedPoints = [];
-    const proj = view.projectionMatrix;
-    const p00 = proj[0];
-    const p11 = proj[5];
-    const p20 = proj[8];
-    const p21 = proj[9];
 
     for (let ny = 0; ny < 1; ny += STEP) {
         for (let nx = 0; nx < 1; nx += STEP) {
             const d = depth.getDepthInMeters(nx, ny);  
             if (!d || d < 0.1 || d > 1.2) continue; 
             
-            const x_ndc = nx * 2 - 1;
-            const y_ndc = (1 - ny) * 2 - 1;
-
-            const z_view = -d;
-            const x_view = (x_ndc - p20) * d / p00;
-            const y_view = (y_ndc - p21) * d / p11;
-
-            const viewPt = new THREE.Vector3(x_view, y_view, z_view);
+            const ndc = new THREE.Vector3(nx*2-1, (1-ny)*2-1, 0.5);
+            const ray = ndc.clone().applyMatrix4(invProj);
+            ray.divideScalar(ray.z === 0 ? 1 : -ray.z);  
+            const viewPt = ray.multiplyScalar(d);          
             const world = viewPt.applyMatrix4(camMatrix);
             
             const normDist = Math.max(0, Math.min(1, (d - 0.1) / 1.1));
@@ -352,6 +341,7 @@ function bootLegacy() {
     $('mode-title').style.color = '#ffb000';
     lC("SENSORS CONFIGURED. COMMENCING NETWORK COMPILATION.");
 
+    // BUG 1 FIXED: Dedicated isolated startup ensures camera object is requested ONLY ONCE.
     (async () => {
         if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
             try {
@@ -364,8 +354,20 @@ function bootLegacy() {
         resizeHUD(); window.addEventListener('resize', resizeHUD);
     })();
 
-    setupSensors();
-    loadAIEngine();
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        $('bs').innerText = 'TAP TO GRANT SENSOR PERMISSION';
+        const btnG = document.createElement('button'); btnG.className = 'btn go'; btnG.innerText = 'GRANT GYRO PERMISSIONS';
+        btnG.style.width = '200px'; btnG.style.marginTop = '10px';
+        btnG.onclick = async () => {
+            btnG.style.display = 'none';
+            try { if (await DeviceOrientationEvent.requestPermission() === 'granted') setupSensors(); else fallbackSensors(); } catch(err) { fallbackSensors(); }
+            loadAIEngine();
+        };
+        $('boot').appendChild(btnG);
+    } else { 
+        setupSensors(); 
+        loadAIEngine(); 
+    }
 }
 
 async function loadAIEngine() {
@@ -453,77 +455,85 @@ function smoothDepthMap(raw, W, H) {
 }
 
 async function doCaptureLegacy() {
+    // BUG 2 FIXED: Prevent 0-dimension canvas scaling IndexSizeErrors if the camera is still spinning up
+    if (state.vw === 0 || state.vh === 0) return;
+
     state.lck=true; state.lCap=performance.now(); lC("CAPTURING..."); navigator.vibrate?.([35]);
     
-    const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=256;
-    sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 256, 256); 
-    
-    const rgb = sX.getImageData(0,0,256,256).data;
-    const aMask = new Uint8Array(65536); aMask.fill(255); 
     try {
-        const maskRes = await state.rmbg(sC), mC = document.createElement('canvas'); mC.width=mC.height=256; const mCtx = mC.getContext('2d');
-        if (maskRes && maskRes.length && maskRes[0].mask && maskRes[0].mask.toCanvas) mCtx.drawImage(maskRes[0].mask.toCanvas(), 0, 0, 256, 256);
-        else if (maskRes && maskRes.toCanvas) mCtx.drawImage(maskRes.toCanvas(), 0, 0, 256, 256);
-        const mData = mCtx.getImageData(0,0,256,256).data; 
-        for(let i=0; i<65536; i++) aMask[i] = mData[i*4]; 
-    } catch(err) { console.warn("Background removal fallback.", err); }
+        const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=256;
+        sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 256, 256); 
+        
+        const rgb = sX.getImageData(0,0,256,256).data;
+        
+        const res = await state.pipe(sC); 
+        const W = res.predicted_depth.width;
+        const H = res.predicted_depth.height;
+        
+        const aMask = new Uint8Array(W * H); aMask.fill(255); 
+        try {
+            const maskRes = await state.rmbg(sC), mC = document.createElement('canvas'); mC.width=W; mC.height=H; const mCtx = mC.getContext('2d');
+            if (maskRes && maskRes.length && maskRes[0].mask && maskRes[0].mask.toCanvas) mCtx.drawImage(maskRes[0].mask.toCanvas(), 0, 0, W, H);
+            else if (maskRes && maskRes.toCanvas) mCtx.drawImage(maskRes.toCanvas(), 0, 0, W, H);
+            const mData = mCtx.getImageData(0,0,W,H).data; 
+            for(let i=0; i<W*H; i++) aMask[i] = mData[i*4]; 
+        } catch(err) { console.warn("Background removal fallback.", err); }
 
-    const res = await state.pipe(sC); 
-    const raw = smoothDepthMap(res.predicted_depth.data, res.predicted_depth.width, res.predicted_depth.height);
-    
-    const sortedRaw = Float32Array.from(raw).sort(), medRaw = sortedRaw[Math.floor(raw.length/2)] || 0.001;
-    const depth = new Float32Array(raw.length); 
-    for(let i=0;i<raw.length;i++) {
-        let val = raw[i]; if (!Number.isFinite(val) || val === 0) val = 0.001; 
-        let d = medRaw / val; 
-        depth[i] = 1.0 + (d - 1.0) * 1.5; 
-        if (!Number.isFinite(depth[i])) depth[i] = 1.0;
-    }
-    
-    const chkT = $('chk-tt');
-    let pq=[state.cR.x, state.cR.y, state.cR.z, state.cR.w];
-    if(chkT && chkT.checked) {
-        let fQ = new THREE.Quaternion(...pq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), state.pht.length*(Math.PI/4)));
-        pq = [fQ.x, fQ.y, fQ.z, fQ.w];
-    }
-    
-    state.pht.push({ depth, aMask, dW:res.predicted_depth.width, dH:res.predicted_depth.height, pq, rgb, isT:(chkT && chkT.checked) });
-    let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
-    
-    const pts=[], cols=[], q=new THREE.Quaternion(...pq);
-    for(let y=0; y<RES; y++) {
-        for(let x=0; x<RES; x++) {
-            let u = Math.floor((x/RES)*res.predicted_depth.width), v = Math.floor((y/RES)*res.predicted_depth.height);
-            let dv = depth[v * res.predicted_depth.width + u]; 
-            if(aMask[Math.floor((v/res.predicted_depth.height)*256)*256+Math.floor((u/res.predicted_depth.width)*256)] < 128) continue;
-            let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
-            if(chkT && chkT.checked) pt.z += 1.0; 
-            pt.applyQuaternion(q).multiplyScalar(0.35);
-            pts.push(pt.x, pt.y, pt.z);
-            
-            const pxI = Math.floor((u/res.predicted_depth.width)*256), pyI = Math.floor((v/res.predicted_depth.height)*256), idx = (pyI*256+pxI)*4;
-            cols.push(rgb[idx]/255, rgb[idx+1]/255, rgb[idx+2]/255);
+        const raw = smoothDepthMap(res.predicted_depth.data, W, H);
+        
+        const sortedRaw = Float32Array.from(raw).sort(), medRaw = sortedRaw[Math.floor(raw.length/2)] || 0.001;
+        const depth = new Float32Array(raw.length); 
+        for(let i=0;i<raw.length;i++) {
+            let val = raw[i]; if (!Number.isFinite(val) || val === 0) val = 0.001; 
+            let d = medRaw / val; 
+            depth[i] = 1.0 + (d - 1.0) * 1.5; 
+            if (!Number.isFinite(depth[i])) depth[i] = 1.0;
         }
+        
+        const chkT = $('chk-tt');
+        let pq=[state.cR.x, state.cR.y, state.cR.z, state.cR.w];
+        if(chkT && chkT.checked) {
+            let fQ = new THREE.Quaternion(...pq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), state.pht.length*(Math.PI/4)));
+            pq = [fQ.x, fQ.y, fQ.z, fQ.w];
+        }
+        
+        state.pht.push({ depth, aMask, dW:W, dH:H, pq, rgb, isT:(chkT && chkT.checked) });
+        let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
+        
+        const pts=[], cols=[], q=new THREE.Quaternion(...pq);
+        for(let y=0; y<RES; y++) {
+            for(let x=0; x<RES; x++) {
+                let u = Math.floor((x/RES)*W), v = Math.floor((y/RES)*H);
+                let dv = depth[v * W + u]; 
+                if(aMask[v * W + u] < 128) continue;
+                let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
+                if(chkT && chkT.checked) pt.z += 1.0; 
+                pt.applyQuaternion(q).multiplyScalar(0.35);
+                pts.push(pt.x, pt.y, pt.z);
+                
+                const pxI = Math.floor((u/W)*256), pyI = Math.floor((v/H)*256), idx = (pyI*256+pxI)*4;
+                cols.push(rgb[idx]/255, rgb[idx+1]/255, rgb[idx+2]/255);
+            }
+        }
+        const bg=new THREE.BufferGeometry();
+        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+        bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+        const pc = new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.015}));
+        livePointsGroup.add(pc);
+
+        if (state.pht.length >= 3) $('btn-finalize').style.display = 'block';
+        
+        const sectorIndex = Math.floor((((state.pht.length * 45) + 360) % 360) / 45) % 8;
+        const lDot = $(`s${sectorIndex}`);
+        if (lDot) lDot.classList.add('active');
+
+    } catch (err) {
+        console.error("Capture routine failed: ", err);
+    } finally {
+        state.lck = false; // Always lift UI capture lock even if math threw exception!
     }
-    const bg=new THREE.BufferGeometry();
-    bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
-    bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
-    const pc = new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.015}));
-    livePointsGroup.add(pc);
-
-    if (state.pht.length >= 3) {
-        $('btn-finalize').style.display = 'block';
-    }
-
-    // Highlight sector dots based on legacy virtual turntable angle rotation
-    const sectorIndex = Math.floor((((state.pht.length * 45) + 360) % 360) / 45) % 8;
-    const lDot = $(`s${sectorIndex}`);
-    if (lDot) lDot.classList.add('active');
-
-    state.lck=false;
 }
 
-// Manual Override Trigger
 $('btn-manual-capture').onclick = () => {
     if(state.mode === 'gyro-da2') {
         state.lCap = 0; 
@@ -539,12 +549,10 @@ $('btn-manual-capture').onclick = () => {
                 const depthInfo = frame.getDepthInformation(view);
                 if (depthInfo) {
                     accumulateDepthFrame(depthInfo, camMatrix, invProj, view);
-                    
                     const rotQ = new THREE.Quaternion().setFromRotationMatrix(camMatrix);
                     const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
                     state.pht.push({ pq: [rotQ.x, rotQ.y, rotQ.z, rotQ.w], pos: [camPos.x, camPos.y, camPos.z] });
                     updateCentroidSectors(camPos);
-                    
                     $('cc').innerText = `${state.pht.length} FRAMES`;
                     if (state.pht.length >= 3) $('btn-finalize').style.display = 'block';
                 }
@@ -572,6 +580,12 @@ function loopLegacy() {
 // ----------------------------------------------------------------------
 // POST-PROCESSING METABALL CONTRUCTION
 // ----------------------------------------------------------------------
+function decimate(geo, targetRatio = 0.25) {
+    if (targetRatio >= 0.99) return geo;
+    const mod = new THREE.SimplifyModifier(), triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3, target = Math.floor(triCount * targetRatio);
+    try { return mod.modify(geo, target); } catch(e) { return geo; }
+}
+
 async function finalize() {
     state.scan=false;
     
@@ -584,12 +598,10 @@ async function finalize() {
     $('btn-manual-capture').style.display = 'none';
     $('btn-finalize').style.display = 'none';
     
-    // Clear transparent overlays and display completed mesh on dark background
     livePointsGroup.clear();
     const vid = $('vid'); if(vid) vid.style.display = 'none';
     const hd = $('hud'); if(hd) hd.style.display = 'none';
     
-    // Transition viewport to solid inspector state
     $('inset').classList.add('fullscreen'); 
     iRnd.domElement.style.pointerEvents = 'auto'; 
     iCtl.enabled = true;
@@ -598,7 +610,6 @@ async function finalize() {
     
     await yieldLoop();
 
-    // Re-pack legacy points into global point cache state safely
     if (state.mode === 'gyro-da2') {
         const legacyPts=[]; 
         let allD=[];
@@ -611,7 +622,7 @@ async function finalize() {
             for(let y=0; y<RES; y++) {
                 for(let x=0; x<RES; x++) {
                     const u=Math.floor((x/RES)*ph.dW), v=Math.floor((y/RES)*ph.dH), dv=ph.depth[v*ph.dW+u];
-                    if(ph.aMask[Math.floor((y/RES)*256)*256+Math.floor((x/RES)*256)] < 128) continue; 
+                    if(ph.aMask[v * ph.dW + u] < 128) continue; 
                     if(dv<p05||dv>p95||!Number.isFinite(dv)) continue;
                     let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
                     if(ph.isT) pt.z+=medZ; pt.applyQuaternion(q).multiplyScalar(sF);
@@ -622,7 +633,9 @@ async function finalize() {
                         const dy = ph.depth[(v+1)*ph.dW + u] - ph.depth[(v-1)*ph.dW + u];
                         grad = Math.hypot(dx, dy);
                     }
-                    pt.col = new THREE.Color(ph.rgb[(v*ph.dW+u)*4]/255, ph.rgb[(v*ph.dW+u)*4+1]/255, ph.rgb[(v*ph.dW+u)*4+2]/255);
+                    
+                    const pxI = Math.floor((u/ph.dW)*256), pyI = Math.floor((v/ph.dH)*256), idx=(pyI*256+pxI)*4;
+                    pt.col = new THREE.Color(ph.rgb[idx]/255, ph.rgb[idx+1]/255, ph.rgb[idx+2]/255);
                     pt.conf = Math.max(0.2, Math.min(1.0, 1.0 - (grad * 10)));
                     if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) legacyPts.push(pt);
                 }
@@ -633,7 +646,6 @@ async function finalize() {
     
     const rPts = state.rawPts;
     
-    // Symmetry Mirror back-fill
     if ($('chk-sym') && $('chk-sym').checked && rPts.length > 50) {
         let cx=0,cy=0,cz=0; rPts.forEach(p=>{cx+=p.x;cy+=p.y;cz+=p.z;}); cx/=rPts.length; cy/=rPts.length; cz/=rPts.length;
         let nx=0,ny=0,nz=0; 
@@ -656,7 +668,6 @@ async function finalize() {
         } rPts.push(...mirrored);
     }
     
-    // Density calculation
     const counts=new Map(), map=new Map(); let mnX=1e9,mnY=1e9,mnZ=1e9; rPts.forEach(p=>{mnX=Math.min(mnX,p.x); mnY=Math.min(mnY,p.y); mnZ=Math.min(mnZ,p.z);});
     state.mnX = mnX; state.mnY = mnY; state.mnZ = mnZ;
     
@@ -716,70 +727,24 @@ async function buildWatertightMesh() {
 
     $('async-status').innerText = "PROJECTING VERTEX COLORS..."; await yieldLoop();
     
-    const pos = geo.attributes.position.array, nrm = geo.attributes.normal.array, col = new Float32Array(pos.length);
-    const scale = state.scaleFactor || 1;
+    const pos = geo.attributes.position.array, col = new Float32Array(pos.length);
 
-    if (state.mode === 'gyro-da2') {
-        state.pht.forEach(ph => {
-            ph._q = new THREE.Quaternion(...ph.pq);
-            ph._qInv = ph._q.clone().invert();
-            ph._fwd = new THREE.Vector3(0,0,-1).applyQuaternion(ph._q);
-        });
-
-        for(let i=0; i<pos.length; i+=3) {
-            if(i%3000===0) await yieldLoop(); 
-            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]), n = new THREE.Vector3(nrm[i], nrm[i+1], nrm[i+2]);
-            const vUnscaled = v.clone().multiplyScalar(1/scale);
-            
-            let sumR=0, sumG=0, sumB=0, totalW=0.0001;
-            for(let ph of state.pht) {
-                const facing = n.dot(ph._fwd);
-                if(facing > 0.1) {
-                    const l = vUnscaled.clone().applyQuaternion(ph._qInv);
-                    if (ph.isT) l.z -= ph.orbitPivot;
-                    if(l.z < 0) {
-                        const u = (l.x / -l.z) / tanH, vv = (l.y / -l.z) / tanH;
-                        if(Math.abs(u)<1 && Math.abs(vv)<1 && ph.rgb) {
-                            const ix = Math.floor((u*.5+.5)*256), iy = Math.floor((.5-vv*.5)*256);
-                            if (ph.aMask[iy*256+ix] < 128) continue; 
-
-                            const w = Math.pow(facing, 4); 
-                            const idx=(iy*256+ix)*4;
-                            sumR += ph.rgb[idx]*w; sumG += ph.rgb[idx+1]*w; sumB += ph.rgb[idx+2]*w; totalW += w;
-                        }
-                    }
-                }
+    for(let i=0; i<pos.length; i+=3) {
+        if(i%3000===0) await yieldLoop(); 
+        const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
+        const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
+        let sR=0, sG=0, sB=0, cw=0, nearby=0;
+        for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
+            const k = `${gx+dx},${gy+dy},${gz+dz}`;
+            if(state.spatialHash.has(k)) {
+                const pt = state.spatialHash.get(k);
+                if(pt.col) { sR += pt.col.r; sG += pt.col.g; sB += pt.col.b; cw++; }
+                nearby += pt.density;
             }
-            
-            let nearby = 0;
-            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
-            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
-                const k = `${gx+dx},${gy+dy},${gz+dz}`;
-                if(state.spatialHash.has(k)) nearby += state.spatialHash.get(k).density;
-            }
-            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
-
-            col[i] = (sumR/totalW/255)*aoCoeff; col[i+1] = (sumG/totalW/255)*aoCoeff; col[i+2] = (sumB/totalW/255)*aoCoeff;
         }
-    } else {
-        // BUG 1 RESOLVED: Map point colors onto vertices via high-speed voxel map search
-        for(let i=0; i<pos.length; i+=3) {
-            if(i%3000===0) await yieldLoop(); 
-            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
-            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
-            let sR=0, sG=0, sB=0, cw=0, nearby=0;
-            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
-                const k = `${gx+dx},${gy+dy},${gz+dz}`;
-                if(state.spatialHash.has(k)) {
-                    const pt = state.spatialHash.get(k);
-                    if(pt.col) { sR += pt.col.r; sG += pt.col.g; sB += pt.col.b; cw++; }
-                    nearby += pt.density;
-                }
-            }
-            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
-            if(cw > 0) { col[i] = (sR/cw)*aoCoeff; col[i+1] = (sG/cw)*aoCoeff; col[i+2] = (sB/cw)*aoCoeff; }
-            else { col[i] = 0.5*aoCoeff; col[i+1] = 0.5*aoCoeff; col[i+2] = 0.5*aoCoeff; }
-        }
+        const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
+        if(cw > 0) { col[i] = (sR/cw)*aoCoeff; col[i+1] = (sG/cw)*aoCoeff; col[i+2] = (sB/cw)*aoCoeff; }
+        else { col[i] = 0.5*aoCoeff; col[i+1] = 0.5*aoCoeff; col[i+2] = 0.5*aoCoeff; }
     }
     
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -859,5 +824,6 @@ if($('rs')) $('rs').onclick = () => location.reload();
 </script>
 </body>
 </html>
+
 
 ```
