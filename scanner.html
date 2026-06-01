@@ -1,1360 +1,814 @@
+```html
 <!DOCTYPE html>
-<!-- P3dK Scanner v2 — Clean Architecture
-  Single coordinate system: Three.js units (≈ meters)
-  Phase 1: INIT — camera starts, ORB runs, user frames object
-  Phase 2: SCAN — tap to capture frames, TSDF builds in background  
-  Phase 3: BAKE — one tap, mesh appears, STL downloads
-  No unit mismatch. No mode confusion. Minimal buttons.
--->
-<html>
+<html lang="en">
 <head>
-<meta charset=UTF-8>
-<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK SCANNER</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>P3dK Metaball Scanner v11.1</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/MarchingCubes.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/SimplifyModifier.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/EdgeSplitModifier.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
 <style>
-:root{--c:#0ff;--a:#ffb000;--m:#f0f;--g:#0f9;--bg:#050505}
-*{box-sizing:border-box;user-select:none;margin:0;padding:0;overflow:hidden}
-body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;touch-action:none}
-/* Camera feed — fullscreen background */
-#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1;transition:opacity .4s}
-/* ORB keypoint HUD — drawn on 2D canvas */
-#hud{position:fixed;inset:0;z-index:2;pointer-events:none}
-/* Three.js — point cloud + baked mesh review */
-#glc{position:fixed;inset:0;z-index:3;background:transparent;pointer-events:none}
-/* Ghost overlay for alignment */
-#ghost{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:4;
-  opacity:0;pointer-events:none;mix-blend-mode:screen;transition:opacity .4s}
-/* Progress bar */
-#pb{position:fixed;top:0;left:0;height:3px;background:var(--a);z-index:20;width:0%;transition:width .6s ease-out}
-/* Flash on capture */
-#flash{position:fixed;inset:0;background:#fff;z-index:30;opacity:0;pointer-events:none;transition:opacity .08s}
-/* UI panels */
-#ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;
-  justify-content:space-between;pointer-events:none;padding:10px}
-.pan{background:rgba(0,12,12,.15);border:1px solid rgba(0,255,255,.25);
-  padding:10px;pointer-events:auto;backdrop-filter:blur(3px)}
-/* Phase indicator */
-#phase{font-size:11px;font-weight:bold;line-height:1.8;pointer-events:none}
-#phase .ph{color:rgba(0,255,255,.4);font-size:10px}
-#phase .ph.active{color:var(--c)}
-#phase .info{font-size:12px;color:var(--a);min-height:16px}
-/* Sensor chips */
-#chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
-.chip{font-size:9px;padding:2px 7px;border-radius:2px;font-weight:bold}
-.chip.ok{background:rgba(0,255,153,.15);color:var(--g);border:1px solid rgba(0,255,153,.3)}
-.chip.off{background:rgba(60,60,60,.2);color:#555;border:1px solid #333}
-.chip.warn{background:rgba(255,176,0,.15);color:var(--a);border:1px solid rgba(255,176,0,.3)}
-/* Buttons */
-.btn{background:rgba(0,20,20,.2);color:var(--c);border:1px solid rgba(0,255,255,.4);
-  padding:14px;font:bold 13px 'Courier New';cursor:pointer;text-transform:uppercase;
-  width:100%;margin-top:8px;transition:.1s;pointer-events:auto;letter-spacing:1px}
-.btn:active{background:var(--c);color:#000}
-.btn:disabled{opacity:.3;pointer-events:none}
-.btn.primary{border-color:var(--c);border-width:2px;font-size:16px;height:68px}
-.btn.danger{border-color:var(--m);color:var(--m)}
-.btn.go{border-color:var(--g);color:var(--g)}
-/* Dedicated Camera Shutter Dock */
-.cam-dock{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-top:8px;pointer-events:auto}
-.shutter-btn{width:80px;height:80px;border-radius:50%;background:rgba(0,255,255,0.12);border:3px solid var(--c);color:var(--c);font:bold 10px 'Courier New';cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:0.15s;flex-shrink:0;box-shadow:0 0 12px rgba(0,255,255,0.15)}
-.shutter-btn:active{transform:scale(0.9);background:var(--c);color:#000}
-.dock-side{flex:1;height:52px;margin:0!important}
-/* Frame counter arc */
-#arc{position:fixed;top:12px;right:12px;z-index:11;pointer-events:none}
-/* Phase 3 review panel */
-#rev{display:none}
-.sl-row{display:flex;align-items:center;gap:8px;margin:6px 0}
-.sl-row span{font-size:10px;color:#ccc;width:80px;flex-shrink:0}
-.sl-row input[type=range]{flex:1;accent-color:var(--a)}
-.sl-row .val{font-size:11px;color:var(--a);width:32px;text-align:right}
-/* Instruction overlay — shown in Phase 1 */
-#instr{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  z-index:11;text-align:center;pointer-events:none;display:none}
-#instr .big{font-size:32px;color:rgba(0,255,255,.8);animation:pulse 2s infinite}
-#instr .sub{font-size:12px;color:var(--a);margin-top:8px}
-@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
-/* Frame dots strip */
-#fdots{display:flex;gap:4px;margin-top:6px;align-items:center;flex-wrap:wrap}
-.fdot{width:8px;height:8px;border-radius:50%;background:rgba(0,255,255,.25);
-  border:1px solid rgba(0,255,255,.3);transition:background .3s}
-.fdot.done{background:var(--c)}
-.fdot.active{background:var(--a);animation:pulse .5s infinite}
+* { box-sizing:border-box; margin:0; padding:0; touch-action:none; user-select:none; }
+body { background:#030712; color:#0ff; font-family:'Courier New',monospace; width:100vw; height:100dvh; overflow:hidden; font-size:12px; }
+#hud-root { position:absolute; inset:0; width:100vw; height:100dvh; overflow:hidden; pointer-events:none; z-index: 10; }
+#hud-root * { pointer-events:auto; }
+#vid { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; opacity:0.85; }
+#hud { position:absolute; inset:0; z-index:2; pointer-events:none; }
+#inset { position:absolute; bottom:110px; right:12px; width:160px; height:160px; border:1.5px solid rgba(0,255,255,.4); z-index:10; background:#030712; transition:all 0.5s ease; }
+#inset.fullscreen { bottom:0; right:0; width:100vw; height:100vh; border:none; z-index:40; }
+#top, #bot { position:absolute; left:0; right:0; z-index:20; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px 12px; }
+#top { top:0; display:flex; justify-content:space-between; align-items:center; }
+#bot { bottom:0; padding:10px 12px 16px; }
+#boot { position:absolute; inset:0; z-index:100; background:#030712; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
+#done { position:absolute; inset:0; z-index:50; background:rgba(3,7,18,0.96); display:none; flex-direction:column; align-items:center; padding:20px; overflow-y:auto; pointer-events:none; }
+#done * { pointer-events:auto; }
+.btn { background:rgba(0,20,20,.6); border:1px solid rgba(0,255,255,.4); color:#0ff; font-family:inherit; padding:10px; cursor:pointer; font-weight:bold; border-radius:2px; width:100%; transition:.1s; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing: 1px; }
+.btn:active { background:#0ff; color:#000; }
+.btn.go { border-color:#0f9; color:#0f9; }
+.btn.go2 { border-color:#ffb000; color:#ffb000; }
+.btn.go3 { border-color:#ff00ff; color:#ff00ff; }
+.dot { width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,255,255,.3); background:rgba(0,0,0,.5); }
+.dot.active { background:#0ff; box-shadow:0 0 8px #0ff; transform:scale(1.2); }
+.slider-group { width:100%; max-width:320px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#888; }
+.slider-group input { width:60%; accent-color:#0f9; }
+#stats { position:fixed; top:50px; left:12px; z-index:30; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px; font-size:10px; display:flex; flex-direction:column; gap:4px; pointer-events:none; }
+#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0f9; color:#000; padding:12px 24px; font-weight:bold; border-radius:3px; z-index:120; box-shadow:0 0 15px rgba(16,185,129,0.5); opacity:0; pointer-events:none; transition:opacity 0.3s, transform 0.3s; text-align:center; max-width:90vw; }
+#toast.show { opacity:1; transform:translate(-50%, -10px); }
+.loader-text { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+#sandbox-alert { display:none; background:rgba(239,68,68,0.2); border:1px solid #f87171; color:#f87171; padding:6px; font-size:9px; text-align:center; margin-top:4px; max-width:320px; }
 </style>
+<script>
+window.addEventListener('error', function(e) {
+    const bs = document.getElementById('bs');
+    if (bs) { bs.innerText = "CRITICAL BOOT ERROR: " + (e.message || "Failed to parse system library"); bs.style.color = '#f55'; }
+});
+</script>
 </head>
 <body>
-<video id=vid autoplay playsinline muted></video>
-<canvas id=hud></canvas>
-<canvas id=glc></canvas>
-<img id=ghost src="">
-<div id=pb></div>
-<div id=flash></div>
 
-<!-- Capture instruction crosshair -->
-<div id=instr>
-  <div class=big>⊕</div>
-  <div class=sub>FRAME OBJECT · TAP TO CAPTURE</div>
+<div id="hud-root">
+    <video id="vid" autoplay playsinline muted></video>
+    <canvas id="hud"></canvas>
+    <div id="inset"></div>
+
+    <div id="top">
+        <div><span style="color:#0f9">▶</span> <span id="mode-title">P3DK INITIALIZING...</span></div>
+        <div style="display:flex;align-items:center;gap:8px;">IDX: <span id="qv">--</span>
+            <svg width="16" height="16" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/><circle id="qr" cx="10" cy="10" r="8" stroke="#0ff" stroke-width="2" fill="none" stroke-dasharray="50.3" stroke-dashoffset="50.3"/></svg>
+        <span id="qb">WAIT</span></div>
+    </div>
+
+    <div id="bot">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:10px;">
+            <div id="legacy-ui">
+                <div style="font-size:9px; color:#888; margin-bottom:4px;">SECTORS</div>
+                <div id="sectors" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end;">
+                <div id="cc" style="font-size:16px; font-weight:bold;">0 FRAMES</div>
+                <label style="font-size:9px; color:#888; cursor:pointer; margin-top:4px;"><input type="checkbox" id="chk-tt" checked> TURNTABLE MODE</label>
+                <label style="font-size:9px; color:#888; cursor:pointer; margin-top:2px;"><input type="checkbox" id="chk-sym" checked> SYMMETRY FILL</label>
+            </div>
+        </div>
+        <div id="clg">READY. ALIGN SCANNER WITH OBJECT.</div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+            <button id="btn-manual-capture" class="btn go" style="margin:0; flex-grow:2;">📷 CAPTURE FRAME (RAPID OVERRIDE)</button>
+            <button id="btn-finalize" class="btn" style="margin:0; border-color:#0f9; color:#0f9; display:none; flex-grow:1;">FINALIZE</button>
+        </div>
+    </div>
+
+    <div id="boot">
+        <div style="font-size:18px; font-weight:bold; color:#0ff; margin-bottom:10px;">P3DK HYBRID SCANNER</div>
+        <button id="btn-start" class="btn go" style="width:200px;">START SCANNER</button>
+        <div id="sandbox-alert">WEBXR SENSORS BLOCKED BY CONTAINER SANDBOX. WILL BOOT IN PORTABLE SENSOR MODE.</div>
+        <div style="width:200px; height:6px; border:1px solid #0ff; border-radius:3px; margin: 10px 0; display:none;" id="loader-bar-wrap"><div id="bp" style="width:0; height:100%; background:#0ff;"></div></div>
+        <div id="bs" style="font-size:10px; color:#fff; text-align:center;">READY.</div>
+    </div>
+
+    <div id="done">
+        <div style="text-align:center; margin:10px 0 20px; z-index:60; pointer-events:none;">
+            <div style="color:#0f9; font-size:22px; font-weight:bold; text-shadow: 0 2px 10px #000;">✔ SCAN COMPLETE</div>
+            <div id="es" style="font-size:11px; color:#ccc; margin-top:4px; text-shadow: 0 1px 4px #000;">0 POINTS · 0 TRIANGLES</div>
+            <div id="async-status" class="loader-text" style="font-size:10px; color:#ffb000; margin-top:6px; font-weight:bold; text-shadow: 0 1px 4px #000; display:none;">PROCESSING...</div>
+        </div>
+        
+        <div style="flex-grow:1; min-height:80px;"></div> 
+
+        <!-- Advanced SDF Metaball Controls -->
+        <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(0,255,255,0.2); padding:16px; width:100%; max-width:360px; margin-bottom:16px;">
+            <div style="color:#0f9; font-weight:bold; margin-bottom:12px; font-size:11px;">FUSION CONFIGURATION</div>
+            <div class="slider-group"><span>RESOLUTION</span><input type="range" id="sl-res" min="32" max="128" step="8" value="64"></div>
+            <div class="slider-group"><span>BLOB SIZE</span><input type="range" id="sl-str" min="0.0001" max="0.01" step="0.0001" value="0.0015"></div>
+            <div class="slider-group"><span>TIGHTNESS</span><input type="range" id="sl-iso" min="10" max="200" step="5" value="80"></div>
+            <div class="slider-group"><span>FALLOFF</span><input type="range" id="sl-sub" min="1" max="20" step="1" value="8"></div>
+            <div class="slider-group"><span>DECIMATION</span><input type="range" id="sl-det" min="0.05" max="1.0" step="0.05" value="0.25"></div>
+            <div class="slider-group" style="margin-top:10px; justify-content:flex-end;">
+                <label style="color:#fff; cursor:pointer;"><input type="checkbox" id="chk-edge" checked> ENABLE EDGESPLIT</label>
+            </div>
+        </div>
+
+        <div style="width:100%; max-width:360px; display:flex; flex-direction:column;">
+            <button id="dl-stl" class="btn go">↓ EXPORT WATERTIGHT STL</button>
+            <button id="dl-ply" class="btn go2">↓ EXPORT COLOR PLY</button>
+            <button id="rs" class="btn" style="border:1px dashed #555; background:transparent; margin-top:8px;">⟳ SCAN ANOTHER</button>
+        </div>
+    </div>
+    <div id="toast">FILE GENERATED successfully!</div>
 </div>
 
-<!-- Orbital guide ring (top right) - drawn by canvas overlay -->
-<!-- Frame arc progress (top right) -->
-<svg id=arc width=62 height=62 viewBox="0 0 62 62" style="position:fixed;top:8px;right:8px;z-index:11;pointer-events:none">
-  <circle cx=31 cy=31 r=26 fill="rgba(0,0,0,.5)" stroke="rgba(0,255,255,.12)" stroke-width=1/>
-  <!-- 8 orbital slots around edge -->
-  <g id=orbSlots></g>
-  <!-- Frame count arc -->
-  <circle id=arcFill cx=31 cy=31 r=26 fill=none stroke="var(--c)" stroke-width=3
-    stroke-dasharray="0 163" stroke-dashoffset="41" transform="rotate(-90 31 31)"
-    style="transition:stroke-dasharray .4s"/>
-  <!-- Gyro direction needle drawn on canvas overlay -->
-  <text x=31 y=36 text-anchor=middle font-size=16 font-family="Courier New"
-    font-weight=bold fill="var(--c)" id=arcTxt>0</text>
-</svg>
+<script type="module">
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0';
 
-<div id=ui>
-  <!-- TOP: status -->
-  <div class=pan>
-    <div id=phase>
-      <div id=phLine>INITIALISING...</div>
-      <div class=info id=info></div>
-    </div>
-    <div id=chips>
-      <span class="chip off" id=cGY>Gyro</span>
-      <span class="chip off" id=cCA>Cam</span>
-      <span class="chip off" id=cOR>ORB</span>
-      <span class="chip off" id=cTS>TSDF</span>
-    </div>
-    <div id=fdots></div>
-  </div>
+// OPTIMIZATION: Reduced point sampling resolution (RES = 24 instead of 45) to cut math iterations by 3.2x
+const MAX_P = 16, RES = 24, V_SZ = 0.015, R2D = 180 / Math.PI, tanH = Math.tan(Math.PI / 6);
+const $ = id => document.getElementById(id), lC = m => $('clg').innerText = m;
+const showToast = msg => { const t=$('toast'); if(!t)return; t.innerText=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4500); };
+const yieldLoop = () => new Promise(r => setTimeout(r, 0)); 
 
-  <!-- BOTTOM: action buttons (phase-dependent) -->
-  <div>
-    <!-- Phase 1: INIT -->
-    <div id=p1 class=pan>
-      <button class="btn primary" id=bStart>▶ START SCANNING</button>
-    </div>
+const state = { mode: '', pipe:null, rmbg:null, pht:[], rawPts:[], dsPts:[], spatialHash:new Map(), cR:new THREE.Quaternion(), lQ:null, sQ:null, aV:0, lCap:0, lck:false, wMesh:null, scan:false, vw:640, vh:480, scaleFactor:1, mnX:0, mnY:0, mnZ:0, lastCamPos: null };
 
-    <!-- Phase 2: SCAN — shutter dock layout -->
-    <div id=p2 class=pan style=display:none>
-      <div class=cam-dock>
-        <button class="btn danger dock-side" id=bStop>✕ STOP</button>
-        <button class=shutter-btn id=bCapture>
-          <span style="font-size:18px;line-height:1;margin-bottom:2px">⬤</span>
-          <span id=shutterLabel style="font-size:8px;letter-spacing:.5px">CAPTURE</span>
-        </button>
-        <button class="btn dock-side" id=bDone disabled>REVIEW →</button>
-      </div>
-    </div>
+let iScn, iCam, iRnd, iCtl, hCtx, ManifoldClass = null, livePointsGroup;
+const dCtx = document.createElement('canvas').getContext('2d', {willReadFrequently:true}); dCtx.canvas.width = dCtx.canvas.height = 128;
+const eBuf = new Uint8ClampedArray(128*128*4);
 
-    <!-- Phase 3: REVIEW -->
-    <div id=p3 class=pan style=display:none>
-      <div id=rev>
-        <div style="font-size:10px;color:var(--a);font-weight:bold;margin-bottom:4px">MESH CALIBRATION</div>
-        <div class=sl-row><span>ISO LEVEL</span>
-          <input type=range id=sliso min=-8 max=8 step=1 value=-2
-            oninput="$('viso').textContent=this.value">
-          <span class=val id=viso>-2</span></div>
-        <div class=sl-row><span>POINT SIZE</span>
-          <input type=range id=slps min=0.005 max=0.06 step=0.005 value=0.015
-            oninput="$('vps').textContent=this.value;window.resizePts?.()">
-          <span class=val id=vps>0.015</span></div>
-        <div class=sl-row>
-          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;cursor:pointer">
-            <input type=checkbox id=cbSm checked> TAUBIN SMOOTH</label>
-          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:10px;cursor:pointer">
-            <input type=checkbox id=cbWire> WIREFRAME</label>
-        </div>
-        <div class=sl-row>
-          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;cursor:pointer">
-            <input type=checkbox id=cbCloud checked> CLOUD</label>
-          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:10px;cursor:pointer">
-            <input type=checkbox id=cbMesh checked> MESH</label>
-        </div>
-      </div>
-      <button class="btn go" id=bBake>∴ BAKE → STL</button>
-      <div class=g2>
-        <button class=btn id=bMore>+ MORE FRAMES</button>
-        <button class="btn danger" id=bDiscard>DISCARD</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<script type=module>
-import{pipeline,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
-env.allowLocalModels=false;env.useBrowserCache=true;
-
-// ── DOM ───────────────────────────────────────────────────────────────────────
-const $=id=>document.getElementById(id);
-const sts=t=>{$('phLine').textContent=t};
-const info=t=>{$('info').textContent=t};
-const chip=(id,s,t)=>{const e=$(id);e.className='chip '+s;e.textContent=t};
-const vid=$('vid'),ghost=$('ghost'),glc=$('glc'),hud=$('hud');
-const pb=$('pb'),flash=$('flash');
-const hudCtx=hud.getContext('2d');
-hud.width=innerWidth;hud.height=innerHeight;
-
-// ── THREE.JS ──────────────────────────────────────────────────────────────────
-const scene=new THREE.Scene();
-const cam3=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.01,100);
-cam3.position.set(0,0,2);
-const rend=new THREE.WebGLRenderer({canvas:glc,antialias:true,alpha:true});
-rend.setPixelRatio(Math.min(devicePixelRatio,2));
-rend.setSize(innerWidth,innerHeight);
-const oc=new THREE.OrbitControls(cam3,rend.domElement);
-oc.enableDamping=true;oc.enabled=false;
-scene.add(new THREE.AmbientLight(0xffffff,.6));
-const dl=new THREE.DirectionalLight(0x00ffff,.5);dl.position.set(2,3,2);scene.add(dl);
-const ptGroup=new THREE.Group();scene.add(ptGroup);
-const meshGroup=new THREE.Group();scene.add(meshGroup);
-let reviewMesh=null,lastVerts=null;
-
-// ── TSDF WORKER ───────────────────────────────────────────────────────────────
-// ALL coordinates in Three.js units (≈ meters). VoxSz=0.008m=8mm.
-const WC=`
-let nx=0,ny=0,nz=0,sz=0,bb={x:0,y:0,z:0},sd=null,wt=null;
-const TR=3; // truncation in meters (3× voxel size)
-const vi=(x,y,z)=>x+y*nx+z*nx*ny;
-self.onmessage=function(e){
-  const{type,data}=e;
-  if(type==='init'){
-    nx=data.nx;ny=data.ny;nz=data.nz;sz=data.sz;bb=data.bb;
-    const N=nx*ny*nz;
-    sd=new Float32Array(N).fill(TR);
-    wt=new Float32Array(N);
-    self.postMessage({type:'ready',dims:[nx,ny,nz]});
-  }
-  else if(type==='integrate'){
-    if(!sd)return;
-    const p=data.pts; // Float32Array of xyz in meters
-    const wts=data.wts; // Float32Array per-point weights (0..1), optional
-    for(let i=0;i<p.length;i+=3){
-      const px=p[i],py=p[i+1],pz=p[i+2];
-      // Per-point weight: quality × facing ratio (default 1 if no weights passed)
-      const ptW=wts?Math.max(0.05,wts[i/3]):1;
-      const vx=Math.floor((px-bb.x)/sz)|0;
-      const vy=Math.floor((py-bb.y)/sz)|0;
-      const vz=Math.floor((pz-bb.z)/sz)|0;
-      const bv=Math.ceil(TR/sz)+1;
-      for(let dz2=-bv;dz2<=bv;dz2++){
-        const zi=vz+dz2;
-        if(vx<0||vy<0||zi<0||vx>=nx||vy>=ny||zi>=nz)continue;
-        const idx=vi(vx,vy,zi);
-        const s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
-        const w=wt[idx];
-        // Weight the SDF update by per-point quality
-        const addW=ptW;
-        sd[idx]=(sd[idx]*w+s*addW)/(w+addW);
-        wt[idx]=Math.min(w+addW,255);
-      }
+function resizeHUD() {
+    const v = $('vid'), h = $('hud');
+    if (v && h) {
+        state.vw = v.videoWidth || window.innerWidth; state.vh = v.videoHeight || window.innerHeight;
+        h.width = v.clientWidth || window.innerWidth; h.height = v.clientHeight || window.innerHeight;
     }
-    self.postMessage({type:'done'});
-  }
-  else if(type==='march'){
-    if(!sd){self.postMessage({type:'mesh',verts:new Float32Array(0)});return}
-    const iso=data.iso||0,minW=data.minW||1,verts=[];
-    const ip=(p1,p2,v1,v2)=>{
-      const t=(iso-v1)/((v2-v1)||.0001);
-      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
-    };
-    const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
-    for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
-      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
-               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
-      const vals=c.map(([x,y,z])=>{
-        const idx=vi(Math.min(nx-1,x),Math.min(ny-1,y),Math.min(nz-1,z));
-        return wt[idx]<minW?TR:sd[idx];
-      });
-      const pos=c.map(([x,y,z])=>[bb.x+x*sz+sz*.5,bb.y+y*sz+sz*.5,bb.z+z*sz+sz*.5]);
-      for(const[a,b,cc,d]of tets){
-        const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
-        const ins=sv.map(v=>v<iso?1:0),bit=ins[0]|(ins[1]<<1)|(ins[2]<<2)|(ins[3]<<3);
-        if(!bit||bit===15)continue;
-        const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
-        for(const[ea,eb]of edges)if(ins[ea]!==ins[eb])cuts.push(ip(sp[ea],sp[eb],sv[ea],sv[eb]));
-        if(cuts.length>=3){
-          verts.push(...cuts[0],...cuts[1],...cuts[2]);
-          if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3]);
+}
+
+function initThreeJS() {
+    hCtx = $('hud').getContext('2d');
+    iScn = new THREE.Scene();
+    iScn.background = null; 
+
+    iCam = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 20); 
+    iCam.position.set(0, 0, 0.4); 
+
+    iRnd = new THREE.WebGLRenderer({ antialias:true, alpha:true }); 
+    iRnd.setSize(window.innerWidth, window.innerHeight); 
+    
+    iRnd.domElement.style.position = 'absolute';
+    iRnd.domElement.style.inset = '0';
+    iRnd.domElement.style.zIndex = '5';
+    iRnd.domElement.style.pointerEvents = 'none'; 
+    document.body.appendChild(iRnd.domElement);
+
+    iRnd.toneMapping = THREE.ACESFilmicToneMapping; iRnd.outputEncoding = THREE.sRGBEncoding;
+    const pmrem = new THREE.PMREMGenerator(iRnd); iScn.environment = pmrem.fromScene(new THREE.Scene(), 0.04).texture;
+
+    iCtl = new THREE.OrbitControls(iCam, iRnd.domElement); 
+    iCtl.enableDamping = true; iCtl.dampingFactor = 0.05; 
+    iCtl.autoRotate = false; iCtl.enabled = false; 
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    const dl1 = new THREE.DirectionalLight(0x06b6d4, 1.5); dl1.position.set(1, 2, 1);
+    iScn.add(ambient, dl1);
+
+    livePointsGroup = new THREE.Group();
+    iScn.add(livePointsGroup);
+}
+
+// ----------------------------------------------------------------------
+// SENSOR ROUTING (WebXR vs Legacy fallbacks)
+// ----------------------------------------------------------------------
+$('btn-start').onclick = async () => {
+    $('btn-start').style.display = 'none';
+    $('sandbox-alert').style.display = 'none';
+    $('loader-bar-wrap').style.display = 'block';
+    $('bs').innerText = 'INITIALIZING SYSTEM...';
+    try { initThreeJS(); } catch (err) { $('bs').innerText = "THREE.JS INIT FAILED: " + err.message; return; }
+
+    if (navigator.xr && typeof navigator.xr.isSessionSupported === 'function') {
+        try {
+            const supported = await navigator.xr.isSessionSupported('immersive-ar');
+            if (supported) {
+                $('bs').innerText = 'REQUESTING NATIVE AR SENSORS...';
+                const session = await navigator.xr.requestSession('immersive-ar', {
+                    requiredFeatures: ['depth-sensing'],
+                    optionalFeatures: ['dom-overlay'],
+                    depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha'] },
+                    domOverlay: { root: document.getElementById('hud-root') }
+                });
+                state.mode = 'xr-depth';
+                return initXRSession(session);
+            }
+        } catch(e) {
+            console.warn("WebXR Session failed, booting CPU-Fallback Gyro pipeline", e);
         }
-      }
     }
-    const arr=new Float32Array(verts);
-    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
-  }
-};`;
-
-// ── STATE ─────────────────────────────────────────────────────────────────────
-let depthPipe=null,worker=null;
-let phase=1;
-let fc=0,pc=0;
-let integBusy=false,bakeQ=false,adapted=false,replayBusy=false;
-let bakeRetries=0,queuedPts=null,queuedWts=null;
-let opLocked=false; // global lock: prevents overlapping async operations
-let capturedFrames=[];
-let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-const dQ=new THREE.Quaternion();
-let hasGyro=false,vTrack=null;
-// Orbital coverage tracking — yaw angles captured (from gyro, in degrees 0-360)
-let coveredAngles=[];
-let lastQuality={blur:0,corners:0,exposure:0,score:0};
-let prevDepth=null;
-let prevNormDepth=null;
-let prevMatchKP=null,prevMatchDesc=null;
-// Stitch overlap tracking for center reticule HUD
-let stitchMatchKP=[],stitchMatchDesc=[],liveMatchCount=0;
-let filteredOverlapPct=100; // EMA-smoothed overlap percentage
-// Desktop turntable fallback — drag to simulate gyro yaw
-let manualYaw=0,isDraggingYaw=false,dragStartX=0;
-
-// ── ORB ────────────────────────────────────────────────────────────────────────
-const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};
-  let s=42;for(let i=0;i<256;i++)p.push(r(),r(),r(),r());return p})();
-function brief(g,W,H,cx,cy){
-  const d=new Uint32Array(8);
-  for(let i=0;i<256;i++){const b=i*4,
-    x1=Math.max(0,Math.min(W-1,cx+BP[b])),y1=Math.max(0,Math.min(H-1,cy+BP[b+1])),
-    x2=Math.max(0,Math.min(W-1,cx+BP[b+2])),y2=Math.max(0,Math.min(H-1,cy+BP[b+3]));
-    if(g[y1*W+x1]>g[y2*W+x2])d[i>>5]|=1<<(i&31);}
-  return d;
-}
-function hamming(a,b){let h=0;for(let i=0;i<8;i++){let x=a[i]^b[i];x-=(x>>1)&0x55555555;x=(x&0x33333333)+((x>>2)&0x33333333);h+=((x+(x>>4)&0xF0F0F0F)*0x1010101)>>24}return h}
-function fastCorners(g,W,H){
-  const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
-  const raw=[];
-  for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){
-    const c=g[y*W+x];let br=0,dk=0;
-    for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+20)br++;else if(v<c-20)dk++}
-    if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)});
-  }
-  raw.sort((a,b)=>b.s-a.s);
-  const k=[],m=12;
-  for(const p of raw){if(k.length>=30)break;if(!k.some(q=>Math.abs(q.x-p.x)<m&&Math.abs(q.y-p.y)<m))k.push(p)}
-  return k;
-}
-
-// ── WIRE MESH / DEPTH VISUALIZATION ENGINE ────────────────────────────────────
-// Replaces flickering magenta corner dots with stable edge lines (Sobel)
-// and real-time depth contours — the "sculptor's eye" view of the scene.
-// All computed on the existing 128×128 luma buffer — zero extra cost.
-
-// Sobel edge map: returns Float32Array of edge magnitudes [0..1] at 128×128
-function sobelEdges(gray,W,H){
-  const out=new Float32Array(W*H);
-  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
-    const gx=(-gray[(y-1)*W+(x-1)]-2*gray[y*W+(x-1)]-gray[(y+1)*W+(x-1)])
-             +( gray[(y-1)*W+(x+1)]+2*gray[y*W+(x+1)]+gray[(y+1)*W+(x+1)]);
-    const gy=(-gray[(y-1)*W+(x-1)]-2*gray[(y-1)*W+x]-gray[(y-1)*W+(x+1)])
-             +( gray[(y+1)*W+(x-1)]+2*gray[(y+1)*W+x]+gray[(y+1)*W+(x+1)]);
-    out[y*W+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128);
-  }
-  return out;
-}
-
-
-// Draw Sobel wire mesh overlay on live feed
-let edgeMap=null; // updated by trackLoop
-// Wire mesh via ImageData — single putImageData+drawImage instead of thousands of fillRect calls
-// This is ~50x faster: one JS buffer write, one GPU upload, one drawImage.
-const _edgeCvs=document.createElement('canvas');_edgeCvs.width=_edgeCvs.height=128;
-const _edgeCtx=_edgeCvs.getContext('2d',{willReadFrequently:false});
-const _edgeBuf=new Uint8ClampedArray(128*128*4); // RGBA pixels, reused every frame
-function drawWireMesh(ox,oy,dw,dh){
-  if(!edgeMap)return;
-  // Adaptive threshold: use 85th percentile of edge magnitudes
-  // This keeps roughly 15% of pixels as edges regardless of scene complexity
-  // Prevents flooding in high-texture outdoor scenes
-  const sorted=Array.from(edgeMap).sort((a,b)=>a-b);
-  const thresh=Math.max(0.3,sorted[Math.floor(sorted.length*.85)]);
-  for(let i=0;i<128*128;i++){
-    const e=edgeMap[i];
-    if(e>thresh){
-      const a=Math.min(180,((e-thresh)/(1-thresh))*500)|0;
-      _edgeBuf[i*4]=0;_edgeBuf[i*4+1]=210;_edgeBuf[i*4+2]=170;_edgeBuf[i*4+3]=a;
-    }else{
-      _edgeBuf[i*4+3]=0;
-    }
-  }
-  _edgeCtx.putImageData(new ImageData(_edgeBuf,128,128),0,0);
-  hudCtx.drawImage(_edgeCvs,ox,oy,dw,dh);
-}
-
-// Alignment delta arrows — shown after stitch, replaces confusing ghost
-// Shows HOW FAR and WHICH DIRECTION to move for next capture
-let stitchDelta={x:0,y:0,frames:0}; // accumulated translation since last stitch
-function drawAlignmentGuide(){
-  if(!stitchKP.length||stitchDelta.frames<2)return;
-  const cx=innerWidth/2,cy=innerHeight*0.35;
-  const dx=stitchDelta.x,dy=stitchDelta.y;
-  const dist=Math.sqrt(dx*dx+dy*dy);
-  if(dist<8)return; // at capture position — no arrow needed
-  // Draw arrow showing accumulated movement direction
-  const angle=Math.atan2(dy,dx);
-  const len=Math.min(60,dist*0.8);
-  const ex=cx+Math.cos(angle)*len,ey=cy+Math.sin(angle)*len;
-  hudCtx.strokeStyle='rgba(255,176,0,.7)';hudCtx.lineWidth=2;
-  hudCtx.beginPath();hudCtx.moveTo(cx,cy);hudCtx.lineTo(ex,ey);
-  // Arrowhead
-  hudCtx.lineTo(ex-Math.cos(angle-.4)*12,ey-Math.sin(angle-.4)*12);
-  hudCtx.moveTo(ex,ey);
-  hudCtx.lineTo(ex-Math.cos(angle+.4)*12,ey-Math.sin(angle+.4)*12);
-  hudCtx.stroke();
-  // Distance label
-  hudCtx.fillStyle='rgba(255,176,0,.8)';
-  hudCtx.font='bold 10px Courier New';
-  hudCtx.textAlign='center';
-  hudCtx.fillText(`MOVED ${Math.round(dist)}px`,cx,cy-10);
-  hudCtx.textAlign='left';
-}
-
-
-// Post-bake shape analysis using PCA on point cloud
-function analyzeShape(pts){
-  if(!pts||pts.length<30)return null;
-  // Compute centroid
-  let cx=0,cy=0,cz=0,n=pts.length/3;
-  for(let i=0;i<pts.length;i+=3){cx+=pts[i];cy+=pts[i+1];cz+=pts[i+2]}
-  cx/=n;cy/=n;cz/=n;
-  // Covariance matrix (3×3 upper triangle)
-  let c00=0,c11=0,c22=0,c01=0,c02=0,c12=0;
-  for(let i=0;i<pts.length;i+=3){
-    const dx=pts[i]-cx,dy=pts[i+1]-cy,dz=pts[i+2]-cz;
-    c00+=dx*dx;c11+=dy*dy;c22+=dz*dz;c01+=dx*dy;c02+=dx*dz;c12+=dy*dz;
-  }
-  c00/=n;c11/=n;c22/=n;c01/=n;c02/=n;c12/=n;
-  // Approximate eigenvalues (Gershgorin circles → actual iteration overkill)
-  // Use diagonal variances as proxy for extent in each axis
-  const extents=[Math.sqrt(c00),Math.sqrt(c11),Math.sqrt(c22)].sort((a,b)=>b-a);
-  const [e0,e1,e2]=extents; // largest to smallest
-  // Shape classification by aspect ratios
-  const r10=e1/e0,r20=e2/e0; // both in [0..1]
-  let shape,color,description;
-  if(r10>0.8&&r20>0.8){shape='● SPHERE / CUBE';color='#0ff';description='equidimensional — all axes similar'}
-  else if(r10>0.6&&r20<0.4){shape='▬ DISC / PLANE';color='#0f9';description='flat — one short axis'}
-  else if(r10<0.4){shape='| CYLINDER / CONE';color='#ffb000';description='elongated — one long axis dominates'}
-  else{shape='◈ IRREGULAR';color='#f0f';description='complex shape — multiple features'}
-  return{shape,color,description,extents:[e0.toFixed(3),e1.toFixed(3),e2.toFixed(3)]};
-}
-// Laplacian variance: measures image sharpness (blur detection)
-// High variance = sharp. Low variance = blurry.
-function laplacianVariance(gray,W,H){
-  let sum=0,sum2=0,n=0;
-  for(let y=1;y<H-1;y+=2)for(let x=1;x<W-1;x+=2){
-    const v=(-gray[(y-1)*W+x]-gray[y*W+(x-1)]+4*gray[y*W+x]-gray[y*W+(x+1)]-gray[(y+1)*W+x]);
-    sum+=v;sum2+=v*v;n++;
-  }
-  const mean=sum/n;const variance=sum2/n-mean*mean;
-  return Math.min(100,variance/30); // 0-100, 30 = "acceptably sharp"
-}
-
-// Exposure score: 0=too dark, 100=perfect, check for clipping
-function exposureScore(gray,W,H){
-  let sum=0,bright=0,dark=0,n=0;
-  for(let i=0;i<gray.length;i+=4){
-    const v=gray[i];sum+=v;n++;
-    if(v>235)bright++;
-    if(v<20)dark++;
-  }
-  const mean=sum/n;
-  const brightPct=bright/n,darkPct=dark/n;
-  if(brightPct>0.15)return{score:30,label:'OVEREXPOSED — reduce light'};
-  if(darkPct>0.3)return{score:20,label:'TOO DARK — add light'};
-  if(mean<60)return{score:40,label:'UNDEREXPOSED'};
-  if(mean>210)return{score:50,label:'BRIGHT — risk of glare'};
-  return{score:100,label:'EXPOSURE OK'};
-}
-
-// Compute overall frame quality: blur + features + exposure
-// Called every 500ms on live video, result shown in HUD
-let _qualTimer=0;
-function computeQuality(){
-  const w=vid.videoWidth,h=vid.videoHeight;
-  if(!w||phase!==2)return;
-  const mD=Math.min(w,h),sx=(w-mD)/2,sy=(h-mD)/2;
-  tCtx.drawImage(vid,sx,sy,mD,mD,0,0,128,128);
-  const px=tCtx.getImageData(0,0,128,128).data;
-  for(let i=0;i<px.length;i+=4)tGray[i>>2]=(px[i]*.299+px[i+1]*.587+px[i+2]*.114)|0;
-  const blur=laplacianVariance(tGray,128,128);
-  const kp=fastCorners(tGray,128,128);
-  const exp=exposureScore(px,128,128);
-  const cornerScore=Math.min(100,(kp.length/25)*100); // 25 corners = 100%
-  // Weighted final score: blur 40%, features 40%, exposure 20%
-  const score=Math.round(blur*.4+cornerScore*.4+exp.score*.2);
-  lastQuality={blur:Math.round(blur),corners:kp.length,exposure:exp.score,label:exp.label,score};
-  hudKP=kp;hudAge=0;
-  // Quality bar rendered by drawHUD every frame — don't write to canvas here
-}
-
-function drawQualityBar(score,corners,expLabel){
-  if(phase!==2)return;
-  const W=Math.min(innerWidth-32,360),X=(innerWidth-W)/2;
-  // Position below the top status panel (about 120px from top on mobile)
-  const Y=136;
-  hudCtx.fillStyle='rgba(0,0,0,.7)';hudCtx.fillRect(X,Y,W,32);
-  const col=score<40?'#f04':score<70?'#ffb000':'#0f9';
-  hudCtx.fillStyle=score<40?'rgba(255,0,64,.45)':score<70?'rgba(255,176,0,.35)':'rgba(0,255,153,.35)';
-  hudCtx.fillRect(X,Y,Math.round(W*score/100),32);
-  hudCtx.strokeStyle=col;hudCtx.lineWidth=1;hudCtx.strokeRect(X,Y,W,32);
-  hudCtx.font='bold 10px Courier New';hudCtx.fillStyle=col;
-  const hint=score<40?'⚠ LOW':score<70?'◎ FAIR':'✔ GOOD';
-  hudCtx.fillText(`${hint} · ${score}% · ${corners}feat · ${expLabel}`,X+7,Y+13);
-  hudCtx.fillStyle='rgba(255,255,255,.45)';hudCtx.font='8px Courier New';
-  if(score<40)hudCtx.fillText('move closer · improve lighting · add texture to surface',X+7,Y+25);
-  else if(score<70)hudCtx.fillText('better results with more light and less motion',X+7,Y+25);
-  else hudCtx.fillText('ready — tap CAPTURE',X+7,Y+25);
-}
-
-// ── ORBITAL COVERAGE GUIDE ────────────────────────────────────────────────────
-// Inspired by OpenScan's systematic orbital pattern (8 positions around, 2 elevations)
-// Shows a compass ring with green sectors where frames have been captured
-function drawOrbitalGuide(){
-  if(phase!==2||!hasGyro)return;
-  const cx=innerWidth-44,cy=44,r=30;
-  // Background circle
-  hudCtx.beginPath();hudCtx.arc(cx,cy,r,0,Math.PI*2);
-  hudCtx.fillStyle='rgba(0,0,0,.5)';hudCtx.fill();
-  hudCtx.strokeStyle='rgba(0,255,255,.25)';hudCtx.lineWidth=1;hudCtx.stroke();
-  // Draw covered sectors (every 45° = 8 slots)
-  for(const angle of coveredAngles){
-    const a=angle*Math.PI/180;
-    hudCtx.beginPath();
-    hudCtx.moveTo(cx,cy);
-    hudCtx.arc(cx,cy,r-2,a-Math.PI/8,a+Math.PI/8);
-    hudCtx.closePath();
-    hudCtx.fillStyle='rgba(0,255,153,.5)';hudCtx.fill();
-  }
-  // Current direction indicator
-  if(dQ.length()>.1){
-    const euler=new THREE.Euler().setFromQuaternion(dQ,'YXZ');
-    const yaw=-euler.y; // yaw in radians
-    const nx2=cx+Math.sin(yaw)*(r-6),ny2=cy-Math.cos(yaw)*(r-6);
-    hudCtx.beginPath();hudCtx.moveTo(cx,cy);hudCtx.lineTo(nx2,ny2);
-    hudCtx.strokeStyle='var(--a)';hudCtx.lineWidth=2;hudCtx.stroke();
-  }
-  // Frame count in center
-  hudCtx.font='bold 12px Courier New';hudCtx.fillStyle='var(--c)';
-  hudCtx.textAlign='center';hudCtx.fillText(fc,cx,cy+4);hudCtx.textAlign='left';
-}
-
-// Update coverage when a frame is captured
-function recordCoverage(){
-  if(!hasGyro||dQ.length()<.1)return;
-  const euler=new THREE.Euler().setFromQuaternion(dQ,'YXZ');
-  const yawDeg=(((-euler.y)*180/Math.PI)%360+360)%360;
-  // Snap to nearest 45° slot
-  const slot=Math.round(yawDeg/45)*45;
-  if(!coveredAngles.includes(slot))coveredAngles.push(slot);
-}
-const tCvs=document.createElement('canvas');tCvs.width=tCvs.height=128;
-const tCtx=tCvs.getContext('2d',{willReadFrequently:true});
-const tGray=new Uint8Array(128*128);
-let pKP=null,pDesc=null,snapTx=0,snapTy=0;
-let hudKP=[],stitchKP=[],hudAge=0;
-
-// Persistent RAF HUD loop
-// ── CENTER RETICULE with overlap% and orbital progress ────────────────────────
-function drawCenterReticule(cx,cy){
-  const r1=35,r2=44; // inner=overlap, outer=orbital progress
-  // EMA-smooth the raw overlap count
-  let rawPct=100;
-  if(fc>0&&stitchMatchKP.length>0)
-    rawPct=Math.max(0,Math.min(100,Math.round(liveMatchCount/Math.max(5,stitchMatchKP.length)*100)));
-  filteredOverlapPct=Math.round(filteredOverlapPct*.75+rawPct*.25);
-  const progPct=Math.min(100,Math.round(coveredAngles.length/8*100));
-  let col='#0f9',label='OPTIMAL POSITION';
-  if(fc===0){col='#0ff';label='FIRST CAPTURE';}
-  else if(filteredOverlapPct>85){col='#ffb000';label='MOVE FURTHER';}
-  else if(filteredOverlapPct<25){col='#f0f';label='TRACKING WEAK';}
-  else if(filteredOverlapPct<50){col='#0ff';label='LOW OVERLAP';}
-
-  hudCtx.shadowBlur=6;hudCtx.shadowColor=col;
-  // Outer ring: orbital progress (cyan)
-  hudCtx.beginPath();hudCtx.arc(cx,cy,r2,0,Math.PI*2);
-  hudCtx.strokeStyle='rgba(0,255,255,.08)';hudCtx.lineWidth=2;hudCtx.stroke();
-  hudCtx.beginPath();hudCtx.arc(cx,cy,r2,-Math.PI/2,-Math.PI/2+Math.PI*2*(progPct/100));
-  hudCtx.strokeStyle='var(--c)';hudCtx.lineWidth=2.5;hudCtx.stroke();
-  // Inner ring: overlap % (color-coded)
-  hudCtx.beginPath();hudCtx.arc(cx,cy,r1,0,Math.PI*2);
-  hudCtx.strokeStyle='rgba(255,255,255,.04)';hudCtx.lineWidth=4;hudCtx.stroke();
-  hudCtx.beginPath();hudCtx.arc(cx,cy,r1,-Math.PI/2,-Math.PI/2+Math.PI*2*(filteredOverlapPct/100));
-  hudCtx.strokeStyle=col;hudCtx.lineWidth=4;hudCtx.stroke();
-  hudCtx.shadowBlur=0;
-  // Crosshair ticks
-  hudCtx.strokeStyle=col;hudCtx.lineWidth=1.5;hudCtx.beginPath();
-  hudCtx.moveTo(cx-8,cy);hudCtx.lineTo(cx-3,cy);hudCtx.moveTo(cx+3,cy);hudCtx.lineTo(cx+8,cy);
-  hudCtx.moveTo(cx,cy-8);hudCtx.lineTo(cx,cy-3);hudCtx.moveTo(cx,cy+3);hudCtx.lineTo(cx,cy+8);
-  hudCtx.stroke();
-  // Labels
-  hudCtx.textAlign='center';
-  hudCtx.font='bold 9px Courier New';hudCtx.fillStyle=col;
-  hudCtx.fillText(label,cx,cy-r2-10);
-  hudCtx.font='bold 8px Courier New';hudCtx.fillStyle='rgba(255,255,255,.75)';
-  hudCtx.fillText(fc>0?`${filteredOverlapPct}% MATCH`:'READY',cx,cy+4);
-  hudCtx.font='bold 8px Courier New';hudCtx.fillStyle='var(--c)';
-  hudCtx.fillText(`ORBIT: ${progPct}%`,cx,cy+r2+13);
-  if(!hasGyro){
-    hudCtx.font='7px Courier New';hudCtx.fillStyle='var(--a)';
-    hudCtx.fillText('DRAG TO ROTATE',cx,cy+r2+24);
-  }
-  hudCtx.textAlign='left';
-}
-
-function drawHUD(){
-  hudCtx.clearRect(0,0,hud.width,hud.height);
-  if(phase!==2||!vid.videoWidth)return;
-  const vw=vid.videoWidth,vh=vid.videoHeight;
-  const sc=Math.max(innerWidth/vw,innerHeight/vh);
-  const dw=vw*sc,dh=vh*sc,ox=(innerWidth-dw)/2,oy=(innerHeight-dh)/2;
-  const mD=Math.min(vw,vh),sx2=(vw-mD)/2,sy2=(vh-mD)/2;
-  const ms=(px,py)=>({x:ox+(sx2+(px/128)*mD)*sc,y:oy+(sy2+(py/128)*mD)*sc});
-
-  // 1. Sobel wire mesh — fast single ImageData upload
-  drawWireMesh(ox,oy,dw,dh);
-
-  // 2. Frozen stitch markers (cyan crosshairs)
-  for(const p of stitchKP){
-    const pt=ms(p.x,p.y);
-    hudCtx.strokeStyle='rgba(0,220,255,.95)';hudCtx.lineWidth=1.5;
-    hudCtx.strokeRect(pt.x-6,pt.y-6,12,12);
-    hudCtx.beginPath();
-    hudCtx.moveTo(pt.x-9,pt.y);hudCtx.lineTo(pt.x+9,pt.y);
-    hudCtx.moveTo(pt.x,pt.y-9);hudCtx.lineTo(pt.x,pt.y+9);
-    hudCtx.stroke();
-  }
-
-  // 3. Alignment arrows
-  drawAlignmentGuide();
-  // 4. Center reticule with overlap% and orbital progress
-  drawCenterReticule(innerWidth/2,innerHeight*.4);
-  // 5. Quality bar + orbital guide
-  if(lastQuality.score>0)drawQualityBar(lastQuality.score,lastQuality.corners,lastQuality.label||'');
-  drawOrbitalGuide();
-  hudAge++;
-}
-(function raf(){requestAnimationFrame(raf);drawHUD();rend.render(scene,cam3);if(oc.enabled)oc.update()})();
-
-// Quality scoring runs every 500ms — uses existing tGray buffer, no DA2 needed
-setInterval(()=>{if(phase===2)computeQuality()},500);
-// Depth preview removed — DA2 at 128x96 still takes 150-400ms on mobile main
-// thread, causing visible freezes every 1.5s. Sobel edges provide instant feedback.
-
-// ── TSDF WORKER LIFECYCLE ─────────────────────────────────────────────────────
-function mkWorker(vSz,bb,dims,replay){
-  if(worker)worker.terminate();
-  worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
-  integBusy=true;
-  chip('cTS','warn',`TSDF ${dims.join('×')}`);
-  worker.onmessage=ev=>{
-    const{type}=ev.data;
-    if(type==='ready'){
-      integBusy=false;
-      chip('cTS','ok',`TSDF ${ev.data.dims.join('×')}`);
-      // Replay historical frames + flush queued
-      (async()=>{
-        replayBusy=true;
-        for(const pts of (replay||[])){
-          await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
-          if(!worker)break;
-          integBusy=true;
-          // Clone before transferring — pts.buffer becomes detached after first transfer
-          // without clone, subsequent replays send zero-length buffers silently
-          const clone=pts.slice();
-          worker.postMessage({type:"integrate",data:{pts:clone}},[clone.buffer]);
-        }
-        if(queuedPts&&worker){
-          const q=queuedPts,qw=queuedWts;queuedPts=null;queuedWts=null;
-          await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
-          if(worker){
-            integBusy=true;
-            const msg=qw?{pts:q,wts:qw}:{pts:q};
-            const bufs=qw?[q.buffer,qw.buffer]:[q.buffer];
-            worker.postMessage({type:"integrate",data:msg},bufs);
-          }
-        }
-        await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
-        replayBusy=false;
-        chip('cTS','ok',`TSDF ${dims.join('×')} ✔`);
-        info(`${fc} frames · tap BAKE STL`);
-      })();
-    }
-    else if(type==='done'){integBusy=false}
-    else if(type==='mesh'){
-      integBusy=false;bakeQ=false;bakeRetries=0;
-      const v=ev.data.verts;
-      if(!v||v.length<9){
-        sts('NO SURFACE');info('Try: lower ISO, more frames, scan closer');
-        $('bBake').disabled=false;return;
-      }
-      // Smooth
-      sts('SMOOTHING...');
-      const out=$('cbSm').checked?smoothMesh(v,3):v;
-      // Display
-      if(reviewMesh){
-        reviewMesh.geometry.dispose();
-        reviewMesh.material.dispose();
-        meshGroup.remove(reviewMesh);
-      }
-      const geo=new THREE.BufferGeometry();
-      geo.setAttribute('position',new THREE.BufferAttribute(out.slice(),3));
-      geo.computeVertexNormals();
-      reviewMesh=new THREE.Mesh(geo,
-        $('cbWire').checked
-          ?new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true})
-          :new THREE.MeshStandardMaterial({color:0x33ddcc,roughness:.4,metalness:.15,side:THREE.DoubleSide})
-      );
-      meshGroup.add(reviewMesh);
-      // Center camera on mesh
-      geo.computeBoundingBox();
-      const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
-      const bs=new THREE.Vector3();geo.boundingBox.getSize(bs);
-      const d=Math.max(.5,Math.max(bs.x,bs.y,bs.z)*1.8);
-      oc.target.copy(bc);cam3.position.set(bc.x,bc.y,bc.z+d);
-      cam3.lookAt(bc);oc.update();
-      $('cbCloud').checked=false;$('cbMesh').checked=true;
-      ptGroup.visible=false;meshGroup.visible=true;
-      lastVerts=out;$('bBake').disabled=false;
-      const tris=(out.length/9|0).toLocaleString();
-      // Post-bake shape analysis — PCA → primitive classification
-      const allPts=[];
-      capturedFrames.forEach(f=>{for(let i=0;i<f.pts.length;i++)allPts.push(f.pts[i])});
-      const shape=analyzeShape(new Float32Array(allPts));
-      const shapeStr=shape?` · ${shape.shape}`:'';
-      sts('MESH READY — '+tris+' tris'+shapeStr);
-      if(shape){
-        info(`${shape.description} · extents ${shape.extents.join('/')}m`);
-        // Flash shape color
-        $('bBake').style.borderColor=shape.color;$('bBake').style.color=shape.color;
-      }else{info('Drag to orbit · tap BAKE STL to download');}
-      dlSTL(out);
-    }
-  };
-  worker.postMessage({type:'init',data:{nx:dims[0],ny:dims[1],nz:dims[2],sz:vSz,bb}});
-}
-
-// Initial worker — 2m×2m×2m grid centered on origin
-function initWorker(){
-  const vSz=0.04,r=vSz*50; // 2m range, 50 voxels each axis
-  mkWorker(vSz,{x:-r,y:-r,z:-r},[100,100,100]);
-}
-
-// ── DEPTH INFERENCE ────────────────────────────────────────────────────────────
-const iCvs=document.createElement('canvas');
-const iCtx=iCvs.getContext('2d',{willReadFrequently:true});
-
-// ── DEPTH SCALE/SHIFT ALIGNMENT — Median Robust Estimator ────────────────────
-// DA2 produces relative depth with unknown scale per frame.
-// PROBLEM WITH LEAST-SQUARES: one mismatched background ORB point can dominate
-// the regression and wildly rescale the whole depth map.
-// FIX: Compute per-match scale ratio, take the MEDIAN.
-// Median is immune to up to 49% outlier matches — correct for noisy ORB.
-function alignDepthScale(prevNorm,currNorm,matches,dW,dH){
-  if(!prevNorm||!matches||matches.length<4)return{s:1,t:0};
-  const dMin=Math.min(dW,dH),dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
-  const ratios=[];
-  for(const m of matches){
-    const du=Math.floor(dsx+(m.bx/128)*dMin),dv=Math.floor(dsy+(m.by/128)*dMin);
-    const pu=Math.floor(dsx+(m.ax/128)*dMin),pv=Math.floor(dsy+(m.ay/128)*dMin);
-    if(du<0||du>=dW||dv<0||dv>=dH||pu<0||pu>=dW||pv<0||pv>=dH)continue;
-    const vc=currNorm[dv*dW+du],vp=prevNorm[pv*dW+pu];
-    if(vc<0.05||vp<0.05)continue; // skip near-zero (background/sky)
-    ratios.push(vp/vc);
-  }
-  if(ratios.length<3)return{s:1,t:0};
-  ratios.sort((a,b)=>a-b);
-  const s=ratios[ratios.length>>1]; // MEDIAN — robust to outliers
-  if(s<0.25||s>4)return{s:1,t:0}; // reject catastrophic mismatch
-  // Median shift
-  const shifts=[];
-  for(const m of matches){
-    const du=Math.floor(dsx+(m.bx/128)*dMin),dv=Math.floor(dsy+(m.by/128)*dMin);
-    const pu=Math.floor(dsx+(m.ax/128)*dMin),pv=Math.floor(dsy+(m.ay/128)*dMin);
-    if(du<0||du>=dW||dv<0||dv>=dH||pu<0||pu>=dW||pv<0||pv>=dH)continue;
-    const vc=currNorm[dv*dW+du],vp=prevNorm[pv*dW+pu];
-    if(vc<0.05||vp<0.05)continue;
-    shifts.push(vp-s*vc);
-  }
-  if(!shifts.length)return{s,t:0};
-  shifts.sort((a,b)=>a-b);
-  return{s,t:shifts[shifts.length>>1]};
-}
-
-// Apply scale/shift to normalize depth map relative to previous frame
-function applyDepthAlignment(norm,s,t){
-  if(s===1&&t===0)return norm;
-  const out=new Float32Array(norm.length);
-  for(let i=0;i<norm.length;i++){
-    out[i]=Math.max(0,Math.min(1,s*norm[i]+t));
-  }
-  return out;
-}
-
-// ── TEMPORAL DEPTH STABILIZATION (ChatGPT #3) ─────────────────────────────────
-// Exponential moving average across frames. Alpha=0.3 on new, 0.7 on history.
-// Reduces DA2 depth flicker without adding latency (pure memory operation).
-function temporalSmooth(norm){
-  if(!prevDepth||prevDepth.length!==norm.length){
-    prevDepth=norm.slice();return norm;
-  }
-  const out=new Float32Array(norm.length);
-  for(let i=0;i<norm.length;i++)out[i]=norm[i]*.3+prevDepth[i]*.7;
-  prevDepth=out.slice();
-  return out;
-}
-
-// ── SURFACE NORMAL CONFIDENCE (Gemini #2, simplified) ────────────────────────
-// Compute per-pixel facing ratio (dot product of surface normal with camera axis).
-// Grazing angle pixels (normal ⊥ camera) have high depth uncertainty → low weight.
-// Returns Float32Array same size as RES×RES, values 0..1 (1=facing camera directly).
-function computeFacingRatio(norm,dW,dH,dMin,dsx,dsy,RES){
-  const fr=new Float32Array(RES*RES);
-  for(let iy=1;iy<RES-1;iy++)for(let ix=1;ix<RES-1;ix++){
-    const nu=Math.floor(dsx+(ix/RES)*dMin),nv=Math.floor(dsy+(iy/RES)*dMin);
-    if(nu<1||nu>=dW-1||nv<1||nv>=dH-1){fr[iy*RES+ix]=0.5;continue}
-    const dx=norm[nv*dW+(nu+1)]-norm[nv*dW+(nu-1)];
-    const dy=norm[(nv+1)*dW+nu]-norm[(nv-1)*dW+nu];
-    // Surface normal from depth gradients: n = normalize(-dx, -dy, 2/RES)
-    const nz=2/RES;
-    const len=Math.sqrt(dx*dx+dy*dy+nz*nz)||1;
-    // Facing ratio = |n·camera_axis| = |nz/len|
-    fr[iy*RES+ix]=Math.min(1,Math.abs(nz/len)*2); // ×2 to spread range
-  }
-  return fr;
-}
-
-async function captureFrame(){
-  if(!depthPipe||!vid.videoWidth)return;
-  if(opLocked)return; // prevent double-tap during async inference
-  opLocked=true;
-  // Frame rejection — skip if quality too low (first frame always allowed)
-  if(fc>0&&lastQuality.score<50){
-    info(`⚠ Quality ${lastQuality.score}% — ${lastQuality.label||'improve conditions'}`);
-    flash.style.background='rgba(255,0,64,.3)';flash.style.opacity='.5';
-    setTimeout(()=>{flash.style.opacity=0;flash.style.background='#fff'},200);
-    opLocked=false; // CRITICAL: must release lock before every return path
-    return;
-  }
-
-  // Animate UI
-  $('bCapture').disabled=true;
-  const sl=$('shutterLabel');if(sl)sl.textContent='…';
-  pb.style.transition='none';pb.style.width='0%';
-  requestAnimationFrame(()=>{pb.style.transition='width .7s ease-out';pb.style.width='82%'});
-  flash.style.opacity='.35';setTimeout(()=>flash.style.opacity=0,80);
-  navigator.vibrate?.([50]);
-
-  // Snapshot ORB keypoints for HUD frozen markers
-  stitchKP=hudKP.slice();
-  // Snapshot for overlap% reticule tracking
-  stitchMatchKP=hudKP.slice();
-  stitchMatchDesc=hudKP.map(p=>brief(tGray,128,128,p.x,p.y));
-  liveMatchCount=0;
-  // Reset alignment delta arrows
-  stitchDelta={x:0,y:0,frames:0};
-  // Record orbital coverage
-  recordCoverage();
-
-  try{
-    const w=vid.videoWidth,h=vid.videoHeight;
-    iCvs.width=512;iCvs.height=Math.round(512*h/w);
-    iCtx.drawImage(vid,0,0,iCvs.width,iCvs.height);
-    const result=await depthPipe(iCvs);
-    if(!result.predicted_depth)throw new Error('No depth output');
-    const t=result.predicted_depth;
-    const dd=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
-    let mn=Infinity,mx=-Infinity;
-    for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
-    const rng=(mx-mn)||1;let norm=new Float32Array(dd.length);
-    for(let i=0;i<dd.length;i++)norm[i]=(dd[i]-mn)/rng;
-
-    // Declare dW/dH FIRST before ANY code that uses them (fixes temporal dead zone)
-    const RES=80;
-    const dW=iCvs.width,dH=iCvs.height,dMin=Math.min(dW,dH);
-    const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
-    const maxD=2.0;
-    const fovR=60*Math.PI/180;
-    const tanH=Math.tan(fovR/2);
-
-    // P1: Depth scale/shift alignment (uses dW/dH declared above)
-    if(prevNormDepth&&prevMatchKP&&prevMatchKP.length>=4){
-      const currKP=fastCorners(tGray,128,128);
-      const currDesc=currKP.map(p=>brief(tGray,128,128,p.x,p.y));
-      const alignMatches=[];
-      for(let i=0;i<prevMatchKP.length;i++){
-        let best=52,bi=-1;
-        for(let j=0;j<currKP.length;j++){const h2=hamming(prevMatchDesc[i],currDesc[j]);if(h2<best){best=h2;bi=j}}
-        if(bi>=0)alignMatches.push({ax:prevMatchKP[i].x,ay:prevMatchKP[i].y,bx:currKP[bi].x,by:currKP[bi].y});
-      }
-      const {s,t}=alignDepthScale(prevNormDepth,norm,alignMatches,dW,dH);
-      if(s!==1||t!==0){norm=applyDepthAlignment(norm,s,t);}
-    }
-    prevNormDepth=norm.slice();
-    prevMatchKP=hudKP.slice();prevMatchDesc=hudKP.map(p=>brief(tGray,128,128,p.x,p.y));
-    norm=temporalSmooth(norm);
-
-    // Adaptive cull: use 5th-95th percentile depth
-    const sorted=Array.from(norm).sort((a,b)=>a-b);
-    const p05=sorted[Math.floor(sorted.length*.05)];
-    const p95=sorted[Math.floor(sorted.length*.95)];
-
-    const pos=[];const colors=[];const pts=[];const weights=[];
-    const spacing=2.5/RES;
-
-    // P2: Compute surface normal facing ratios (Gemini #2)
-    // Points at grazing angles (|normal·camera| near 0) have high depth uncertainty.
-    const facingRatio=computeFacingRatio(norm,dW,dH,dMin,dsx,dsy,RES);
-
-    // P1: Frame quality weight for TSDF (ChatGPT #5)
-    // High-quality frames contribute more to each voxel than blurry/dark ones.
-    const frameWeight=Math.max(0.2,lastQuality.score/100);
-
-    // Color from camera
-    const cCvs=document.createElement('canvas');cCvs.width=cCvs.height=RES;
-    const cCtx2=cCvs.getContext('2d',{willReadFrequently:true});
-    const minV=Math.min(w,h);
-    cCtx2.drawImage(vid,(w-minV)/2,(h-minV)/2,minV,minV,0,0,RES,RES);
-    const cd=cCtx2.getImageData(0,0,RES,RES).data;
-
-    for(let iy=0;iy<RES;iy++)for(let ix=0;ix<RES;ix++){
-      const nu=Math.floor(dsx+(ix/RES)*dMin),nv=Math.floor(dsy+(iy/RES)*dMin);
-      const n=norm[nv*dW+nu];
-      if(n<p05||n>p95)continue;
-      const dv=1-n; // 0=near, 1=far
-      const z=dv*maxD; // meters, 0..2
-
-      // Display position (Three.js units, ≈ meters for a 2.5m wide cloud)
-      const px=-1.25+ix*spacing;
-      const py= 1.25-iy*spacing;
-      pos.push(px,py,z);
-      // Color
-      const ci=(iy*RES+ix)*4;
-      colors.push(cd[ci]/255,cd[ci+1]/255,cd[ci+2]/255);
-      // TSDF position — same as display, no scaling!
-      // Apply gyro rotation if available
-      let tx=px,ty=py,tz=z;
-      if(hasGyro&&dQ.length()>.1){
-        const v3=new THREE.Vector3(px,py,z).applyQuaternion(dQ);
-        tx=v3.x;ty=v3.y;tz=v3.z;
-      }
-      pts.push(tx,ty,tz);
-      // Combined weight: frame quality × surface facing ratio
-      // Grazing-angle pts and blurry-frame pts contribute less to TSDF
-      weights.push(frameWeight*facingRatio[iy*RES+ix]);
-      // Bbox from TSDF pts
-      if(tx<bbox.minX)bbox.minX=tx;if(tx>bbox.maxX)bbox.maxX=tx;
-      if(ty<bbox.minY)bbox.minY=ty;if(ty>bbox.maxY)bbox.maxY=ty;
-      if(tz<bbox.minZ)bbox.minZ=tz;if(tz>bbox.maxZ)bbox.maxZ=tz;
-    }
-
-    // Add point cloud to scene
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-    geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
-    const ptsMat=new THREE.PointsMaterial({size:parseFloat($('slps').value),vertexColors:true,sizeAttenuation:true,transparent:true,opacity:.85});
-    const cloud=new THREE.Points(geo,ptsMat);
-    // Apply gyro rotation to display group too
-    if(hasGyro&&dQ.length()>.1){
-      const pivot=new THREE.Group();pivot.quaternion.copy(dQ);
-      pivot.add(cloud);ptGroup.add(pivot);
-    }else{ptGroup.add(cloud)}
-    capturedFrames.push({pts:new Float32Array(pts),cloud});
-
-    // Send to TSDF — include per-point weights for quality+normal weighting
-    const ptsF32=new Float32Array(pts);
-    const wtsF32=new Float32Array(weights);
-    if(worker&&!integBusy&&!bakeQ){
-      integBusy=true;worker.postMessage({type:"integrate",data:{pts:ptsF32,wts:wtsF32}},[ptsF32.buffer,wtsF32.buffer]);
-      pc+=pts.length/3;
-    }else if(worker){queuedPts=ptsF32;queuedWts=wtsF32;pc+=pts.length/3}
-
-    fc++;
-
-    // Update frame dots
-    const dots=$('fdots');
-    const dot=document.createElement('div');dot.className='fdot done';
-    const prev=dots.querySelector('.fdot.active');if(prev)prev.className='fdot done';
-    const nd=document.createElement('div');nd.className='fdot active';
-    dots.appendChild(dot);
-    // Update arc
-    const target=10; // 10 frames for full arc
-    const pct=Math.min(fc/target,1);
-    $('arcFill').setAttribute('stroke-dasharray',`${pct*163} 163`);
-    $('arcTxt').textContent=fc;
-    $('bDone').disabled=fc<3;
-
-    // Adapt grid at frame 4
-    if(fc===4&&!adapted){
-      adapted=true;
-      const vSz=0.025,pad=vSz*12;
-      const dx=Math.max(.2,bbox.maxX-bbox.minX),dy=Math.max(.2,bbox.maxY-bbox.minY),dz=Math.max(.2,bbox.maxZ-bbox.minZ);
-      const nx=Math.min(80,Math.max(20,Math.ceil((dx+pad*2)/vSz)));
-      const ny=Math.min(80,Math.max(20,Math.ceil((dy+pad*2)/vSz)));
-      const nz=Math.min(80,Math.max(20,Math.ceil((dz+pad*2)/vSz)));
-      const replay=capturedFrames.map(f=>f.pts);
-      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nx,ny,nz],replay);
-      info(`Grid adapted ${nx}×${ny}×${nz}`);
-    }
-
-    sts(`SCANNING — ${fc} frames`);
-    info(`${(pc/1000).toFixed(1)}k pts · move around object`);
-
-    // Ghost overlay removed — was causing confusion
-    // Alignment is now shown via the arrow indicator in the HUD
-    ghost.style.opacity='0';
-    pKP=null;pDesc=null; // reset ORB tracking from new position
-
-  }catch(e){sts('ERROR: '+e.message.slice(0,50))}
-
-  // Complete progress bar
-  pb.style.transition='width .15s';pb.style.width='100%';
-  setTimeout(()=>{pb.style.width='0%'},350);
-  // Restore shutter button — only update label span, never overwrite button children
-  const sl2=$('shutterLabel');if(sl2)sl2.textContent='CAPTURE';
-  $('bCapture').disabled=false;
-  opLocked=false;
-}
-
-// ── ORB TRACKING LOOP ─────────────────────────────────────────────────────────
-let lastTrack=0;
-function trackLoop(t){
-  if(phase!==2)return;
-  if(t-lastTrack>50){
-    lastTrack=t;
-    const w=vid.videoWidth,h=vid.videoHeight;
-    if(w<10)return requestAnimationFrame(trackLoop);
-    const minD=Math.min(w,h),sx=(w-minD)/2,sy=(h-minD)/2;
-    tCtx.drawImage(vid,sx,sy,minD,minD,0,0,128,128);
-    const td=tCtx.getImageData(0,0,128,128).data;
-    for(let i=0;i<td.length;i+=4)tGray[i>>2]=(td[i]*.299+td[i+1]*.587+td[i+2]*.114)|0;
-
-    // Compute Sobel edge map for wire mesh overlay
-    // This replaces the flickering magenta dots — edges are geometrically stable
-    edgeMap=sobelEdges(tGray,128,128);
-
-    // ORB for alignment tracking (used internally — no longer shown as dots)
-    const kp=fastCorners(tGray,128,128);
-    const desc=kp.map(p=>brief(tGray,128,128,p.x,p.y));
-
-    // Track camera movement since last stitch for alignment arrows
-    if(pKP&&pKP.length>3&&desc.length>3){
-      const matches=[];
-      for(let i=0;i<pKP.length;i++){
-        let b=52,bi=-1;
-        for(let j=0;j<kp.length;j++){const h2=hamming(pDesc[i],desc[j]);if(h2<b){b=h2;bi=j}}
-        if(bi>=0)matches.push({ax:pKP[i].x,ay:pKP[i].y,bx:kp[bi].x,by:kp[bi].y});
-      }
-      if(matches.length>=4){
-        let mtx=0,mty=0,mn=0;
-        matches.forEach(m=>{mtx+=m.bx-m.ax;mty+=m.by-m.ay;mn++});
-        mtx/=mn;mty/=mn;
-        stitchDelta.x+=mtx*(innerWidth/128)*.3;
-        stitchDelta.y+=mty*(innerHeight/128)*.3;
-        stitchDelta.frames++;
-        chip('cOR','ok',`ORB ${matches.length}✓`);
-      }
-    }
-    // Overlap tracking vs last stitch (for reticule)
-    liveMatchCount=0;
-    if(stitchMatchKP.length>3&&desc.length>3){
-      for(let i=0;i<stitchMatchKP.length;i++){
-        let b=52,bi=-1;
-        for(let j=0;j<kp.length;j++){const h2=hamming(stitchMatchDesc[i],desc[j]);if(h2<b){b=h2;bi=j}}
-        if(bi>=0)liveMatchCount++;
-      }
-    }
-    // Live shutter button label
-    if(!opLocked){
-      const sl=$('shutterLabel');
-      if(sl)sl.textContent=fc===0?'START':stitchMatchKP.length>0?`${Math.min(100,Math.round(liveMatchCount/stitchMatchKP.length*100))}%`:'READY';
-    }
-    hudKP=kp;hudAge=0;
-    pKP=kp;pDesc=desc;
-    if(!kp.length)chip('cOR','warn','ORB —');
-  }
-  requestAnimationFrame(trackLoop);
-}
-
-// ── PHASE TRANSITIONS ─────────────────────────────────────────────────────────
-async function goPhase2(){
-  phase=2;
-  $('p1').style.display='none';$('p2').style.display='block';
-  $('instr').style.display='block';
-  sts('SCANNING');info('Move camera around object · tap CAPTURE');
-  initWorker();
-  requestAnimationFrame(trackLoop);
-}
-
-function goPhase3(){
-  phase=3;ghost.style.opacity='0';
-  vid.style.opacity='0'; // fade to black for clean 3D review
-  $('p2').style.display='none';$('p3').style.display='block';
-  $('rev').style.display='block';$('instr').style.display='none';
-  glc.style.pointerEvents='auto';oc.enabled=true;
-  // Default: show cloud before bake, hide mesh (not baked yet)
-  $('cbCloud').checked=true;$('cbMesh').checked=false;
-  ptGroup.visible=true;meshGroup.visible=false;
-  // Center camera on point cloud
-  let cx=0,cy=0,cz=0,cn=0;
-  capturedFrames.forEach(f=>{
-    for(let i=0;i<f.pts.length;i+=3){cx+=f.pts[i];cy+=f.pts[i+1];cz+=f.pts[i+2];cn++}
-  });
-  if(cn>0){
-    const tc=new THREE.Vector3(cx/cn,cy/cn,cz/cn);
-    oc.target.copy(tc);cam3.position.set(tc.x,tc.y,tc.z+2);
-    cam3.lookAt(tc);oc.update();
-  }
-  sts('3D REVIEW');info(`${fc} frames · ${(pc/1000).toFixed(1)}k pts`);
-}
-
-function goPhase1Reset(){
-  phase=1;adapted=false;fc=0;pc=0;integBusy=false;bakeQ=false;replayBusy=false;queuedPts=null;queuedWts=null;opLocked=false;
-  // Explicitly dispose GPU resources — .remove() alone does NOT free GPU memory
-  capturedFrames.forEach(f=>{
-    if(f.cloud){
-      f.cloud.geometry.dispose();
-      f.cloud.material.dispose();
-      if(f.cloud.parent)f.cloud.parent.remove(f.cloud);
-    }
-  });
-  capturedFrames=[];
-  // Dispose all pivot groups and their children
-  while(ptGroup.children.length){
-    const pivot=ptGroup.children[0];
-    pivot.children.forEach(c=>{if(c.geometry)c.geometry.dispose();if(c.material)c.material.dispose()});
-    ptGroup.remove(pivot);
-  }
-  if(reviewMesh){
-    reviewMesh.geometry.dispose();
-    reviewMesh.material.dispose();
-    meshGroup.remove(reviewMesh);reviewMesh=null;
-  }
-  lastVerts=null;
-  bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-  $('fdots').innerHTML='';$('arcFill').setAttribute('stroke-dasharray','0 163');$('arcTxt').textContent='0';
-  hudKP=[];stitchKP=[];pKP=null;ghost.style.opacity='0';
-  snapTx=0;snapTy=0;coveredAngles=[];lastQuality={blur:0,corners:0,exposure:0,score:0};
-  prevDepth=null;prevNormDepth=null;prevMatchKP=null;prevMatchDesc=null;
-  stitchMatchKP=[];stitchMatchDesc=[];liveMatchCount=0;filteredOverlapPct=100;
-  manualYaw=0;
-  edgeMap&&edgeMap.fill(0);stitchDelta={x:0,y:0,frames:0};
-  glc.style.pointerEvents='none';oc.enabled=false;
-  $('p3').style.display='none';$('p2').style.display='none';$('p1').style.display='block';$('rev').style.display='none';vid.style.opacity='1';
-  sts('READY TO SCAN');info('Frame your object and tap START');
-}
-
-// ── BAKE ──────────────────────────────────────────────────────────────────────
-$('bBake').onclick=()=>{
-  if(!worker||fc<2)return;
-  if(replayBusy){info('Replaying frames... wait for TSDF ✔');setTimeout(()=>$('bBake').click(),1000);return}
-  if(integBusy){
-    bakeRetries++;
-    if(bakeRetries>6){integBusy=false;bakeQ=false;bakeRetries=0;setTimeout(()=>$('bBake').click(),200);return}
-    info(`Finishing integration... (${bakeRetries}/6)`);setTimeout(()=>$('bBake').click(),700);return;
-  }
-  bakeRetries=0;
-  sts('MARCHING CUBES...');info('building mesh...');
-  $('bBake').disabled=true;bakeQ=true;integBusy=true;
-  worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:1}});
+    
+    state.mode = 'gyro-da2';
+    bootLegacy();
 };
 
-// ── TAUBIN SMOOTHING (ChatGPT #8) ────────────────────────────────────────────
-// Standard Laplacian shrinks the mesh. Taubin λ/μ two-pass preserves volume.
-// λ=0.5 shrinks, μ=-0.53 expands back — net effect: smooth without shrinkage.
-// Same fast typed-array accumulator, just two passes with different signs.
-function smoothMesh(v,n){
-  const cnt=v.length/3|0;
-  const p=new Float32Array(v);
-  const acc=new Float32Array(cnt*3),cnt2=new Uint32Array(cnt);
-  const lambda=0.5,mu=-0.53;
-  // Helper: one Laplacian displacement pass with given factor
-  function lapPass(factor){
-    acc.fill(0);cnt2.fill(0);
-    for(let i=0;i<cnt-2;i+=3){
-      for(const[vi2,n1,n2]of[[i,i+1,i+2],[i+1,i,i+2],[i+2,i,i+1]]){
-        acc[vi2*3]+=p[n1*3]+p[n2*3];acc[vi2*3+1]+=p[n1*3+1]+p[n2*3+1];acc[vi2*3+2]+=p[n1*3+2]+p[n2*3+2];cnt2[vi2]+=2;
-      }
+function checkSandboxSupport() {
+    if (!navigator.xr) {
+        $('sandbox-alert').style.display = 'block';
     }
-    for(let i=0;i<cnt;i++){
-      if(!cnt2[i])continue;
-      const f=factor/cnt2[i];
-      p[i*3]+=acc[i*3]*f;p[i*3+1]+=acc[i*3+1]*f;p[i*3+2]+=acc[i*3+2]*f;
-    }
-  }
-  for(let k=0;k<n;k++){
-    lapPass(lambda); // shrink step
-    lapPass(mu);     // expand step (negative — restores volume)
-  }
-  return p;
+}
+setTimeout(checkSandboxSupport, 1000);
+
+// ----------------------------------------------------------------------
+// TIER 1: WEBXR METRIC DEPTH RENDERING
+// ----------------------------------------------------------------------
+function initXRSession(session) {
+    state.session = session;
+    $('boot').style.display = 'none';
+    $('vid').style.display = 'none'; 
+    $('legacy-ui').style.display = 'none';
+    $('btn-finalize').style.display = 'block';
+    $('btn-finalize').onclick = finalize;
+    document.body.style.background = 'transparent';
+    state.scan = true;
+    
+    $('mode-title').innerText = "P3DK NATIVE XR (ACTIVE)";
+    lC("ARCORE ACTIVE. METRIC DEPTH FAST-STREAM.");
+
+    iRnd.xr.enabled = true;
+    iRnd.xr.setReferenceSpaceType('local');
+    iRnd.xr.setSession(session);
+    iRnd.setAnimationLoop(renderXRLoop);
 }
 
-// ── STL EXPORT ────────────────────────────────────────────────────────────────
-function dlSTL(v){
-  const n=v.length/9|0,buf=new ArrayBuffer(84+n*50),dv2=new DataView(buf);
-  const h=new TextEncoder().encode('P3dK Scanner v2');
-  for(let i=0;i<Math.min(80,h.length);i++)dv2.setUint8(i,h[i]);
-  dv2.setUint32(80,n,true);let o=84;
-  for(let i=0;i<n;i++){
-    const b=i*9,ax=v[b],ay=v[b+1],az=v[b+2],bx=v[b+3],by=v[b+4],bz=v[b+5],cx=v[b+6],cy=v[b+7],cz=v[b+8];
-    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz2=cz-az;
-    const qx=uy*vz2-uz*vy,qy=uz*vx-ux*vz2,qz=ux*vy-uy*vx,ql=Math.hypot(qx,qy,qz)||1;
-    dv2.setFloat32(o,qx/ql,true);dv2.setFloat32(o+4,qy/ql,true);dv2.setFloat32(o+8,qz/ql,true);o+=12;
-    dv2.setFloat32(o,ax,true);dv2.setFloat32(o+4,ay,true);dv2.setFloat32(o+8,az,true);o+=12;
-    dv2.setFloat32(o,bx,true);dv2.setFloat32(o+4,by,true);dv2.setFloat32(o+8,bz,true);o+=12;
-    dv2.setFloat32(o,cx,true);dv2.setFloat32(o+4,cy,true);dv2.setFloat32(o+8,cz,true);o+=12;
-    dv2.setUint16(o,0,true);o+=2;
-  }
-  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
-  a.download='p3dk-'+ts+'.stl';a.click();
-}
+function renderXRLoop(time, frame) {
+    if (!frame || !state.scan) return;
+    const refSpace = iRnd.xr.getReferenceSpace();
+    const pose = frame.getViewerPose(refSpace);
+    if (!pose) return;
+    
+    const view = pose.views[0];
+    const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
+    const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
 
-// ── BUTTON WIRING ─────────────────────────────────────────────────────────────
-// bStart.onclick is set inside boot() after model loads (or on retry failure)
-// so it cannot race with the retry handler
-$('bCapture').onclick=()=>captureFrame();
-$('bDone').onclick=()=>goPhase3();
-$('bStop').onclick=()=>{ghost.style.opacity='0';goPhase1Reset()};
-$('bMore').onclick=async()=>{
-  phase=2;
-  vid.style.opacity='1'; // restore camera — was faded in review
-  glc.style.pointerEvents='none';oc.enabled=false;
-  $('p3').style.display='none';$('p1').style.display='none';$('p2').style.display='block';
-  $('instr').style.display='block';
-  try{await startCamera()}catch(e){}
-  requestAnimationFrame(trackLoop);
-  sts('SCANNING');info('Add more frames · tap CAPTURE');
-};
-$('bDiscard').onclick=()=>goPhase1Reset();
-$('cbWire').addEventListener('change',()=>{
-  if(reviewMesh){reviewMesh.material.wireframe=$('cbWire').checked;reviewMesh.material.needsUpdate=true}
-});
-$('cbCloud').addEventListener('change',()=>{ptGroup.visible=$('cbCloud').checked});
-$('cbMesh').addEventListener('change',()=>{meshGroup.visible=$('cbMesh').checked});
-window.resizePts=()=>capturedFrames.forEach(f=>f.cloud.material.size=parseFloat($('slps').value));
-
-// ── TURNTABLE DRAG (desktop / no-gyro fallback) ───────────────────────────────
-const dragTarget=document.getElementById('hud');
-function onDragStart(x){if(phase===2&&!hasGyro){isDraggingYaw=true;dragStartX=x;}}
-function onDragMove(x){
-  if(!isDraggingYaw||phase!==2||hasGyro)return;
-  manualYaw-=(x-dragStartX)*.007;dragStartX=x;
-  dQ.setFromEuler(new THREE.Euler(0,manualYaw,0,'YXZ'));
-}
-function onDragEnd(){isDraggingYaw=false;}
-dragTarget.addEventListener('mousedown',e=>onDragStart(e.clientX));
-dragTarget.addEventListener('mousemove',e=>onDragMove(e.clientX));
-window.addEventListener('mouseup',onDragEnd);
-dragTarget.addEventListener('touchstart',e=>{if(e.touches.length===1)onDragStart(e.touches[0].clientX)},{passive:true});
-dragTarget.addEventListener('touchmove',e=>{if(e.touches.length===1)onDragMove(e.touches[0].clientX)},{passive:true});
-dragTarget.addEventListener('touchend',onDragEnd);
-
-// ── SENSOR INIT ───────────────────────────────────────────────────────────────
-async function startCamera(){
-  if(vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null;await new Promise(r=>setTimeout(r,200))}
-  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1080}}});
-  vid.srcObject=stream;vTrack=stream.getVideoTracks()[0];
-  await new Promise((res,rej)=>{vid.onloadedmetadata=()=>vid.play().then(res).catch(rej);vid.onerror=rej});
-  chip('cCA','ok','CAM ✔');
-}
-
-// ── BOOT ─────────────────────────────────────────────────────────────────────
-async function boot(){
-  sts('LOADING NEURAL DEPTH...');
-  info('First load ~26MB · cached after');
-  pb.style.transition='none';pb.style.width='3%';
-
-  // Camera starts immediately — independent of model load
-  try{
-    await startCamera();
-    info('Camera ready · loading neural model...');
-  }catch(e){
-    chip('cCA','warn','CAM ✗');
-    info('Camera: '+e.message.slice(0,35)+' — check permissions');
-    // Don't block — model can still load, camera can be retried
-  }
-
-  // Non-iOS gyro starts passively (no permission needed)
-  window.addEventListener('deviceorientation',e=>{
-    if(!e.alpha&&!e.beta&&!e.gamma)return;
-    if(hasGyro)return;
-    hasGyro=true;chip('cGY','ok','Gyro ✔');
-    setupGyroHandler();
-  },{once:true});
-
-  // Load neural model with timeout fallback
-  const MODEL_TIMEOUT=90000; // 90s — slow connections on first load
-  let modelTimer;
-  const modelTimeout=new Promise((_,rej)=>{
-    modelTimer=setTimeout(()=>rej(new Error('Download timed out — check connection')),MODEL_TIMEOUT);
-  });
-
-  try{
-    depthPipe=await Promise.race([
-      pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{
-        progress_callback:p=>{
-          if(p.status==='downloading'||p.status==='loading'){
-            const pct=p.progress??(p.loaded&&p.total?p.loaded/p.total*100:50);
-            pb.style.transition='width .3s';
-            pb.style.width=(3+pct*.92)+'%';
-            if(p.loaded&&p.total)info(`Loading model… ${Math.round(pct)}% (${Math.round(p.loaded/1048576)}/${Math.round(p.total/1048576)}MB)`);
-          }
+    // OPTIMIZATION: Reduced the 6DoF capture translation delta threshold (from 8cm to 3cm) for quick continuous capture
+    const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
+    if (!state.lastCamPos) state.lastCamPos = camPos.clone();
+    
+    if (camPos.distanceTo(state.lastCamPos) > 0.03) { 
+        state.lastCamPos.copy(camPos);
+        const depthInfo = frame.getDepthInformation(view);
+        if (depthInfo) {
+            accumulateDepthFrame(depthInfo, camMatrix, invProj);
+            state.pht.push({ pq: camMatrix }); 
+            $('cc').innerText = `${state.pht.length} FRAMES`;
+            if (state.pht.length >= 100) finalize(); // Cap dense cloud
         }
-      }),
-      modelTimeout
-    ]);
-    clearTimeout(modelTimer);
-    pb.style.width='100%';setTimeout(()=>pb.style.width='0%',600);
-    sts('READY TO SCAN');
-    info('Frame your object · tap START SCANNING');
-    $('bStart').disabled=false;
-    $('bStart').textContent='▶ START SCANNING';
-    // Wire normal onclick here so retry path can't interfere
-    $('bStart').onclick=async()=>{
-      if(typeof DeviceOrientationEvent!=='undefined'&&
-         typeof DeviceOrientationEvent.requestPermission==='function'){
-        try{
-          const perm=await DeviceOrientationEvent.requestPermission();
-          if(perm==='granted'){chip('cGY','ok','Gyro ✔');setupGyroHandler();}
-          else chip('cGY','off','Gyro denied');
-        }catch(e){chip('cGY','off','Gyro ✗');}
-      }
-      goPhase2();
-    };
-  }catch(e){
-    clearTimeout(modelTimer);
-    pb.style.width='0%';
-    sts('MODEL LOAD FAILED');
-    info(e.message.slice(0,60));
-    // Enable retry — never leave user permanently stuck
-    $('bStart').disabled=false;
-    $('bStart').textContent='↺ RETRY LOAD';
-    $('bStart').onclick=async()=>{
-      $('bStart').disabled=true;$('bStart').textContent='▶ START SCANNING';
-      await boot(); // retry the whole boot sequence
-    };
-    console.error('Model load failed:',e);
-    return; // don't attach the normal click handler
-  }
-
-  window.addEventListener('resize',()=>{
-    cam3.aspect=innerWidth/innerHeight;cam3.updateProjectionMatrix();
-    rend.setSize(innerWidth,innerHeight);hud.width=innerWidth;hud.height=innerHeight;
-  });
+    }
+    
+    iRnd.render(iScn, iCam); 
 }
 
-// Gyro handler — attached after permission granted (or on first event for non-iOS)
-function setupGyroHandler(){
-  window.addEventListener('deviceorientation',e=>{
-    if(!e.alpha&&!e.beta&&!e.gamma)return;
-    hasGyro=true;chip('cGY','ok','Gyro ✔');
-    const a=e.alpha?THREE.MathUtils.degToRad(e.alpha):0;
-    const b2=e.beta?THREE.MathUtils.degToRad(e.beta):0;
-    const g2=e.gamma?THREE.MathUtils.degToRad(e.gamma):0;
-    const ori=window.orientation?THREE.MathUtils.degToRad(window.orientation):0;
-    dQ.setFromEuler(new THREE.Euler(b2,a,-g2,'YXZ'));
-    dQ.multiply(new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)));
-    dQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-ori));
-  });
+function accumulateDepthFrame(depth, camMatrix, invProj) {
+    // OPTIMIZATION: Step changed to 0.04 (downsampled grid) to speed up math, but capturing at high frequency
+    const STEP = 0.04; 
+    const addedPoints = [];
+    for (let ny = 0; ny < 1; ny += STEP) {
+        for (let nx = 0; nx < 1; nx += STEP) {
+            const d = depth.getDepthInMeters(nx, ny);  
+            if (!d || d < 0.1 || d > 1.2) continue; 
+            
+            const ndc = new THREE.Vector3(nx*2-1, (1-ny)*2-1, 0.5);
+            const ray = ndc.clone().applyMatrix4(invProj);
+            ray.divideScalar(ray.z === 0 ? 1 : -ray.z);  
+            const viewPt = ray.multiplyScalar(d);          
+            const world = viewPt.applyMatrix4(camMatrix);
+            
+            const normDist = Math.max(0, Math.min(1, (d - 0.1) / 1.1));
+            world.col = new THREE.Color().setHSL(0.5 + normDist*0.3, 0.8, 0.6); 
+            world.conf = 1.0; 
+            state.rawPts.push(world);
+            addedPoints.push(world);
+        }
+    }
+    
+    if (addedPoints.length > 0) {
+        const pts = [], cols = [];
+        for(let i=0; i<addedPoints.length; i++) {
+            pts.push(addedPoints[i].x, addedPoints[i].y, addedPoints[i].z);
+            cols.push(addedPoints[i].col.r, addedPoints[i].col.g, addedPoints[i].col.b);
+        }
+        const bg=new THREE.BufferGeometry();
+        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+        bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+        const pc = new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.015}));
+        livePointsGroup.add(pc);
+    }
 }
-boot();
+
+// ----------------------------------------------------------------------
+// TIER 3: LEGACY GYRO + NEURAL ENGINE
+// ----------------------------------------------------------------------
+function bootLegacy() {
+    $('mode-title').innerText = "P3DK HYBRID (LEGACY SENSORS)";
+    $('mode-title').style.color = '#ffb000';
+    lC("SENSORS CONFIGURED. COMMENCING NETWORK COMPILATION.");
+
+    (async () => {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                let st = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}}}).catch(()=>navigator.mediaDevices.getUserMedia({video:true}));
+                $('vid').srcObject = st; 
+                await new Promise(r => { $('vid').onloadedmetadata = r; setTimeout(r, 2000); });
+                $('vid').play().catch(()=>{});
+            } catch(e) { lC("Camera fallback initialized."); }
+        }
+        resizeHUD(); window.addEventListener('resize', resizeHUD);
+    })();
+
+    setupSensors();
+    loadAIEngine();
+}
+
+async function loadAIEngine() {
+    $('bs').innerText = 'STARTING COMPILER...';
+    try {
+        const pCb = p => { 
+            if(p.status==='progress') { 
+                $('bp').style.width=Math.round(p.progress)+'%'; 
+                $('bs').innerText=`LOADING AI... ${(p.loaded/(1024**2)).toFixed(1)}MB`; 
+            } 
+        };
+        const optsGPU = { device: 'webgpu', dtype: 'fp16', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
+        const optsRmbgGPU = { device: 'webgpu', dtype: 'q8', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
+        const optsCPU = { progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
+        
+        try {
+            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsGPU);
+            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsRmbgGPU);
+        } catch(e) {
+            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsCPU);
+            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsCPU);
+        }
+        
+        $('boot').style.display='none'; state.scan=true;
+        requestAnimationFrame(loopLegacy); 
+        setInterval(evalQuality, 350); 
+        setInterval(captureGate, 120);
+    } catch(e) { $('bs').innerText="AI FAILURE: "+e.message; $('bs').style.color = '#f55'; }
+}
+
+function setupSensors() {
+    window.addEventListener('deviceorientation', e => {
+        state.gyroAvailable = true;
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(e.beta||0), THREE.MathUtils.degToRad(e.alpha||0), -THREE.MathUtils.degToRad(e.gamma||0), 'YXZ'))
+            .multiply(new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2))
+            .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -THREE.MathUtils.degToRad(window.orientation||0)));
+        if(!state.sQ) state.sQ=q.clone();
+        if(state.lQ) {
+            state.aV = 2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.lQ.clone().conjugate()).w)));
+            const chkT = $('chk-tt');
+            if(2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.sQ.clone().conjugate()).w)))*R2D > 15 && chkT && chkT.checked) chkT.checked=false;
+        }
+        state.lQ=q.clone(); state.cR.copy(q);
+    });
+}
+function fallbackSensors() { state.gyroAvailable = false; }
+
+function evalQuality() {
+    if(!state.scan||!state.vw || state.mode !== 'gyro-da2') return; dCtx.drawImage($('vid'),0,0,128,128);
+    const px=dCtx.getImageData(0,0,128,128).data, gy=new Uint8Array(16384), la=new Float32Array(16384); let lS=0, lV=0, cr=0, tL=0, ovr=0, drk=0;
+    for(let i=0;i<16384;i++) { gy[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2]; tL+=gy[i]; if(gy[i]>235)ovr++; if(gy[i]<25)drk++; }
+    for(let y=1;y<127;y++) for(let x=1;x<127;x++) { let i=x+y*128, v=-4*gy[i]+gy[i-1]+gy[i+1]+gy[i-128]+gy[i+128]; la[i]=v; lS+=v; }
+    for(let y=1;y<127;y++) for(let x=1;x<127;x++) lV+=(la[x+y*128]-lS/15876)**2;
+    let bS = Math.min(100, (lV/15876)*1.8);
+
+    const ci=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
+    for(let y=3;y<125;y+=3) for(let x=3;x<125;x+=3) {
+        let v=gy[x+y*128], br=0, dr=0, mb=0, md=0;
+        for(let i=0; i<32; i++) { let n=gy[(x+ci[i%16][0])+(y+ci[i%16][1])*128]; if(n>v+18){br++;mb=Math.max(mb,br)}else br=0; if(n<v-18){dr++;md=Math.max(md,dr)}else dr=0; }
+        if(mb>8||md>8) cr++;
+    }
+    let fS = Math.min(100, (cr/40)*100), mL = tL/16384, eS=100, l="OK";
+    if(mL<55){eS=40;l="DIM";} else if(mL>215){eS=55;l="BRIGHT";} else if(ovr/16384>.15){eS=30;l="OVER";} else if(drk/16384>.3){eS=20;l="DARK";}
+    
+    state.quality = bS*0.4 + fS*0.4 + eS*0.2;
+    $('qv').innerText = Math.round(state.quality); $('qr').style.strokeDashoffset = 50.3 - (state.quality/100)*50.3; $('qb').innerText = l; $('qb').style.color = state.quality>57 ? '#0f9' : '#f90';
+}
+
+function captureGate() {
+    // OPTIMIZATION: Reduced loop-hold delay from 1400ms to 400ms for fast sequential captures
+    if(!state.scan||state.lck||performance.now()-state.lCap<400||state.quality<58 || state.mode !== 'gyro-da2') return;
+    if(state.aV>0.12) return lC("STABILIZE...");
+    if(state.pht.length>=MAX_P) {
+        $('btn-finalize').style.display = 'block';
+        return lC("CAPTURE READY. TAP FINALIZE.");
+    }
+    const chkT = $('chk-tt');
+    if(!chkT || !chkT.checked) for(const p of state.pht) if(state.cR.angleTo(new THREE.Quaternion(...p.pq))*R2D < 15) return lC("ROTATE SCANNER...");
+    doCaptureLegacy();
+}
+
+function smoothDepthMap(raw, W, H) {
+    const sm = new Float32Array(raw.length); sm.set(raw);
+    for(let y=1; y<H-1; y++) {
+        for(let x=1; x<W-1; x++) {
+            let sum=0, val=0, c=0;
+            for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++) { val = raw[(y+dy)*W + (x+dx)]; if(Number.isFinite(val)) { sum+=val; c++; } }
+            sm[y*W+x] = c>0 ? sum/c : raw[y*W+x];
+        }
+    } return sm;
+}
+
+async function doCaptureLegacy() {
+    state.lck=true; state.lCap=performance.now(); lC("CAPTURING..."); navigator.vibrate?.([35]);
+    
+    // OPTIMIZATION: Shrunk crop resolution to 256px. Cuts neural inference cost by 400%!
+    const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=256;
+    sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 256, 256); 
+    
+    const rgb = sX.getImageData(0,0,256,256).data;
+    const aMask = new Uint8Array(65536); aMask.fill(255); 
+    try {
+        const maskRes = await state.rmbg(sC), mC = document.createElement('canvas'); mC.width=mC.height=256; const mCtx = mC.getContext('2d');
+        if (maskRes && maskRes.length && maskRes[0].mask && maskRes[0].mask.toCanvas) mCtx.drawImage(maskRes[0].mask.toCanvas(), 0, 0, 256, 256);
+        else if (maskRes && maskRes.toCanvas) mCtx.drawImage(maskRes.toCanvas(), 0, 0, 256, 256);
+        const mData = mCtx.getImageData(0,0,256,256).data; 
+        for(let i=0; i<65536; i++) aMask[i] = mData[i*4]; 
+    } catch(err) { console.warn("Background removal fallback.", err); }
+
+    const res = await state.pipe(sC); 
+    const raw = smoothDepthMap(res.predicted_depth.data, res.predicted_depth.width, res.predicted_depth.height);
+    
+    const sortedRaw = Float32Array.from(raw).sort(), medRaw = sortedRaw[Math.floor(raw.length/2)] || 0.001;
+    const depth = new Float32Array(raw.length); 
+    for(let i=0;i<raw.length;i++) {
+        let val = raw[i]; if (!Number.isFinite(val) || val === 0) val = 0.001; 
+        let d = medRaw / val; 
+        depth[i] = 1.0 + (d - 1.0) * 1.5; 
+        if (!Number.isFinite(depth[i])) depth[i] = 1.0;
+    }
+    
+    const chkT = $('chk-tt');
+    let pq=[state.cR.x, state.cR.y, state.cR.z, state.cR.w];
+    if(chkT && chkT.checked) {
+        let fQ = new THREE.Quaternion(...pq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), state.pht.length*(Math.PI/4)));
+        pq = [fQ.x, fQ.y, fQ.z, fQ.w];
+    }
+    
+    state.pht.push({ depth, aMask, dW:res.predicted_depth.width, dH:res.predicted_depth.height, pq, rgb, isT:(chkT && chkT.checked) });
+    let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
+    
+    // Low-density preview projection
+    const pts=[], cols=[], q=new THREE.Quaternion(...pq);
+    for(let y=0; y<RES; y++) {
+        for(let x=0; x<RES; x++) {
+            let u = Math.floor((x/RES)*res.predicted_depth.width), v = Math.floor((y/RES)*res.predicted_depth.height);
+            let dv = depth[v * res.predicted_depth.width + u]; 
+            if(aMask[Math.floor((v/res.predicted_depth.height)*256)*256+Math.floor((u/res.predicted_depth.width)*256)] < 128) continue;
+            let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
+            if(chkT && chkT.checked) pt.z += 1.0; 
+            pt.applyQuaternion(q).multiplyScalar(0.35);
+            pts.push(pt.x, pt.y, pt.z);
+            
+            const pxI = Math.floor((u/res.predicted_depth.width)*256), pyI = Math.floor((v/res.predicted_depth.height)*256), idx = (pyI*256+pxI)*4;
+            cols.push(rgb[idx]/255, rgb[idx+1]/255, rgb[idx+2]/255);
+        }
+    }
+    const bg=new THREE.BufferGeometry();
+    bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+    bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+    const pc = new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.015}));
+    livePointsGroup.add(pc);
+
+    if (state.pht.length >= 3) {
+        $('btn-finalize').style.display = 'block';
+    }
+
+    state.lck=false;
+}
+
+// Manual Override Trigger
+$('btn-manual-capture').onclick = () => {
+    if(state.mode === 'gyro-da2') {
+        state.lCap = 0; 
+        doCaptureLegacy();
+    } else {
+        const refSpace = iRnd.xr.getReferenceSpace();
+        state.session.requestAnimationFrame((t, frame) => {
+            const pose = frame.getViewerPose(refSpace);
+            if (pose) {
+                const view = pose.views[0];
+                const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
+                const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
+                const depthInfo = frame.getDepthInformation(view);
+                if (depthInfo) {
+                    accumulateDepthFrame(depthInfo, camMatrix, invProj);
+                    state.pht.push({ pq: camMatrix });
+                    $('cc').innerText = `${state.pht.length} FRAMES`;
+                    if (state.pht.length >= 3) $('btn-finalize').style.display = 'block';
+                }
+            }
+        });
+    }
+};
+
+$('btn-finalize').onclick = finalize;
+
+function loopLegacy() {
+    requestAnimationFrame(loopLegacy); 
+    iRnd.render(iScn, iCam);
+    if(!state.scan || !state.vw || !hCtx) return; const hw=$('hud').width, hh=$('hud').height; hCtx.clearRect(0,0,hw,hh);
+    dCtx.drawImage($('vid'), 0, 0, 128, 128); const p=dCtx.getImageData(0,0,128,128).data, g=new Uint8Array(16384), e=new Float32Array(16384), eV=[];
+    for(let i=0; i<16384; i++) g[i]=0.299*p[i*4]+0.587*p[i*4+1]+0.114*p[i*4+2];
+    for(let y=1; y<127; y++) for(let x=1; x<127; x++) {
+        let i=x+y*128, gx=(-g[i-129]-2*g[i-1]-g[i+127])+(g[i-127]+2*g[i+1]+g[i+129]), gy=(-g[i-129]-2*g[i-128]-g[i-127])+(g[i+127]+2*g[i+128]+g[i+129]), mg=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128); e[i]=mg; eV.push(mg);
+    }
+    const aT=Math.max(0.27, eV.sort((a,b)=>a-b)[Math.floor(eV.length*0.85)]);
+    for(let i=0; i<16384; i++) { if(e[i]>aT){ eBuf[i*4]=0; eBuf[i*4+1]=195; eBuf[i*4+2]=160; eBuf[i*4+3]=Math.min(155,((e[i]-aT)/(1-aT))*430)|0; } else eBuf[i*4+3]=0; }
+    hCtx.putImageData(new ImageData(eBuf,128,128), 0, 0); 
+}
+
+// ----------------------------------------------------------------------
+// POST-PROCESSING METABALL CONTRUCTION
+// ----------------------------------------------------------------------
+async function finalize() {
+    state.scan=false;
+    
+    if (state.session) {
+        await state.session.end().catch(()=>{});
+        iRnd.xr.enabled = false;
+        iRnd.setAnimationLoop(null);
+    }
+    
+    $('btn-manual-capture').style.display = 'none';
+    $('btn-finalize').style.display = 'none';
+    iRnd.domElement.style.pointerEvents = 'auto'; 
+    iCtl.enabled = true;
+
+    $('done').style.display='flex'; $('async-status').style.display='block';
+    
+    await yieldLoop();
+
+    if (state.mode === 'gyro-da2') {
+        const rawPts=[]; let allD=[];
+        state.pht.forEach(ph=>{for(let i=0;i<ph.depth.length;i+=100)if(Number.isFinite(ph.depth[i]))allD.push(ph.depth[i]);});
+        const medZ = allD.sort((a,b)=>a-b)[Math.floor(allD.length/2)] || 0.35, sF = 0.35/medZ; state.scaleFactor = sF;
+
+        for(const ph of state.pht) {
+            ph.orbitPivot = medZ;
+            const sr=Array.from(ph.depth).filter(Number.isFinite).sort((a,b)=>a-b), p05=sr[Math.floor(sr.length*0.05)], p95=sr[Math.floor(sr.length*0.95)], q=new THREE.Quaternion(...ph.pq);
+            for(let y=0; y<RES; y++) {
+                for(let x=0; x<RES; x++) {
+                    const u=Math.floor((x/RES)*ph.dW), v=Math.floor((y/RES)*ph.dH), dv=ph.depth[v*ph.dW+u];
+                    if(ph.aMask[Math.floor((y/RES)*256)*256+Math.floor((x/RES)*256)] < 128) continue; 
+                    if(dv<p05||dv>p95||!Number.isFinite(dv)) continue;
+                    let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
+                    if(ph.isT) pt.z+=medZ; pt.applyQuaternion(q).multiplyScalar(sF);
+                    
+                    let grad = 0;
+                    if (u > 0 && u < ph.dW - 1 && v > 0 && v < ph.dH - 1) {
+                        const dx = ph.depth[v*ph.dW + (u+1)] - ph.depth[v*ph.dW + (u-1)];
+                        const dy = ph.depth[(v+1)*ph.dW + u] - ph.depth[(v-1)*ph.dW + u];
+                        grad = Math.hypot(dx, dy);
+                    }
+                    pt.conf = Math.max(0.2, Math.min(1.0, 1.0 - (grad * 10)));
+                    if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) state.rawPts.push(pt);
+                }
+            }
+        }
+    }
+    
+    const rPts = state.rawPts;
+    
+    // Symmetry Mirror back-fill
+    if ($('chk-sym') && $('chk-sym').checked && rPts.length > 50) {
+        let cx=0,cy=0,cz=0; rPts.forEach(p=>{cx+=p.x;cy+=p.y;cz+=p.z;}); cx/=rPts.length; cy/=rPts.length; cz/=rPts.length;
+        let nx=0,ny=0,nz=0; 
+        if (state.pht.length > 0 && state.mode === 'gyro-da2') {
+            state.pht.forEach(ph=>{ const f=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion(...ph.pq)); nx+=f.x;ny+=f.y;nz+=f.z; });
+        } else {
+            nx = 0; ny = 0; nz = 1; 
+        }
+        const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
+        const mirrored=[];
+        for (const p of rPts) {
+            const dx=p.x-cx, dy=p.y-cy, dz=p.z-cz, d=dx*nx+dy*ny+dz*nz;
+            if (d < 0 || !Number.isFinite(d)) continue; 
+            const m = new THREE.Vector3(p.x-2*d*nx, p.y-2*d*ny, p.z-2*d*nz);
+            if (Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.z)) {
+                m.conf = (p.conf||1) * 0.8; 
+                if(p.col) m.col = p.col;
+                mirrored.push(m);
+            }
+        } rPts.push(...mirrored);
+    }
+    
+    // Density calculation
+    const counts=new Map(), map=new Map(); let mnX=1e9,mnY=1e9,mnZ=1e9; rPts.forEach(p=>{mnX=Math.min(mnX,p.x); mnY=Math.min(mnY,p.y); mnZ=Math.min(mnZ,p.z);});
+    state.mnX = mnX; state.mnY = mnY; state.mnZ = mnZ;
+    
+    rPts.forEach(p=>{ const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; counts.set(k, (counts.get(k)||0)+1); });
+    rPts.forEach(p=>{ 
+        const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; 
+        if(!map.has(k)) { p.density = counts.get(k); p.sumConf = p.conf||1; map.set(k,p); } else { map.get(k).sumConf += (p.conf||1); }
+    });
+    state.dsPts = Array.from(map.values()).map(p => { p.conf = p.sumConf / p.density; return p; });
+    state.spatialHash = map; 
+    
+    buildWatertightMesh();
+}
+
+async function buildWatertightMesh() {
+    if (!state.dsPts || state.dsPts.length < 5) {
+        $('async-status').innerText = "ERROR: Insufficient points to extract.";
+        return;
+    }
+    $('async-status').style.display='block'; $('async-status').innerText = "MARCHING CUBES..."; await yieldLoop();
+    
+    const xs = state.dsPts.map(p => p.x).sort((a,b)=>a-b), ys = state.dsPts.map(p => p.y).sort((a,b)=>a-b), zs = state.dsPts.map(p => p.z).sort((a,b)=>a-b), N = state.dsPts.length;
+    const b = { w:xs[Math.floor(N*.98)]-xs[Math.floor(N*.02)], h:ys[Math.floor(N*.98)]-ys[Math.floor(N*.02)], d:zs[Math.floor(N*.98)]-zs[Math.floor(N*.02)], cx:(xs[Math.floor(N*.98)]+xs[Math.floor(N*.02)])/2, cy:(ys[Math.floor(N*.98)]+ys[Math.floor(N*.02)])/2, cz:(zs[Math.floor(N*.98)]+zs[Math.floor(N*.02)])/2 }, sz = Math.max(b.w,b.h,b.d)*1.3 || 0.1;
+    
+    const mc = new THREE.MarchingCubes(parseInt($('sl-res').value), new THREE.MeshStandardMaterial(), true, true, 100000);
+    mc.isolation = parseFloat($('sl-iso').value); const str = parseFloat($('sl-str').value), sub = parseFloat($('sl-sub').value);
+    
+    for(let i=0; i<state.dsPts.length; i++) {
+        if (i%500===0) await yieldLoop(); 
+        const p = state.dsPts[i], nx=(p.x-b.cx)/sz+0.5, ny=(p.y-b.cy)/sz+0.5, nz=(p.z-b.cz)/sz+0.5;
+        if(nx>0&&nx<1&&ny>0&&ny<1&&nz>0&&nz<1) mc.addBall(nx, ny, nz, (str / Math.sqrt(p.density || 1)) * (p.conf || 1), sub); 
+    }
+    
+    $('async-status').innerText = "DECIMATING & WELDING..."; await yieldLoop();
+    let geo = mc.generateBufferGeometry();
+    if (!geo || !geo.attributes.position || geo.attributes.position.count === 0) {
+        $('async-status').innerText = "ERROR: No intersection found.";
+        return;
+    }
+
+    geo.scale(sz/2, sz/2, sz/2); geo.translate(b.cx, b.cy, b.cz);
+    geo = THREE.BufferGeometryUtils.mergeVertices(geo);
+    geo = decimate(geo, parseFloat($('sl-det').value));
+    
+    try {
+        if(!ManifoldClass) { const mod = await import('https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js'); const wasm = await mod.default(); wasm.setup(); ManifoldClass = wasm.Manifold; }
+        const mObj = { vertProperties: geo.attributes.position.array, triVerts: geo.index.array, numProp: 3 };
+        const solid = ManifoldClass.ofMesh(mObj).asOriginal(); const rep = solid.getMesh(); solid.delete();
+        const rp=[], ri=[];
+        for(let i=0; i<rep.vertProperties.length; i++) rp.push(rep.vertProperties[i]);
+        for(let i=0; i<rep.triVerts.length; i++) ri.push(rep.triVerts[i]);
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); geo.setIndex(ri);
+    } catch(e) { console.warn("Manifold repair skipped.", e); }
+    
+    if($('chk-edge').checked) geo = new THREE.EdgeSplitModifier().modify(geo, 30 * Math.PI / 180);
+    geo.computeVertexNormals();
+
+    $('async-status').innerText = "PROJECTING VERTEX COLORS..."; await yieldLoop();
+    
+    const pos = geo.attributes.position.array, nrm = geo.attributes.normal.array, col = new Float32Array(pos.length);
+    const scale = state.scaleFactor || 1;
+
+    if (state.mode === 'gyro-da2') {
+        state.pht.forEach(ph => {
+            ph._q = new THREE.Quaternion(...ph.pq);
+            ph._qInv = ph._q.clone().invert();
+            ph._fwd = new THREE.Vector3(0,0,-1).applyQuaternion(ph._q);
+        });
+
+        for(let i=0; i<pos.length; i+=3) {
+            if(i%3000===0) await yieldLoop(); 
+            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]), n = new THREE.Vector3(nrm[i], nrm[i+1], nrm[i+2]);
+            const vUnscaled = v.clone().multiplyScalar(1/scale);
+            
+            let sumR=0, sumG=0, sumB=0, totalW=0.0001;
+            for(let ph of state.pht) {
+                const facing = n.dot(ph._fwd);
+                if(facing > 0.1) {
+                    const l = vUnscaled.clone().applyQuaternion(ph._qInv);
+                    if (ph.isT) l.z -= ph.orbitPivot;
+                    if(l.z < 0) {
+                        const u = (l.x / -l.z) / tanH, vv = (l.y / -l.z) / tanH;
+                        if(Math.abs(u)<1 && Math.abs(vv)<1 && ph.rgb) {
+                            const ix = Math.floor((u*.5+.5)*256), iy = Math.floor((.5-vv*.5)*256);
+                            if (ph.aMask[iy*256+ix] < 128) continue; 
+
+                            const w = Math.pow(facing, 4); 
+                            const idx=(iy*256+ix)*4;
+                            sumR += ph.rgb[idx]*w; sumG += ph.rgb[idx+1]*w; sumB += ph.rgb[idx+2]*w; totalW += w;
+                        }
+                    }
+                }
+            }
+            
+            let nearby = 0;
+            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
+            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
+                const k = `${gx+dx},${gy+dy},${gz+dz}`;
+                if(state.spatialHash.has(k)) nearby += state.spatialHash.get(k).density;
+            }
+            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
+
+            col[i] = (sumR/totalW/255)*aoCoeff; col[i+1] = (sumG/totalW/255)*aoCoeff; col[i+2] = (sumB/totalW/255)*aoCoeff;
+        }
+    } else {
+        for(let i=0; i<pos.length; i+=3) {
+            if(i%3000===0) await yieldLoop(); 
+            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
+            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
+            let sR=0, sG=0, sB=0, cw=0, nearby=0;
+            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
+                const k = `${gx+dx},${gy+dy},${gz+dz}`;
+                if(state.spatialHash.has(k)) {
+                    const pt = state.spatialHash.get(k);
+                    if(pt.col) { sR += pt.col.r; sG += pt.col.g; sB += pt.col.b; cw++; }
+                    nearby += pt.density;
+                }
+            }
+            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
+            if(cw > 0) { col[i] = (sR/cw)*aoCoeff; col[i+1] = (sG/cw)*aoCoeff; col[i+2] = (sB/cw)*aoCoeff; }
+            else { col[i] = 0.5*aoCoeff; col[i+1] = 0.5*aoCoeff; col[i+2] = 0.5*aoCoeff; }
+        }
+    }
+    
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+    livePointsGroup.clear();
+    const vid = $('vid'); if(vid) vid.style.display = 'none';
+    const hd = $('hud'); if(hd) hd.style.display = 'none';
+
+    iScn.children.filter(c=>c.isMesh).forEach(m=>{m.geometry.dispose();m.material.dispose();iScn.remove(m);});
+    state.wMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, metalness:0.12, roughness:0.58, envMapIntensity:1.0 })); 
+    iScn.add(state.wMesh);
+    
+    const sr = geo.boundingSphere || new THREE.Sphere(new THREE.Vector3(), 0.1);
+    iCam.position.set(0,0,sr.radius*2.8); iCtl.target.set(0,0,0); iCtl.autoRotate=true; iCtl.update();
+    
+    const triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3;
+    $('es').innerText = `${state.pht.length || state.rawPts.length} FRAMES/POINTS · ${(geo.attributes.position.count/3).toLocaleString()} TRIANGLES`;
+    $('async-status').style.display='none';
+}
+
+['sl-res','sl-str','sl-iso','sl-sub','sl-det','chk-edge'].forEach(id => { const e = $(id); if(e) e.onchange = buildWatertightMesh; });
+
+if($('dl-ply')) {
+    $('dl-ply').onclick = async () => {
+        if(!state.wMesh) return; const btn=$('dl-ply'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING PLY..."; await yieldLoop();
+        try {
+            const g = state.wMesh.geometry, pos = g.attributes.position, col = g.attributes.color, n = pos.count;
+            let head = `ply\nformat ascii 1.0\nelement vertex ${n}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\n`;
+            const idx = g.index ? g.index.array : null, fcount = idx ? idx.length/3 : n/3;
+            head += `element face ${fcount}\nproperty list uchar int vertex_index\nend_header\n`;
+            let body = '';
+            for(let i=0; i<n; i++) {
+                if(i%1000===0) await yieldLoop();
+                const r = col ? Math.round(col.getX(i)*255) : 200, gg = col ? Math.round(col.getY(i)*255) : 200, bb = col ? Math.round(col.getZ(i)*255) : 200;
+                body += `${pos.getX(i)} ${pos.getY(i)} ${pos.getZ(i)} ${r} ${gg} ${bb}\n`;
+            }
+            for(let i=0; i<fcount; i++) { if(i%1000===0) await yieldLoop(); const a = idx?idx[i*3]:i*3, b = idx?idx[i*3+1]:i*3+1, c = idx?idx[i*3+2]:i*3+2; body += `3 ${a} ${b} ${c}\n`; }
+            const aLink = document.createElement('a'); aLink.href = URL.createObjectURL(new Blob([head+body], {type:'text/plain'}));
+            aLink.download = `p3dk-color-${Date.now()}.ply`; aLink.click(); showToast("Color PLY Exported!");
+        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
+    };
+}
+
+if($('dl-stl')) {
+    $('dl-stl').onclick = async () => {
+        if(!state.wMesh) return; const btn=$('dl-stl'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING STL..."; await yieldLoop();
+        try {
+            const pos = state.wMesh.geometry.attributes.position, idx = state.wMesh.geometry.index ? state.wMesh.geometry.index.array : null;
+            const nT = idx ? idx.length/3 : pos.count/3, B = new ArrayBuffer(84 + nT * 50), V = new DataView(B); let O = 84;
+            new TextEncoder().encode('P3dK Watertight STL').forEach((b,i)=>V.setUint8(i,b)); V.setUint32(80, nT, true);
+            for(let t=0; t<nT; t++) {
+                if(t%2000===0) await yieldLoop();
+                const i0 = idx ? idx[t*3] : t*3, i1 = idx ? idx[t*3+1] : t*3+1, i2 = idx ? idx[t*3+2] : t*3+2;
+                const ax = pos.getX(i0), ay = pos.getY(i0), az = pos.getZ(i0), bx = pos.getX(i1), by = pos.getY(i1), bz = pos.getZ(i1), cx = pos.getX(i2), cy = pos.getY(i2), cz = pos.getZ(i2);
+                const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+                let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx, len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+                if(len > 0) { nx /= len; ny /= len; nz /= len; }
+                V.setFloat32(O, nx, true); V.setFloat32(O+4, ny, true); V.setFloat32(O+8, nz, true);
+                V.setFloat32(O+12, ax, true); V.setFloat32(O+16, ay, true); V.setFloat32(O+20, az, true);
+                V.setFloat32(O+24, bx, true); V.setFloat32(O+28, by, true); V.setFloat32(O+32, bz, true);
+                V.setFloat32(O+36, cx, true); V.setFloat32(O+40, cy, true); V.setFloat32(O+44, cz, true); V.setUint16(O+48, 0, true); O += 50;
+            }
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([B], {type:'application/octet-stream'})); a.download = `p3dk-geometry-${Date.now()}.stl`; a.click(); showToast("STL Exported Successfully!");
+        } catch(e) { showToast("Export failed: " + e.message); } btn.disabled = false; btn.innerText = orig;
+    };
+}
+
+if($('dl-glb')) {
+    $('dl-glb').onclick = async () => {
+        if(!state.wMesh) return; const btn=$('dl-glb'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING GLB..."; await yieldLoop();
+        try {
+            new THREE.GLTFExporter().parse(state.wMesh, gltf => {
+                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(gltf)], {type:'model/gltf+json'}));
+                a.download = `p3dk-color-${Date.now()}.gltf`; a.click(); showToast("GLB Exported!");
+            }, { binary: false });
+        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
+    };
+}
+
+if($('rs')) $('rs').onclick = () => location.reload();
+window.onload = boot;
 </script>
 </body>
 </html>
+
+```
