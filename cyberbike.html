@@ -1340,10 +1340,9 @@ const Graphics = {
         ctx.scale(1.2, 1.2);
         ctx.rotate(roll * CFG.TO_RAD);
 
-        // Use fixed contrast colors — white fuselage is invisible on light pod background
-        const baseColor = isDark ? '#cc4444' : '#e2e8f0';
-        const shadeColor = isDark ? '#1a0000' : '#475569';
-        const highlightColor = isDark ? '#ff8888' : '#ffffff';
+        const baseColor = isDark ? '#4a0000' : '#ffffff';
+        const shadeColor = isDark ? '#1a0000' : '#94a3b8';
+        const highlightColor = isDark ? '#7a0000' : '#f8fafc';
         const glassColor = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
 
         // Shadow pass
@@ -1373,11 +1372,6 @@ const Graphics = {
         ctx.beginPath();
         ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
         ctx.fill();
-        // Fuselage outline — ensures visibility on any background
-        ctx.strokeStyle = shadeColor; ctx.lineWidth = 0.75;
-        ctx.beginPath();
-        ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
-        ctx.stroke();
 
         // Cockpit glass
         ctx.fillStyle = glassColor;
@@ -1461,9 +1455,9 @@ const Graphics = {
         ug.addColorStop(0, hullLight); ug.addColorStop(0.5, hullMid); ug.addColorStop(1, hullDark);
         ctx.fillStyle = ug; ctx.beginPath(); ctx.ellipse(0,-2,16,6,0,0,Math.PI*2); ctx.fill();
 
-        // Dome — always visible regardless of theme
+        // Dome
         let dg = ctx.createRadialGradient(0,-6,1,0,-4,10);
-        dg.addColorStop(0, '#ffffff'); dg.addColorStop(0.3, '#00eeff'); dg.addColorStop(1, '#003344');
+        dg.addColorStop(0, '#fff'); dg.addColorStop(0.3, primColor); dg.addColorStop(1, '#000');
         ctx.fillStyle = dg; ctx.beginPath(); ctx.ellipse(0,-5,10,5,0,0,Math.PI*2); ctx.fill();
 
         // Engine glow ports
@@ -1497,7 +1491,7 @@ const Graphics = {
         const bikeCol = isDark ? '#475569' : '#94a3b8';
 
         // Seatpost
-        ctx.fillStyle = isDark ? '#64748b' : '#111';
+        ctx.fillStyle = '#111';
         ctx.beginPath(); this._rr(ctx, -1.5, -28, 3, 14, 1.5); ctx.fill();
 
         // Frame top tube
@@ -1505,7 +1499,7 @@ const Graphics = {
         ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(0,-22); ctx.stroke();
 
         // Handlebar
-        ctx.strokeStyle = bikeCol; ctx.lineWidth = 2.5;
+        ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(-13,-20); ctx.lineTo(13,-20); ctx.stroke();
 
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
@@ -1539,16 +1533,16 @@ const Graphics = {
         ctx.fillRect(3, rpY-2, 3, 4);
 
         // Leg strokes
-        ctx.strokeStyle = isDark ? '#94a3b8' : '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
+        ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
         ctx.beginPath(); ctx.moveTo(-4,4); ctx.lineTo(-7,lkY); ctx.lineTo(-4.5,lpY); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(4,4); ctx.lineTo(7,rkY); ctx.lineTo(4.5,rpY); ctx.stroke();
 
         // Saddle
-        ctx.fillStyle = isDark ? '#334155' : '#0f172a';
+        ctx.fillStyle = '#0f172a';
         ctx.beginPath(); this._rr(ctx, -4, 3, 8, 6, 2.5); ctx.fill();
 
         // Seat tube
-        ctx.fillStyle = isDark ? '#475569' : '#111';
+        ctx.fillStyle = '#111';
         ctx.beginPath(); this._rr(ctx, -2.5, 7, 5, 20, 2); ctx.fill();
 
         ctx.restore();
@@ -1821,8 +1815,6 @@ const Graphics = {
         else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank, isDark);
 
         // ── Trip clock, fuel, power tick ──
-        // Update speed display every frame (reflects GPS and DR state)
-        document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
         if (STATE.active && STATE.startTs > 0) {
             const elapsed = Date.now() - STATE.startTs;
             const h = Math.floor(elapsed/3600000);
@@ -1849,8 +1841,9 @@ const Graphics = {
             if (STATE.gpsLost) DeadReckoning.tick();
         }
 
-        // Always keep the loop alive — sprites must render even before trip starts
-        rafId = requestAnimationFrame(Graphics.renderHUD);
+        if (STATE.active || STATE.gridScroll > 0.001) {
+            rafId = requestAnimationFrame(Graphics.renderHUD);
+        }
     }
 };
 
@@ -1911,11 +1904,9 @@ window.Engine = {
 
         STATE.lat = position.coords.latitude;
         STATE.lon = position.coords.longitude;
-        STATE.spdMph = position.coords.speed != null ? position.coords.speed * 2.23694 : STATE.spdMph;
-        STATE.altFt   = position.coords.altitude != null ? position.coords.altitude * 3.28084 : STATE.altFt;
-        if (position.coords.heading != null && !isNaN(position.coords.heading) && position.coords.speed > 0.5) {
-            STATE.hdg = position.coords.heading;
-        }
+        if (position.coords.heading != null && !isNaN(position.coords.heading)) STATE.hdg = position.coords.heading;
+        STATE.spdMph = (position.coords.speed || 0) * 2.23694;
+        STATE.altFt   = (position.coords.altitude || 0) * 3.28084;
         const ts = position.timestamp;
 
         if (STATE.spdMph > STATE.maxSpd) STATE.maxSpd = STATE.spdMph;
@@ -2016,7 +2007,6 @@ window.Engine = {
         document.getElementById('power-block').style.display = 'none';
 
         API.applyTheme();
-        ThemeCache.update();   // populate color cache before first paint
         Graphics.renderHUD();
 
         if ('geolocation' in navigator) {
