@@ -6,8 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>CyberBike / Offline Matrix</title>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap');
+        @import url('[https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap](https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap)');
 
+        /* Default Day Theme (Aqua Glow) */
         :root {
             --primary: #1e293b; --secondary: #64748b; --danger: #e32636;
             --wind: #0ea5e9; --nav: #10b981; --squad: #00ffff;
@@ -18,6 +19,7 @@
             --font-main: 'Share Tech Mono', monospace;
         }
 
+        /* Night Vision Theme (Neon Pink Glow) */
         body.night-mode {
             --primary: #f8fafc; --secondary: #94a3b8; --danger: #ef4444;
             --wind: #38bdf8; --nav: #34d399; 
@@ -27,6 +29,7 @@
             --modal-bg: rgba(15, 23, 42, 0.95);
         }
 
+        /* Sci-Fi UFO Mode (Neon Green / Purple) */
         body.ufo-mode {
             --primary: #39ff14; --secondary: #b026ff; --danger: #ff003c;
             --wind: #00ffff; --nav: #ff00ff; 
@@ -45,6 +48,7 @@
             transition: color 1s, background 1s, font-family 0.3s;
         }
 
+        /* Wrapper handles dragging and native fullscreen */
         #hud-wrapper { position: absolute; transform-origin: center center; transition: transform 0.2s; cursor: grab; }
         #hud-wrapper:active { cursor: grabbing; }
         #hud-wrapper.fullscreen-mode {
@@ -58,48 +62,56 @@
             background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, var(--bg) 90%);
             border: 2px solid rgba(148, 163, 184, 0.3); border-radius: 50%;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), inset 0 0 20px rgba(255, 255, 255, 0.5);
-            overflow: hidden; transition: all 1s, transform 0.3s; backface-visibility: hidden;
+            overflow: hidden; transition: all 0.4s ease-in-out; backface-visibility: hidden;
         }
         body.night-mode #hud-pod, body.ufo-mode #hud-pod { border-color: var(--secondary); box-shadow: 0 0 25px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(0, 0, 0, 0.8); }
 
         #vector-canvas { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 1; pointer-events: none; }
         .overlay { position: absolute; z-index: 2; pointer-events: none; }
 
-        .top-hdg { top: 14px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
-        .left-avionics { top: 50%; left: 34px; transform: translateY(-50%); text-align: left; white-space: nowrap; }
-        .right-stats { top: 50%; right: 34px; transform: translateY(-50%); text-align: right; white-space: nowrap; }
+        .top-hdg { top: 12px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
+        
+        .left-avionics { top: 50%; left: 28px; transform: translateY(-50%); text-align: left; white-space: nowrap; }
+        .right-stats { top: 50%; right: 28px; transform: translateY(-50%); text-align: right; white-space: nowrap; }
 
-        .speed-value { font-size: 42px; font-weight: 900; line-height: 1; margin-bottom: -2px; text-shadow: 0 0 10px var(--halo), 0 0 20px var(--halo), var(--text-outline); }
-        .speed-unit { font-size: 12px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 0 8px var(--halo); }
+        .speed-container { display: flex; align-items: baseline; justify-content: flex-end; margin-bottom: 2px; }
+        .speed-value { font-size: 42px; font-weight: 900; line-height: 0.8; text-shadow: 0 0 10px var(--halo), 0 0 20px var(--halo), var(--text-outline); }
+        .speed-unit { font-size: 12px; font-weight: 900; letter-spacing: 2px; margin-left: 4px; text-shadow: 0 0 8px var(--halo); }
 
-        .lbl { font-size: 12px; letter-spacing: 1px; margin-top: 6px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo); }
+        .lbl { font-size: 12px; letter-spacing: 1px; margin-top: 8px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo); }
         .val { font-size: 16px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
         .sub-val { font-size: 11px; color: var(--primary); font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo); }
         .unit { font-size: 10px; font-weight: 900; }
 
         #svg-bezel { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 10; pointer-events: none; }
 
-        /* Transparent Hit-Zones */
-        #craft-btn { position: absolute; top: 30px; right: 18px; width: 60px; height: 50px; background: transparent; border: none; cursor: pointer; z-index: 15; pointer-events: auto; }
-        #wx-btn { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 120px; height: 40px; background: transparent; border: none; cursor: pointer; z-index: 15; pointer-events: auto; }
-        #mesh-btn { position: absolute; top: 30px; left: 18px; width: 60px; height: 50px; background: transparent; border: none; cursor: pointer; z-index: 15; pointer-events: auto; }
+        /* Tactical HUD Buttons */
+        .hud-btn {
+            position: absolute; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--secondary);
+            color: #fff; font-family: inherit; font-size: 10px; font-weight: 900;
+            padding: 6px 10px; border-radius: 8px; cursor: pointer; z-index: 15;
+            backdrop-filter: blur(4px); transition: 0.2s; pointer-events: auto;
+            text-shadow: 0 0 5px rgba(0,0,0,0.8);
+        }
+        .hud-btn:hover { background: var(--nav); color: #000; text-shadow: none; border-color: var(--nav); }
 
-        /* General HUD Controls */
-        .float-ctrl { position: absolute; font-size: 14px; font-weight: 900; z-index: 20; cursor: pointer; opacity: 0.6; pointer-events: auto; transition: 0.2s; text-shadow: var(--text-outline); }
-        .float-ctrl:hover { opacity: 1; }
-        #fs-toggle { top: 46px; left: 50%; transform: translateX(-50%); }
-        #log-btn { top: 20px; left: 20px; font-size: 12px; }
-        
-        #radio-btn { position: absolute; bottom: 35px; left: 25px; background: transparent; border: none; color: var(--secondary); font-family: inherit; font-size: 11px; font-weight: 900; cursor: pointer; z-index: 15; pointer-events: auto; text-shadow: var(--text-outline); }
-        #ptt-btn { position: absolute; bottom: 35px; right: 25px; background: transparent; border: none; color: var(--secondary); font-family: inherit; font-size: 11px; font-weight: 900; cursor: pointer; z-index: 15; pointer-events: auto; text-shadow: var(--text-outline); transition: 0.2s; }
-        #ptt-btn.recording { color: var(--danger); text-shadow: 0 0 10px var(--danger); }
+        #fs-btn { top: 22px; left: 30px; transform: translateX(-50%); }
+        #log-btn { top: 22px; right: 30px; transform: translateX(50%); }
+        #radio-btn { bottom: 22px; left: 30px; transform: translateX(-50%); }
+        #mesh-btn { bottom: 22px; right: 30px; transform: translateX(50%); }
 
-        #trip-btn { position: absolute; top: calc(50% + 25px); left: 50%; transform: translateX(-50%); background: var(--bg); color: var(--primary); border: 2px solid var(--primary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: auto; }
+        /* Center Stack Buttons */
+        #trip-btn { position: absolute; top: calc(50% + 40px); left: 50%; transform: translateX(-50%); background: var(--bg); color: var(--primary); border: 2px solid var(--primary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px; z-index: 15; box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: auto; }
         #trip-btn:active { background: var(--primary); color: #fff; }
+        #ptt-btn { position: absolute; top: calc(50% + 75px); left: 50%; transform: translateX(-50%); background: transparent; border: 1px solid var(--secondary); color: var(--secondary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15; pointer-events: auto; text-shadow: var(--text-outline); }
+        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); text-shadow: none; box-shadow: 0 0 15px var(--danger); }
+
+        /* Transparent SVG Hit-Zones */
+        #craft-toggle { position: absolute; top: 35px; right: 25px; width: 80px; height: 50px; background: transparent; border: none; cursor: pointer; z-index: 20; pointer-events: auto; }
+        #wx-toggle { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 120px; height: 40px; background: transparent; border: none; cursor: pointer; z-index: 20; pointer-events: auto; }
 
         .clickable { cursor: pointer; pointer-events: auto; }
-        .nav-color { color: var(--nav); }
-        .squad-color { color: var(--squad); }
+        .nav-color { color: var(--nav); } .squad-color { color: var(--squad); }
 
         /* Modals */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
@@ -134,8 +146,10 @@
         <div id="hud-pod">
             <canvas id="vector-canvas"></canvas>
             
-            <div class="float-ctrl" id="fs-toggle" onclick="UX.toggleFullscreen()" title="Toggle Fullscreen">[ ⛶ ]</div>
-            <div class="float-ctrl" id="log-btn" onclick="TripLogger.openModal()" title="Flight Logs">[ 📜 LOGS ]</div>
+            <button class="hud-btn" id="fs-btn" onclick="UX.toggleFullscreen()" title="Fullscreen">⛶ FULL</button>
+            <button class="hud-btn" id="log-btn" onclick="TripLogger.openModal()" title="Flight Logs">📜 LOGS</button>
+            <button class="hud-btn" id="radio-btn" onclick="Radio.openModal()">📻 COMMS</button>
+            <button class="hud-btn" id="mesh-btn" onclick="Mesh.openModal()" title="Local Mesh Setup">📡 MESH</button>
             
             <div class="overlay top-hdg" id="heading">000° N</div>
 
@@ -150,8 +164,10 @@
             </div>
 
             <div class="overlay right-stats">
-                <div class="speed-value" id="speed">0.0</div>
-                <div class="speed-unit">MPH</div>
+                <div class="speed-container">
+                    <div class="speed-value" id="speed">0.0</div>
+                    <div class="speed-unit">MPH</div>
+                </div>
 
                 <div class="lbl">📏 DIST</div>
                 <div class="val"><span id="distance">0.0</span><span class="unit">MI</span></div>
@@ -164,28 +180,27 @@
                 <div class="sub-val nav-color" id="dest-eta" style="line-height: 1.0;">-- MI | ETA --:--</div>
             </div>
 
+            <!-- Mathematically Mirrored Bezel Orbits -->
             <svg id="svg-bezel">
                 <defs>
-                    <path id="top-curve"    d="M 19 160 A 141 141 0 0 1 301 160" />
-                    <path id="bottom-curve" d="M 7 160 A 153 153 0 0 0 313 160" />
+                    <path id="top-curve" />
+                    <path id="bottom-curve" />
                     <filter id="svg-halo"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="var(--halo)"/><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="var(--halo)"/></filter>
                 </defs>
                 <text font-family="var(--font-main)" font-size="12" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
-                    <textPath href="#top-curve"    startOffset="26%" text-anchor="middle" id="svg-ats"   fill="var(--secondary)">✈️ OFF</textPath>
-                    <textPath href="#top-curve"    startOffset="74%" text-anchor="middle" id="svg-craft" fill="var(--secondary)">[ 🛩️ C182 ]</textPath>
-                    <textPath href="#bottom-curve" startOffset="28%" text-anchor="middle" id="svg-gps"   fill="var(--secondary)">🛰️ SRCH</textPath>
+                    <textPath href="#top-curve"    startOffset="18%" text-anchor="middle" id="svg-ats"   fill="var(--secondary)">⚠️ ATS OFF</textPath>
+                    <textPath href="#top-curve"    startOffset="82%" text-anchor="middle" id="svg-craft" fill="var(--secondary)">[ 🛩️ C182 ]</textPath>
                     <textPath href="#bottom-curve" startOffset="50%" text-anchor="middle" id="svg-wx"    fill="var(--secondary)">☁️ WX SCAN</textPath>
                 </text>
             </svg>
 
-            <button id="mesh-btn" onclick="Mesh.openModal()" title="Local Mesh Setup"></button>
-            <button id="craft-btn" onclick="Avionics.toggleCraft()" title="Toggle Craft Mode"></button>
-            <button id="wx-btn" onclick="Avionics.cycleTheme()" title="Toggle Day/Night Theme"></button>
-            
-            <button id="radio-btn" onclick="Radio.openModal()">[ 📻 COMMS ]</button>
-            <button id="ptt-btn" onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)" ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">[ 🎙️ PTT ]</button>
+            <!-- Transparent Overlays for SVG Text Interaction -->
+            <button id="craft-toggle" onclick="Avionics.toggleCraft()" title="Cycle Craft"></button>
+            <button id="wx-toggle" onclick="Avionics.cycleTheme()" title="Cycle Theme"></button>
 
+            <!-- Center Stack Controls -->
             <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
+            <button id="ptt-btn" onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)" ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT (HOLD)</button>
         </div>
     </div>
 
@@ -214,7 +229,7 @@
             <p style="font-size:12px; color:var(--secondary); text-align:center;">Synchronize audio streams across the local Mesh.</p>
             <div class="input-group">
                 <label>AUDIO STREAM URL</label>
-                <input type="text" id="input-radio-url" value="https://stream.nightride.fm/nightride.m4a">
+                <input type="text" id="input-radio-url" value="[https://stream.nightride.fm/nightride.m4a](https://stream.nightride.fm/nightride.m4a)">
             </div>
             <div class="radio-controls">
                 <button id="btn-listen" onclick="Radio.toggleListen()">LISTEN IN</button>
@@ -224,7 +239,6 @@
         </div>
     </div>
 
-    <!-- MESH PAIRING UI -->
     <div id="mesh-modal" class="modal">
         <div class="modal-content">
             <h3 class="squad-color">📡 LOCAL MESH</h3>
@@ -261,7 +275,7 @@
 
     <script>
         /**
-         * CYBERBIKE AERO MATRIX - OFFLINE FLIGHT RECORDER
+         * CYBERBIKE AERO MATRIX - HIGH PRECISION 3RD PERSON ENGINE
          */
 
         const CFG = { RADAR_RANGE_MILES: 15, AUTO_START_MPH: 5.0, FILTER_FACTOR: 0.15, EARTH_RADIUS: 3958.8, TO_RAD: Math.PI / 180, MAX_G: 2.0 };
@@ -303,7 +317,6 @@
             }
         };
 
-        // --- LOCAL STORAGE TRIP LOGGER (Pseudo-ESN) ---
         const TripLogger = {
             getESN: function() {
                 let esn = localStorage.getItem('cyberbike_esn');
@@ -311,7 +324,7 @@
                 return esn;
             },
             saveTrip: function() {
-                if (STATE.dist < 0.1) return; // Don't log ghost trips
+                if (STATE.dist < 0.1) return; 
                 const trips = JSON.parse(localStorage.getItem('cyberbike_trips') || '[]');
                 const trip = {
                     id: Date.now(), date: new Date().toLocaleDateString(),
@@ -319,7 +332,7 @@
                     maxSpeed: Math.round(STATE.maxSpd || 0)
                 };
                 trips.unshift(trip);
-                localStorage.setItem('cyberbike_trips', JSON.stringify(trips.slice(0, 50))); // Keep last 50
+                localStorage.setItem('cyberbike_trips', JSON.stringify(trips.slice(0, 50))); 
             },
             openModal: function() {
                 const list = document.getElementById('log-list');
@@ -332,7 +345,6 @@
             }
         };
 
-        // --- SERVERLESS WEBRTC MESH ENGINE ---
         window.Mesh = {
             pc: null, dc: null, localStream: null, connected: false,
             openModal: function() { document.getElementById('mesh-modal').style.display = 'flex'; document.getElementById('mesh-step-1').style.display = 'block'; document.getElementById('mesh-step-host').style.display = 'none'; document.getElementById('mesh-step-client').style.display = 'none'; document.getElementById('mesh-status').innerText = ""; },
@@ -350,7 +362,7 @@
                     if(s === 'connected' || s === 'completed') {
                         this.connected = true; document.getElementById('mesh-status').innerText = "MESH LINK ESTABLISHED!"; document.getElementById('mesh-status').style.color = 'var(--nav)'; document.getElementById('svg-ats').textContent = "✈️ LINKED"; document.getElementById('svg-ats').setAttribute('fill', 'var(--squad)'); setTimeout(() => document.getElementById('mesh-modal').style.display='none', 1500); setInterval(() => this.sendTelemetry(), 250); 
                     } else if (s === 'disconnected' || s === 'failed') {
-                        this.connected = false; document.getElementById('svg-ats').textContent = "✈️ OFF"; document.getElementById('svg-ats').setAttribute('fill', 'var(--secondary)'); STATE.squadData = null;
+                        this.connected = false; document.getElementById('svg-ats').textContent = "⚠️ ATS OFF"; document.getElementById('svg-ats').setAttribute('fill', 'var(--secondary)'); STATE.squadData = null;
                     }
                 };
             },
@@ -389,8 +401,8 @@
         };
 
         window.Comms = {
-            startTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.add('recording'); btn.innerText = "[ 🔴 TX ]"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true; },
-            stopTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.remove('recording'); btn.innerText = "[ 🎙️ PTT ]"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = false; }
+            startTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.add('recording'); btn.innerText = "🔴 TX"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true; },
+            stopTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.remove('recording'); btn.innerText = "🎙️ PTT (HOLD)"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = false; }
         };
 
         window.Radio = {
@@ -413,7 +425,7 @@
 
         window.UX = {
             wrapper: document.getElementById('hud-wrapper'),
-            isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0, lastTap: 0,
+            isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0,
 
             initDrag: function() {
                 this.wrapper.addEventListener('mousedown', this.dragStart.bind(this), {passive: false});
@@ -425,9 +437,6 @@
             },
             dragStart: function(e) {
                 if (e.target.tagName.toLowerCase() === 'button' || e.target.classList.contains('clickable') || e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') return;
-                const now = Date.now();
-                if (now - this.lastTap < 300) { this.toggleFullscreen(); this.lastTap = 0; return; }
-                this.lastTap = now;
                 this.isDragging = true;
                 if (e.type === 'touchstart') { this.startX = e.touches[0].clientX - this.initialX; this.startY = e.touches[0].clientY - this.initialY; } 
                 else { this.startX = e.clientX - this.initialX; this.startY = e.clientY - this.initialY; }
@@ -468,9 +477,16 @@
                 Graphics.ctx.setTransform(1, 0, 0, 1, 0, 0); Graphics.ctx.scale(dpr, dpr);
 
                 svg.setAttribute('width', STATE.w); svg.setAttribute('height', STATE.h);
-                const rTop = STATE.r - 14, rBot = STATE.r - 2;
+                
+                // Pure Optical Symmetry Math for Text Arcs
+                const textOrbit = STATE.r - 15;
+                const rTop = textOrbit - 5, rBot = textOrbit + 5;
                 document.getElementById('top-curve').setAttribute('d', `M ${STATE.cx - rTop} ${STATE.cy} A ${rTop} ${rTop} 0 0 1 ${STATE.cx + rTop} ${STATE.cy}`);
                 document.getElementById('bottom-curve').setAttribute('d', `M ${STATE.cx - rBot} ${STATE.cy} A ${rBot} ${rBot} 0 0 0 ${STATE.cx + rBot} ${STATE.cy}`);
+
+                const craftToggle = document.getElementById('craft-toggle'); let angleCraft = (1 - 0.82) * Math.PI;
+                craftToggle.style.left = (STATE.cx + Math.cos(angleCraft) * rTop - 40) + 'px'; craftToggle.style.top = (STATE.cy - Math.sin(angleCraft) * rTop - 25) + 'px';
+                document.getElementById('wx-toggle').style.left = (STATE.cx - 60) + 'px'; document.getElementById('wx-toggle').style.top = (STATE.cy + rBot - 20) + 'px';
 
                 if (!STATE.active) Graphics.renderHUD(); 
             }
@@ -523,20 +539,7 @@
                     }
                     STATE.lastTemp = temp;
                     wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan fill="${trendColor}" font-size="14">${trendArrow}</tspan><tspan> H:${high}° L:${low}°</tspan>`;
-                    if (cw.weathercode == 45 || cw.weathercode == 48 || cw.weathercode >= 95) wxSvg.classList.add("alert-flash"); else { wxSvg.classList.remove("alert-flash"); wxSvg.setAttribute("fill", "var(--primary)"); }
                 } catch (e) { document.getElementById('svg-wx').textContent = "☁️ WX: ERR"; }
-            }
-        };
-
-        const Hardware = {
-            handleMotion: function(e) {
-                let cx = (e.accelerationIncludingGravity?.x || 0) / 9.81, cy = (e.accelerationIncludingGravity?.y || 0) / 9.81;
-                STATE.gX = (cx * CFG.FILTER_FACTOR) + (STATE.gX * (1 - CFG.FILTER_FACTOR)); STATE.gY = (cy * CFG.FILTER_FACTOR) + (STATE.gY * (1 - CFG.FILTER_FACTOR));
-                if (!STATE.active) requestAnimationFrame(Graphics.renderHUD);
-            },
-            handleOrientation: function(e) {
-                STATE.leanAngle = Math.round(e.gamma || 0); let rawPitch = Math.round(e.beta || 0); if (rawPitch > 90) rawPitch -= 180;
-                STATE.pitchAngle = rawPitch - 45; if (!STATE.active) requestAnimationFrame(Graphics.renderHUD);
             }
         };
 
@@ -616,24 +619,33 @@
                 const invRoll = -roll * CFG.TO_RAD; ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
                 ctx.shadowOffsetX = 8 * Math.cos(invRoll) - 15 * Math.sin(invRoll); ctx.shadowOffsetY = 8 * Math.sin(invRoll) + 15 * Math.cos(invRoll);
                 const shirtCol = getComputedStyle(document.body).getPropertyValue('--wind').trim(), bikeCol = isDark ? '#475569' : '#94a3b8';
-                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-1.5, -25, 3, 15, 1.5); else ctx.fillRect(-1.5, -25, 3, 15); ctx.fill();
-                ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-12, -18); ctx.lineTo(12, -18); ctx.stroke();
-                ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 10); ctx.lineTo(0, -18); ctx.stroke();
-                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-2, 5, 4, 18, 2); else ctx.fillRect(-2, 5, 4, 18); ctx.fill();
+                
+                // Absolute Z-Index Back-to-Front Depth Mapping
+                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-1.5, -30, 3, 12, 1.5); else ctx.fillRect(-1.5, -30, 3, 12); ctx.fill();
+                ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, -25); ctx.stroke();
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-14, -22); ctx.lineTo(14, -22); ctx.stroke();
+                
+                ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-10, -10); ctx.lineTo(-12, -22); ctx.stroke(); ctx.beginPath(); ctx.moveTo(10, -10); ctx.lineTo(12, -22); ctx.stroke(); 
+                ctx.shadowColor = 'transparent'; 
+                ctx.fillStyle = shirtCol; ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(-10, -10); ctx.quadraticCurveTo(0, -14, 10, -10); ctx.lineTo(6, 4); ctx.fill();
+                
+                let helmG = ctx.createRadialGradient(0, -14, 1, 0, -11, 6); helmG.addColorStop(0, '#cbd5e1'); helmG.addColorStop(1, '#475569'); ctx.fillStyle = helmG; ctx.beginPath(); ctx.ellipse(0, -14, 5, 6, 0, 0, Math.PI*2); ctx.fill();
+                
                 let cycle = STATE.active ? Date.now() / (300 - Math.min(STATE.spdMph * 2, 250)) : 0;
-                let lpY = -2 + Math.cos(cycle)*5, rpY = -2 + Math.cos(cycle + Math.PI)*5, lkX = -7, lkY = 2 + Math.cos(cycle - 0.5)*3, rkX = 7, rkY = 2 + Math.cos(cycle + Math.PI - 0.5)*3;
-                ctx.fillStyle = '#ddd'; ctx.fillRect(-5, lpY-2, 3, 4); ctx.fillRect(2, rpY-2, 3, 4);
-                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(-3, 8); ctx.lineTo(lkX, lkY); ctx.lineTo(-4, lpY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(3, 8); ctx.lineTo(rkX, rkY); ctx.lineTo(4, rpY); ctx.stroke();
-                ctx.fillStyle = '#0f172a'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-4, 5, 8, 6, 3); else ctx.fillRect(-4, 5, 8, 6); ctx.fill();
-                ctx.shadowColor = 'transparent'; ctx.fillStyle = shirtCol; ctx.beginPath(); ctx.moveTo(-5, 6); ctx.lineTo(-8, -8); ctx.quadraticCurveTo(0, -11, 8, -8); ctx.lineTo(5, 6); ctx.fill();
-                ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-8, -8); ctx.lineTo(-12, -18); ctx.stroke(); ctx.beginPath(); ctx.moveTo(8, -8); ctx.lineTo(12, -18); ctx.stroke(); 
-                let helmG = ctx.createRadialGradient(0, -12, 1, 0, -9, 7); helmG.addColorStop(0, '#cbd5e1'); helmG.addColorStop(1, '#475569'); ctx.fillStyle = helmG; ctx.beginPath(); ctx.ellipse(0, -10, 5, 7, 0, 0, Math.PI*2); ctx.fill();
+                let lpY = 2 + Math.cos(cycle)*6, rpY = 2 + Math.cos(cycle + Math.PI)*6, lkX = -7, lkY = 6 + Math.cos(cycle - 0.5)*4, rkX = 7, rkY = 6 + Math.cos(cycle + Math.PI - 0.5)*4;
+                ctx.fillStyle = '#ddd'; ctx.fillRect(-6, lpY-2, 3, 4); ctx.fillRect(3, rpY-2, 3, 4);
+                ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(-4, 4); ctx.lineTo(lkX, lkY); ctx.lineTo(-4.5, lpY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(4, 4); ctx.lineTo(rkX, rkY); ctx.lineTo(4.5, rpY); ctx.stroke();
+                
+                ctx.fillStyle = '#0f172a'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-4, 2, 8, 5, 2.5); else ctx.fillRect(-4, 2, 8, 5); ctx.fill();
+                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-2.5, 6, 5, 20, 2); else ctx.fillRect(-2.5, 6, 5, 20); ctx.fill();
+
                 ctx.restore();
             },
             renderHUD: function() {
                 const ctx = Graphics.ctx; ctx.clearRect(0, 0, STATE.w, STATE.h);
                 const isDark = document.body.classList.contains('night-mode') || STATE.craftMode === 1;
 
+                // --- 3D SYNTHETIC VISION ---
                 ctx.save(); ctx.beginPath(); 
                 if (STATE.isFullscreen) { ctx.rect(0, 0, STATE.w, STATE.h); } else { ctx.arc(STATE.cx, STATE.cy, STATE.r, 0, Math.PI * 2); }
                 ctx.clip();
@@ -654,8 +666,8 @@
                 const FOV = 200, CAM_H = 0.05; STATE.gridScroll += (STATE.spdMph / 3600) * 1.5; if (STATE.gridScroll > 0.5) STATE.gridScroll -= 0.5; 
 
                 ctx.beginPath();
-                for (let d = 0; d <= 3.5; d += 0.5) { let depth = d - STATE.gridScroll; if (depth < 0.05) continue; let scale = FOV / depth, sy = pitchOffset + (CAM_H * scale); if (sy > pitchOffset && sy < STATE.h) { ctx.moveTo(-10 * scale, sy); ctx.lineTo(10 * scale, sy); } }
-                for (let x = -10; x <= 10; x += 0.5) { let s1 = FOV / 0.05, s2 = FOV / 3.5; ctx.moveTo(x * s1, pitchOffset + (CAM_H * s1)); ctx.lineTo(x * s2, pitchOffset + (CAM_H * s2)); }
+                for (let d = 0; d <= 3.5; d += 0.5) { let depth = d - STATE.gridScroll; if (depth < 0.05) continue; let scale = FOV / depth, sy = pitchOffset + (CAM_H * scale); if (sy > pitchOffset && sy < STATE.h) { ctx.moveTo(-20 * scale, sy); ctx.lineTo(20 * scale, sy); } }
+                for (let x = -20; x <= 20; x += 0.5) { let s1 = FOV / 0.05, s2 = FOV / 3.5; ctx.moveTo(x * s1, pitchOffset + (CAM_H * s1)); ctx.lineTo(x * s2, pitchOffset + (CAM_H * s2)); }
                 ctx.stroke();
 
                 if (STATE.lat !== null && STATE.lon !== null && STATE.active) {
@@ -766,21 +778,14 @@
                     btn.innerText = "END TRIP"; btn.classList.add("btn-danger"); btn.classList.add("dimmed");
                     requestAnimationFrame(Graphics.renderHUD); 
                     MathUtils.say("Flight Log Started");
-                    const sAudio = document.getElementById('squad-music'); if (sAudio.paused) { sAudio.play().then(()=>sAudio.pause()).catch(e=>{}); }
-                    
-                    // Request OS Wake Lock to prevent iOS from sleeping the screen during a ride
                     try { if ('wakeLock' in navigator) STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
                 } else {
                     STATE.active = false; btn.innerText = "START TRIP"; btn.classList.remove("btn-danger"); btn.classList.remove("dimmed");
-                    
-                    TripLogger.saveTrip(); // Save flight to local storage
-
+                    TripLogger.saveTrip(); 
                     STATE.activeDest = null;
                     document.getElementById('dest-id').innerText = "NONE"; document.getElementById('dest-eta').innerText = "-- MI | ETA --:--";
                     document.getElementById('trip-time').innerText = "00:00";
                     API.applyTheme(); Graphics.renderHUD(); 
-                    
-                    // Release OS Wake Lock
                     if (STATE.wakeLock) { STATE.wakeLock.release().catch(e=>{}); STATE.wakeLock = null; }
                 }
             },
@@ -794,7 +799,7 @@
                 const timestamp = position.timestamp;
                 STATE.spdMph = (position.coords.speed || 0) * 2.23694; STATE.altFt = (position.coords.altitude || 0) * 3.28084;
                 
-                if (STATE.spdMph > (STATE.maxSpd || 0)) STATE.maxSpd = STATE.spdMph; // Track Max Speed for Logs
+                if (STATE.spdMph > (STATE.maxSpd || 0)) STATE.maxSpd = STATE.spdMph; 
 
                 document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
                 document.getElementById('heading').innerText = `${Math.round(STATE.hdg).toString().padStart(3, '0')}° ${MathUtils.getCardinal(STATE.hdg)}`;
@@ -828,7 +833,8 @@
                 }
                 
                 STATE.lastLat = STATE.lat; STATE.lastLon = STATE.lon; STATE.lastAltFt = STATE.altFt; STATE.lastTs = timestamp;
-                
+                if (Mesh.connected) Mesh.sendTelemetry();
+
                 const now = Date.now();
                 if (STATE.apiLat === null || MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.apiLat, STATE.apiLon).dist > 1.5 || (now - STATE.apiTime) > 900000) {
                     API.fetchEnvironment(STATE.lat, STATE.lon); STATE.apiLat = STATE.lat; STATE.apiLon = STATE.lon; STATE.apiTime = now;
@@ -836,25 +842,18 @@
             },
 
             init: function() {
-                UX.initDrag();
-                UX.handleResize();
-                window.addEventListener('resize', UX.handleResize);
-                window.addEventListener('devicemotion', Hardware.handleMotion); 
-                window.addEventListener('deviceorientation', Hardware.handleOrientation);
-
+                UX.initDrag(); UX.handleResize(); window.addEventListener('resize', UX.handleResize);
+                window.addEventListener('devicemotion', Hardware.handleMotion); window.addEventListener('deviceorientation', Hardware.handleOrientation);
                 document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
                 
-                const hr = new Date().getHours();
-                const isNight = (hr >= 19 || hr < 7);
-                STATE.baseTheme = isNight ? 'night-mode' : '';
-                STATE.craftMode = isNight ? 1 : 0; 
+                const hr = new Date().getHours(); const isNight = (hr >= 19 || hr < 7);
+                STATE.baseTheme = isNight ? 'night-mode' : ''; STATE.craftMode = isNight ? 1 : 0; 
                 
                 const toggleSvg = document.getElementById('svg-craft');
                 if (STATE.craftMode === 1) { toggleSvg.textContent = "[ 🛸 UFO ]"; toggleSvg.setAttribute('fill', 'var(--primary)'); } 
                 else { toggleSvg.textContent = "[ 🛩️ C182 ]"; toggleSvg.setAttribute('fill', 'var(--secondary)'); }
 
-                API.applyTheme();
-                Graphics.renderHUD(); 
+                API.applyTheme(); Graphics.renderHUD(); 
                 
                 if ("geolocation" in navigator) {
                     watchId = navigator.geolocation.watchPosition(Engine.processGPS, (e) => {
@@ -871,4 +870,3 @@
 
 
 ```
-
