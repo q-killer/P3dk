@@ -2013,4 +2013,16 @@ window.Engine = {
             watchId = navigator.geolocation.watchPosition(
                 Engine.processGPS,
                 Engine.gpsError,
-                { enable
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+            );
+        }
+
+        // DR tick on interval (1s) when GPS is lost
+        setInterval(() => { if (STATE.gpsLost && STATE.active) DeadReckoning.tick(); }, 1000);
+    }
+};
+
+Engine.init();
+</script>
+</body>
+</html>
