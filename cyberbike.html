@@ -6,9 +6,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
     <title>CyberBike / Offline Matrix</title>
     <style>
-        @import url('[https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap](https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap)');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap');
 
-        /* Default Day Theme (Aqua Glow) */
         :root {
             --primary: #1e293b; --secondary: #64748b; --danger: #e32636;
             --wind: #0ea5e9; --nav: #10b981; --squad: #00ffff;
@@ -19,7 +18,6 @@
             --font-main: 'Share Tech Mono', monospace;
         }
 
-        /* Night Vision Theme (Neon Pink Glow) */
         body.night-mode {
             --primary: #f8fafc; --secondary: #94a3b8; --danger: #ef4444;
             --wind: #38bdf8; --nav: #34d399; 
@@ -29,7 +27,6 @@
             --modal-bg: rgba(15, 23, 42, 0.95);
         }
 
-        /* Sci-Fi UFO Mode (Neon Green / Purple) */
         body.ufo-mode {
             --primary: #39ff14; --secondary: #b026ff; --danger: #ff003c;
             --wind: #00ffff; --nav: #ff00ff; 
@@ -48,7 +45,6 @@
             transition: color 1s, background 1s, font-family 0.3s;
         }
 
-        /* Wrapper handles dragging and native fullscreen */
         #hud-wrapper { position: absolute; transform-origin: center center; transition: transform 0.2s; cursor: grab; }
         #hud-wrapper:active { cursor: grabbing; }
         #hud-wrapper.fullscreen-mode {
@@ -62,56 +58,51 @@
             background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, var(--bg) 90%);
             border: 2px solid rgba(148, 163, 184, 0.3); border-radius: 50%;
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15), inset 0 0 20px rgba(255, 255, 255, 0.5);
-            overflow: hidden; transition: all 0.4s ease-in-out; backface-visibility: hidden;
+            overflow: hidden; transition: all 1s, transform 0.3s; backface-visibility: hidden;
         }
         body.night-mode #hud-pod, body.ufo-mode #hud-pod { border-color: var(--secondary); box-shadow: 0 0 25px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(0, 0, 0, 0.8); }
 
         #vector-canvas { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 1; pointer-events: none; }
         .overlay { position: absolute; z-index: 2; pointer-events: none; }
 
-        .top-hdg { top: 12px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
-        
-        .left-avionics { top: 50%; left: 28px; transform: translateY(-50%); text-align: left; white-space: nowrap; }
-        .right-stats { top: 50%; right: 28px; transform: translateY(-50%); text-align: right; white-space: nowrap; }
+        .top-hdg { top: 32px; left: 50%; transform: translateX(-50%); font-size: 24px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
+        .left-avionics { top: 50%; left: 38px; transform: translateY(-50%); text-align: left; white-space: nowrap; }
+        .right-stats { top: 50%; right: 38px; transform: translateY(-50%); text-align: right; white-space: nowrap; }
 
-        .speed-container { display: flex; align-items: baseline; justify-content: flex-end; margin-bottom: 2px; }
-        .speed-value { font-size: 42px; font-weight: 900; line-height: 0.8; text-shadow: 0 0 10px var(--halo), 0 0 20px var(--halo), var(--text-outline); }
-        .speed-unit { font-size: 12px; font-weight: 900; letter-spacing: 2px; margin-left: 4px; text-shadow: 0 0 8px var(--halo); }
+        .speed-value { font-size: 42px; font-weight: 900; line-height: 1; margin-bottom: -2px; text-shadow: 0 0 10px var(--halo), 0 0 20px var(--halo), var(--text-outline); }
+        .speed-unit { font-size: 12px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 0 8px var(--halo); }
 
-        .lbl { font-size: 12px; letter-spacing: 1px; margin-top: 8px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo); }
+        .lbl { font-size: 12px; letter-spacing: 1px; margin-top: 6px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo); }
         .val { font-size: 16px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
         .sub-val { font-size: 11px; color: var(--primary); font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo); }
         .unit { font-size: 10px; font-weight: 900; }
 
         #svg-bezel { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 10; pointer-events: none; }
 
-        /* Tactical HUD Buttons */
-        .hud-btn {
-            position: absolute; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--secondary);
-            color: #fff; font-family: inherit; font-size: 10px; font-weight: 900;
-            padding: 6px 10px; border-radius: 8px; cursor: pointer; z-index: 15;
-            backdrop-filter: blur(4px); transition: 0.2s; pointer-events: auto;
-            text-shadow: 0 0 5px rgba(0,0,0,0.8);
-        }
-        .hud-btn:hover { background: var(--nav); color: #000; text-shadow: none; border-color: var(--nav); }
+        /* Invisible Curved Hit-Zones */
+        .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; }
+        
+        /* Outer Orbit Hit-Zones (R=148) */
+        #hit-logs { top: 35px; left: 45px; }
+        #hit-full { top: 35px; left: 275px; }
+        #hit-comms { top: 285px; left: 45px; }
+        #hit-mesh { top: 285px; left: 275px; }
 
-        #fs-btn { top: 22px; left: 30px; transform: translateX(-50%); }
-        #log-btn { top: 22px; right: 30px; transform: translateX(50%); }
-        #radio-btn { bottom: 22px; left: 30px; transform: translateX(-50%); }
-        #mesh-btn { bottom: 22px; right: 30px; transform: translateX(50%); }
+        /* Inner Orbit Hit-Zones (R=134) */
+        #hit-ats { top: 60px; left: 65px; }
+        #hit-craft { top: 60px; left: 255px; }
+        #hit-gps { top: 260px; left: 65px; }
+        #hit-wx { top: 260px; left: 255px; }
 
-        /* Center Stack Buttons */
-        #trip-btn { position: absolute; top: calc(50% + 40px); left: 50%; transform: translateX(-50%); background: var(--bg); color: var(--primary); border: 2px solid var(--primary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px; z-index: 15; box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: auto; }
+        #ptt-btn { position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%); background: transparent; border: 1px solid var(--secondary); color: var(--secondary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15; pointer-events: auto; text-shadow: var(--text-outline); }
+        #ptt-btn.recording { color: var(--bg); background: var(--danger); border-color: var(--danger); text-shadow: none; box-shadow: 0 0 15px var(--danger); }
+
+        #trip-btn { position: absolute; top: calc(50% + 25px); left: 50%; transform: translateX(-50%); background: var(--bg); color: var(--primary); border: 2px solid var(--primary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px; z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: auto; }
         #trip-btn:active { background: var(--primary); color: #fff; }
-        #ptt-btn { position: absolute; top: calc(50% + 75px); left: 50%; transform: translateX(-50%); background: transparent; border: 1px solid var(--secondary); color: var(--secondary); padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900; cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15; pointer-events: auto; text-shadow: var(--text-outline); }
-        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); text-shadow: none; box-shadow: 0 0 15px var(--danger); }
-
-        /* Transparent SVG Hit-Zones */
-        #craft-toggle { position: absolute; top: 35px; right: 25px; width: 80px; height: 50px; background: transparent; border: none; cursor: pointer; z-index: 20; pointer-events: auto; }
-        #wx-toggle { position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%); width: 120px; height: 40px; background: transparent; border: none; cursor: pointer; z-index: 20; pointer-events: auto; }
 
         .clickable { cursor: pointer; pointer-events: auto; }
-        .nav-color { color: var(--nav); } .squad-color { color: var(--squad); }
+        .nav-color { color: var(--nav); }
+        .squad-color { color: var(--squad); }
 
         /* Modals */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
@@ -125,31 +116,30 @@
         .input-group { margin-bottom: 15px; }
         .input-group label { display: block; font-size: 12px; color: var(--primary); font-weight: 900; margin-bottom: 5px; }
         .input-group input, .input-group textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.05); border: 1px solid var(--secondary); color: var(--primary); font-family: inherit; font-size: 12px; font-weight: 900; border-radius: 5px; box-sizing: border-box; }
-        .input-group textarea { height: 80px; resize: none; word-break: break-all; }
+        .input-group textarea { height: 60px; resize: none; word-break: break-all; }
         
-        .radio-controls { display: flex; gap: 10px; margin-top: 15px; }
-        .radio-controls button { flex: 1; background: transparent; border: 2px solid var(--primary); color: var(--primary); padding: 10px; font-weight: 900; font-family: inherit; cursor: pointer; border-radius: 8px; transition: 0.2s;}
+        .radio-controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
+        .radio-controls button { flex: 1 1 45%; background: transparent; border: 2px solid var(--primary); color: var(--primary); padding: 8px; font-weight: 900; font-size: 10px; font-family: inherit; cursor: pointer; border-radius: 8px; transition: 0.2s; white-space: nowrap;}
         .radio-controls button.active { background: var(--squad); border-color: var(--squad); color: #000; }
         .modal-close { display: block; margin: 20px auto 0 auto; background: transparent; border: 2px solid var(--danger); color: var(--danger); padding: 10px 20px; font-weight: 900; cursor: pointer; border-radius: 8px; font-family: inherit; width: 100%; }
 
         .alert-flash { animation: flashWarning 0.5s infinite; font-weight: 900; text-shadow: 0 0 10px var(--danger); }
         @keyframes flashWarning { 0%, 100% { fill: var(--danger); color: var(--danger); opacity: 1; } 50% { fill: #fff; color: #fff; opacity: 0.5; } }
         .up-green { color: var(--nav); } .down-red { color: var(--danger); }
+        
+        .scan-anim { text-align: center; color: var(--squad); font-weight: 900; font-size: 14px; animation: pulse 1s infinite; margin: 20px 0; }
+        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
     </style>
 </head>
 <body>
 
+    <!-- Offline Audio Handlers -->
     <audio id="squad-music" preload="none"></audio>
     <audio id="squad-voice" autoplay></audio>
 
     <div id="hud-wrapper">
         <div id="hud-pod">
             <canvas id="vector-canvas"></canvas>
-            
-            <button class="hud-btn" id="fs-btn" onclick="UX.toggleFullscreen()" title="Fullscreen">⛶ FULL</button>
-            <button class="hud-btn" id="log-btn" onclick="TripLogger.openModal()" title="Flight Logs">📜 LOGS</button>
-            <button class="hud-btn" id="radio-btn" onclick="Radio.openModal()">📻 COMMS</button>
-            <button class="hud-btn" id="mesh-btn" onclick="Mesh.openModal()" title="Local Mesh Setup">📡 MESH</button>
             
             <div class="overlay top-hdg" id="heading">000° N</div>
 
@@ -164,10 +154,8 @@
             </div>
 
             <div class="overlay right-stats">
-                <div class="speed-container">
-                    <div class="speed-value" id="speed">0.0</div>
-                    <div class="speed-unit">MPH</div>
-                </div>
+                <div class="speed-value" id="speed">0.0</div>
+                <div class="speed-unit">MPH</div>
 
                 <div class="lbl">📏 DIST</div>
                 <div class="val"><span id="distance">0.0</span><span class="unit">MI</span></div>
@@ -180,27 +168,46 @@
                 <div class="sub-val nav-color" id="dest-eta" style="line-height: 1.0;">-- MI | ETA --:--</div>
             </div>
 
-            <!-- Mathematically Mirrored Bezel Orbits -->
+            <!-- Dual-Concentric Curved Text Bezel -->
             <svg id="svg-bezel">
                 <defs>
-                    <path id="top-curve" />
-                    <path id="bottom-curve" />
+                    <path id="outer-top-curve" />
+                    <path id="outer-bot-curve" />
+                    <path id="inner-top-curve" />
+                    <path id="inner-bot-curve" />
                     <filter id="svg-halo"><feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="var(--halo)"/><feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="var(--halo)"/></filter>
                 </defs>
+                
+                <!-- Outer Orbit (Logs, Full, Comms, Mesh) -->
+                <text font-family="var(--font-main)" font-size="10" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
+                    <textPath href="#outer-top-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📜 LOGS ]</textPath>
+                    <textPath href="#outer-top-curve" startOffset="78%" text-anchor="middle" fill="var(--secondary)">[ ⛶ FULL ]</textPath>
+                    <textPath href="#outer-bot-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📻 COMMS ]</textPath>
+                    <textPath href="#outer-bot-curve" startOffset="78%" text-anchor="middle" fill="var(--secondary)">[ 📡 MESH ]</textPath>
+                </text>
+
+                <!-- Inner Orbit (ATS, Craft Emoji, GPS, WX) -->
                 <text font-family="var(--font-main)" font-size="12" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
-                    <textPath href="#top-curve"    startOffset="18%" text-anchor="middle" id="svg-ats"   fill="var(--secondary)">⚠️ ATS OFF</textPath>
-                    <textPath href="#top-curve"    startOffset="82%" text-anchor="middle" id="svg-craft" fill="var(--secondary)">[ 🛩️ C182 ]</textPath>
-                    <textPath href="#bottom-curve" startOffset="50%" text-anchor="middle" id="svg-wx"    fill="var(--secondary)">☁️ WX SCAN</textPath>
+                    <textPath href="#inner-top-curve" startOffset="24%" text-anchor="middle" id="svg-ats"   fill="var(--secondary)">⚠️ ATS OFF</textPath>
+                    <textPath href="#inner-top-curve" startOffset="76%" text-anchor="middle" id="svg-craft" fill="var(--secondary)">🛩️</textPath>
+                    <textPath href="#inner-bot-curve" startOffset="26%" text-anchor="middle" id="svg-gps"   fill="var(--secondary)">🛰️ SRCH</textPath>
+                    <textPath href="#inner-bot-curve" startOffset="50%" text-anchor="middle" id="svg-wx"    fill="var(--secondary)">☁️ WX SCAN</textPath>
                 </text>
             </svg>
 
-            <!-- Transparent Overlays for SVG Text Interaction -->
-            <button id="craft-toggle" onclick="Avionics.toggleCraft()" title="Cycle Craft"></button>
-            <button id="wx-toggle" onclick="Avionics.cycleTheme()" title="Cycle Theme"></button>
+            <!-- Invisible Mathematical Hit-Zones -->
+            <div class="hit-zone" id="hit-logs" onclick="TripLogger.openModal()" title="Logs"></div>
+            <div class="hit-zone" id="hit-full" onclick="UX.toggleFullscreen()" title="Fullscreen"></div>
+            <div class="hit-zone" id="hit-comms" onclick="Radio.openModal()" title="Comms"></div>
+            <div class="hit-zone" id="hit-mesh" onclick="Mesh.openModal()" title="Mesh Network"></div>
+            
+            <div class="hit-zone" id="hit-ats" title="Traffic System"></div>
+            <div class="hit-zone" id="hit-craft" onclick="Avionics.toggleCraft()" title="Toggle Craft"></div>
+            <div class="hit-zone" id="hit-gps" title="GPS Status"></div>
+            <div class="hit-zone" id="hit-wx" onclick="Avionics.cycleTheme()" title="Toggle Weather/Theme"></div>
 
-            <!-- Center Stack Controls -->
             <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
-            <button id="ptt-btn" onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)" ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT (HOLD)</button>
+            <button id="ptt-btn" onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)" ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
         </div>
     </div>
 
@@ -225,11 +232,19 @@
 
     <div id="radio-modal" class="modal">
         <div class="modal-content">
-            <h3 class="squad-color">📻 MUSIC SYNC</h3>
-            <p style="font-size:12px; color:var(--secondary); text-align:center;">Synchronize audio streams across the local Mesh.</p>
+            <h3 class="squad-color">📻 COMMS ARRAY</h3>
+            <p style="font-size:12px; color:var(--secondary); text-align:center;">Select a station to sync across the local Mesh.</p>
+            
+            <div class="radio-controls" style="margin-bottom: 15px;">
+                <button onclick="Radio.setStation('https://stream.nightride.fm/nightride.m4a')">NIGHTRIDE FM</button>
+                <button onclick="Radio.setStation('https://stream.nightride.fm/chillsynth.m4a')">CHILLSYNTH</button>
+                <button onclick="Radio.setStation('https://listen.moe/stream')">LOFI JPOP</button>
+                <button onclick="Radio.setStation('https://radio.plaza.one/mp3')">VAPORWAVE</button>
+            </div>
+
             <div class="input-group">
-                <label>AUDIO STREAM URL</label>
-                <input type="text" id="input-radio-url" value="[https://stream.nightride.fm/nightride.m4a](https://stream.nightride.fm/nightride.m4a)">
+                <label>CUSTOM STREAM URL</label>
+                <input type="text" id="input-radio-url" value="https://stream.nightride.fm/nightride.m4a">
             </div>
             <div class="radio-controls">
                 <button id="btn-listen" onclick="Radio.toggleListen()">LISTEN IN</button>
@@ -242,29 +257,43 @@
     <div id="mesh-modal" class="modal">
         <div class="modal-content">
             <h3 class="squad-color">📡 LOCAL MESH</h3>
-            <p style="font-size:12px; color:var(--secondary); text-align:center;">Connect directly over Local Wi-Fi without Internet.</p>
+            <p style="font-size:12px; color:var(--secondary); text-align:center;">Serverless WebRTC Connection.</p>
+            
+            <div id="mesh-step-scan" style="display:none;">
+                <div class="scan-anim">SCANNING LOCAL FREQUENCIES...</div>
+            </div>
+
             <div id="mesh-step-1">
                 <div class="radio-controls">
-                    <button onclick="Mesh.createHost()">CREATE SQUAD</button>
-                    <button onclick="Mesh.showJoin()">JOIN SQUAD</button>
+                    <button onclick="Mesh.startAutoHost()" style="flex: 1 1 100%; border-color: var(--squad); color: var(--squad);">1-CLICK AUTO SQUAD</button>
+                    <button onclick="Mesh.showJoin()">JOIN EXISTING SQUAD</button>
                 </div>
             </div>
+
             <div id="mesh-step-host" style="display:none;">
-                <div class="input-group"><label>1. SHARE HOST TOKEN</label><textarea id="mesh-host-token" readonly></textarea></div>
-                <div class="input-group"><label>2. PASTE FRIEND'S ANSWER</label><textarea id="mesh-host-answer" placeholder="Paste their reply here..."></textarea></div>
+                <p id="mesh-squad-name" style="text-align:center; font-size:24px; margin: 10px 0;"></p>
+                <button class="modal-close" onclick="Mesh.shareToken('host')" style="border-color: var(--wind); color: var(--wind); margin-bottom:15px; margin-top:0;">SHARE SQUAD LINK (AIRDROP)</button>
+                
+                <div class="input-group"><label>MANUAL HOST TOKEN (FALLBACK)</label><textarea id="mesh-host-token" readonly></textarea></div>
+                <div class="input-group"><label>PASTE FRIEND'S ANSWER</label><textarea id="mesh-host-answer" placeholder="Paste their reply here..."></textarea></div>
                 <button class="modal-close" onclick="Mesh.hostAccept()" style="border-color: var(--nav); color: var(--nav); margin-bottom:10px;">CONNECT</button>
             </div>
+
             <div id="mesh-step-client" style="display:none;">
-                <div class="input-group"><label>1. PASTE HOST TOKEN</label><textarea id="mesh-client-offer" placeholder="Paste host token here..."></textarea></div>
-                <button class="modal-close" onclick="Mesh.clientJoin()" style="border-color: var(--nav); color: var(--nav); margin-bottom:10px;">GENERATE ANSWER</button>
-                <div class="input-group" id="mesh-client-reply-box" style="display:none;"><label>2. SHARE ANSWER TOKEN</label><textarea id="mesh-client-answer" readonly></textarea></div>
+                <div class="input-group"><label>1. PASTE SQUAD TOKEN</label><textarea id="mesh-client-offer" placeholder="Paste host token here..."></textarea></div>
+                <button class="modal-close" onclick="Mesh.clientJoin()" style="border-color: var(--nav); color: var(--nav); margin-bottom:15px;">GENERATE ANSWER</button>
+                
+                <div id="mesh-client-reply-box" style="display:none;">
+                    <button class="modal-close" onclick="Mesh.shareToken('client')" style="border-color: var(--wind); color: var(--wind); margin-bottom:15px; margin-top:0;">SHARE ANSWER BACK</button>
+                    <div class="input-group"><label>MANUAL ANSWER TOKEN</label><textarea id="mesh-client-answer" readonly></textarea></div>
+                </div>
             </div>
+            
             <p id="mesh-status" style="text-align:center; font-size:12px; font-weight:bold; color:var(--danger);"></p>
             <button class="modal-close" onclick="document.getElementById('mesh-modal').style.display='none'">CLOSE</button>
         </div>
     </div>
 
-    <!-- LOCAL TRIP LOGS UI -->
     <div id="log-modal" class="modal">
         <div class="modal-content">
             <h3>📜 CAPTAIN'S LOG</h3>
@@ -347,7 +376,24 @@
 
         window.Mesh = {
             pc: null, dc: null, localStream: null, connected: false,
-            openModal: function() { document.getElementById('mesh-modal').style.display = 'flex'; document.getElementById('mesh-step-1').style.display = 'block'; document.getElementById('mesh-step-host').style.display = 'none'; document.getElementById('mesh-step-client').style.display = 'none'; document.getElementById('mesh-status').innerText = ""; },
+            openModal: function() { 
+                document.getElementById('mesh-modal').style.display = 'flex'; 
+                document.getElementById('mesh-step-1').style.display = 'block'; 
+                document.getElementById('mesh-step-host').style.display = 'none'; 
+                document.getElementById('mesh-step-client').style.display = 'none'; 
+                document.getElementById('mesh-step-scan').style.display = 'none';
+                document.getElementById('mesh-status').innerText = ""; 
+            },
+            startAutoHost: function() {
+                document.getElementById('mesh-step-1').style.display = 'none';
+                document.getElementById('mesh-step-scan').style.display = 'block';
+                
+                // Simulate "Auto-Scan" network sweep before falling back to creation
+                setTimeout(() => {
+                    document.getElementById('mesh-step-scan').style.display = 'none';
+                    this.createHost();
+                }, 2000);
+            },
             initRTC: async function() {
                 this.pc = new RTCPeerConnection({ iceServers: [] });
                 this.pc.ontrack = (event) => { const audio = document.getElementById('squad-voice'); audio.srcObject = event.streams[0]; };
@@ -378,7 +424,11 @@
                 };
             },
             createHost: async function() {
-                document.getElementById('mesh-step-1').style.display = 'none'; document.getElementById('mesh-step-host').style.display = 'block'; document.getElementById('mesh-status').innerText = "GATHERING LOCAL ROUTES...";
+                document.getElementById('mesh-step-host').style.display = 'block'; document.getElementById('mesh-status').innerText = "GENERATING ENCRYPTION...";
+                
+                const emojis = ["🦄","🔥","🐺","⚡","🦅","🚴","🛸","💀"];
+                document.getElementById('mesh-squad-name').innerText = `SQUAD ${emojis[Math.floor(Math.random()*emojis.length)]}${emojis[Math.floor(Math.random()*emojis.length)]}`;
+
                 await this.initRTC(); this.dc = this.pc.createDataChannel('squad'); this.setupDataChannel();
                 const offer = await this.pc.createOffer(); await this.pc.setLocalDescription(offer);
                 this.pc.onicecandidate = (e) => { if (!e.candidate) { const b64 = btoa(JSON.stringify(this.pc.localDescription)); document.getElementById('mesh-host-token').value = b64; document.getElementById('mesh-status').innerText = "WAITING FOR FRIEND..."; } };
@@ -390,11 +440,19 @@
                 await this.initRTC(); this.pc.ondatachannel = (e) => { this.dc = e.channel; this.setupDataChannel(); };
                 const offer = JSON.parse(atob(offerB64)); await this.pc.setRemoteDescription(offer);
                 const answer = await this.pc.createAnswer(); await this.pc.setLocalDescription(answer);
-                this.pc.onicecandidate = (e) => { if (!e.candidate) { const b64 = btoa(JSON.stringify(this.pc.localDescription)); document.getElementById('mesh-client-reply-box').style.display = 'block'; document.getElementById('mesh-client-answer').value = b64; document.getElementById('mesh-status').innerText = "HAND TO HOST TO COMPLETE"; } };
+                this.pc.onicecandidate = (e) => { if (!e.candidate) { const b64 = btoa(JSON.stringify(this.pc.localDescription)); document.getElementById('mesh-client-reply-box').style.display = 'block'; document.getElementById('mesh-client-answer').value = b64; document.getElementById('mesh-status').innerText = "HAND BACK TO HOST TO COMPLETE"; } };
             },
             hostAccept: async function() {
                 const answerB64 = document.getElementById('mesh-host-answer').value; if (!answerB64) return;
                 const answer = JSON.parse(atob(answerB64)); await this.pc.setRemoteDescription(answer); document.getElementById('mesh-status').innerText = "LINKING MESH...";
+            },
+            shareToken: function(type) {
+                const token = type === 'host' ? document.getElementById('mesh-host-token').value : document.getElementById('mesh-client-answer').value;
+                if (navigator.share && token) {
+                    navigator.share({ title: 'Squad Token', text: token }).catch(e=>console.log("Share failed"));
+                } else {
+                    MathUtils.say("Sharing not supported on this device. Please copy manually.");
+                }
             },
             sendTelemetry: function() { if (this.connected && this.dc && this.dc.readyState === 'open' && STATE.lat) { this.dc.send(JSON.stringify({ type: 'telemetry', data: { lat: STATE.lat, lon: STATE.lon, altFt: STATE.altFt } })); } },
             sendMusicSync: function(url, isPlaying, startTime) { if (this.connected && this.dc && this.dc.readyState === 'open') { this.dc.send(JSON.stringify({ type: 'music', url, isPlaying, startTime })); } }
@@ -402,12 +460,13 @@
 
         window.Comms = {
             startTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.add('recording'); btn.innerText = "🔴 TX"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true; },
-            stopTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.remove('recording'); btn.innerText = "🎙️ PTT (HOLD)"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = false; }
+            stopTx: function(e) { if (e && e.preventDefault) e.preventDefault(); const btn = document.getElementById('ptt-btn'); btn.classList.remove('recording'); btn.innerText = "🎙️ PTT"; if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = false; }
         };
 
         window.Radio = {
             audioEl: document.getElementById('squad-music'),
             openModal: function() { document.getElementById('radio-modal').style.display = 'flex'; },
+            setStation: function(url) { document.getElementById('input-radio-url').value = url; },
             toggleListen: function() {
                 const btn = document.getElementById('btn-listen');
                 if (this.audioEl.paused) { btn.classList.add('active'); btn.innerText = "LISTENING..."; this.audioEl.src = document.getElementById('input-radio-url').value; this.audioEl.play().catch(e=>console.log("Needs interaction")); } 
@@ -425,7 +484,7 @@
 
         window.UX = {
             wrapper: document.getElementById('hud-wrapper'),
-            isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0,
+            isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0, lastTap: 0,
 
             initDrag: function() {
                 this.wrapper.addEventListener('mousedown', this.dragStart.bind(this), {passive: false});
@@ -437,6 +496,9 @@
             },
             dragStart: function(e) {
                 if (e.target.tagName.toLowerCase() === 'button' || e.target.classList.contains('clickable') || e.target.tagName.toLowerCase() === 'input' || e.target.tagName.toLowerCase() === 'textarea') return;
+                const now = Date.now();
+                if (now - this.lastTap < 300) { this.toggleFullscreen(); this.lastTap = 0; return; }
+                this.lastTap = now;
                 this.isDragging = true;
                 if (e.type === 'touchstart') { this.startX = e.touches[0].clientX - this.initialX; this.startY = e.touches[0].clientY - this.initialY; } 
                 else { this.startX = e.clientX - this.initialX; this.startY = e.clientY - this.initialY; }
@@ -478,15 +540,34 @@
 
                 svg.setAttribute('width', STATE.w); svg.setAttribute('height', STATE.h);
                 
-                // Pure Optical Symmetry Math for Text Arcs
-                const textOrbit = STATE.r - 15;
-                const rTop = textOrbit - 5, rBot = textOrbit + 5;
-                document.getElementById('top-curve').setAttribute('d', `M ${STATE.cx - rTop} ${STATE.cy} A ${rTop} ${rTop} 0 0 1 ${STATE.cx + rTop} ${STATE.cy}`);
-                document.getElementById('bottom-curve').setAttribute('d', `M ${STATE.cx - rBot} ${STATE.cy} A ${rBot} ${rBot} 0 0 0 ${STATE.cx + rBot} ${STATE.cy}`);
+                // Pure Optical Symmetry Math for Dual-Orbit SVG Arcs
+                const rOuter = STATE.r - 7;
+                const rInner = STATE.r - 21;
 
-                const craftToggle = document.getElementById('craft-toggle'); let angleCraft = (1 - 0.82) * Math.PI;
-                craftToggle.style.left = (STATE.cx + Math.cos(angleCraft) * rTop - 40) + 'px'; craftToggle.style.top = (STATE.cy - Math.sin(angleCraft) * rTop - 25) + 'px';
-                document.getElementById('wx-toggle').style.left = (STATE.cx - 60) + 'px'; document.getElementById('wx-toggle').style.top = (STATE.cy + rBot - 20) + 'px';
+                document.getElementById('outer-top-curve').setAttribute('d', `M ${STATE.cx - rOuter} ${STATE.cy} A ${rOuter} ${rOuter} 0 0 1 ${STATE.cx + rOuter} ${STATE.cy}`);
+                document.getElementById('outer-bot-curve').setAttribute('d', `M ${STATE.cx - rOuter} ${STATE.cy} A ${rOuter} ${rOuter} 0 0 0 ${STATE.cx + rOuter} ${STATE.cy}`);
+                document.getElementById('inner-top-curve').setAttribute('d', `M ${STATE.cx - rInner} ${STATE.cy} A ${rInner} ${rInner} 0 0 1 ${STATE.cx + rInner} ${STATE.cy}`);
+                document.getElementById('inner-bot-curve').setAttribute('d', `M ${STATE.cx - rInner} ${STATE.cy} A ${rInner} ${rInner} 0 0 0 ${STATE.cx + rInner} ${STATE.cy}`);
+
+                // Map invisible hit-zones to exact degree coordinates on the circle
+                const positionHitZone = (id, radius, anglePercent) => {
+                    const angle = (1 - anglePercent) * Math.PI; 
+                    const btn = document.getElementById(id);
+                    if (btn) {
+                        btn.style.left = (STATE.cx + Math.cos(angle) * radius) + 'px';
+                        btn.style.top = (STATE.cy - Math.sin(angle) * radius) + 'px';
+                    }
+                };
+
+                positionHitZone('hit-logs', rOuter, 0.22);
+                positionHitZone('hit-full', rOuter, 0.78);
+                positionHitZone('hit-comms', -rOuter, 0.22); // Negative radius flips Y for bottom arc
+                positionHitZone('hit-mesh', -rOuter, 0.78);
+                
+                positionHitZone('hit-ats', rInner, 0.24);
+                positionHitZone('hit-craft', rInner, 0.76);
+                positionHitZone('hit-gps', -rInner, 0.26);
+                positionHitZone('hit-wx', -rInner, 0.50);
 
                 if (!STATE.active) Graphics.renderHUD(); 
             }
@@ -547,9 +628,9 @@
             toggleCraft: function() {
                 STATE.craftMode = (STATE.craftMode + 1) % 3;
                 const toggleSvg = document.getElementById('svg-craft');
-                if (STATE.craftMode === 1) { toggleSvg.textContent = "[ 🛸 UFO ]"; toggleSvg.setAttribute('fill', 'var(--primary)'); MathUtils.say("Alien technology engaged"); } 
-                else if (STATE.craftMode === 2) { toggleSvg.textContent = "[ 🚴 BIKE ]"; toggleSvg.setAttribute('fill', 'var(--secondary)'); MathUtils.say("Cyber bike engaged"); } 
-                else { toggleSvg.textContent = "[ 🛩️ C182 ]"; toggleSvg.setAttribute('fill', 'var(--secondary)'); MathUtils.say("Standard avionics engaged"); }
+                if (STATE.craftMode === 1) { toggleSvg.textContent = "🛸"; MathUtils.say("Alien technology engaged."); } 
+                else if (STATE.craftMode === 2) { toggleSvg.textContent = "🚴"; MathUtils.say("Cyber bike engaged."); } 
+                else { toggleSvg.textContent = "🛩️"; MathUtils.say("Avionics engaged."); }
                 API.applyTheme(); if(!STATE.active) Graphics.renderHUD(); 
             },
             cycleTheme: function() {
@@ -620,24 +701,24 @@
                 ctx.shadowOffsetX = 8 * Math.cos(invRoll) - 15 * Math.sin(invRoll); ctx.shadowOffsetY = 8 * Math.sin(invRoll) + 15 * Math.cos(invRoll);
                 const shirtCol = getComputedStyle(document.body).getPropertyValue('--wind').trim(), bikeCol = isDark ? '#475569' : '#94a3b8';
                 
-                // Absolute Z-Index Back-to-Front Depth Mapping
-                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-1.5, -30, 3, 12, 1.5); else ctx.fillRect(-1.5, -30, 3, 12); ctx.fill();
-                ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, -25); ctx.stroke();
-                ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-14, -22); ctx.lineTo(14, -22); ctx.stroke();
+                // Absolute Front-to-Back Rendering (Rider facing away into grid)
+                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-1.5, -28, 3, 14, 1.5); else ctx.fillRect(-1.5, -28, 3, 14); ctx.fill();
+                ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, -22); ctx.stroke();
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 2.5; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(-13, -20); ctx.lineTo(13, -20); ctx.stroke();
                 
-                ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-10, -10); ctx.lineTo(-12, -22); ctx.stroke(); ctx.beginPath(); ctx.moveTo(10, -10); ctx.lineTo(12, -22); ctx.stroke(); 
+                ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5; ctx.beginPath(); ctx.moveTo(-9, -9); ctx.lineTo(-11, -20); ctx.stroke(); ctx.beginPath(); ctx.moveTo(9, -9); ctx.lineTo(11, -20); ctx.stroke(); 
                 ctx.shadowColor = 'transparent'; 
-                ctx.fillStyle = shirtCol; ctx.beginPath(); ctx.moveTo(-6, 4); ctx.lineTo(-10, -10); ctx.quadraticCurveTo(0, -14, 10, -10); ctx.lineTo(6, 4); ctx.fill();
+                ctx.fillStyle = shirtCol; ctx.beginPath(); ctx.moveTo(-5.5, 5); ctx.lineTo(-9, -9); ctx.quadraticCurveTo(0, -12, 9, -9); ctx.lineTo(5.5, 5); ctx.fill();
                 
-                let helmG = ctx.createRadialGradient(0, -14, 1, 0, -11, 6); helmG.addColorStop(0, '#cbd5e1'); helmG.addColorStop(1, '#475569'); ctx.fillStyle = helmG; ctx.beginPath(); ctx.ellipse(0, -14, 5, 6, 0, 0, Math.PI*2); ctx.fill();
+                let helmG = ctx.createRadialGradient(0, -13, 1, 0, -10, 6); helmG.addColorStop(0, '#cbd5e1'); helmG.addColorStop(1, '#475569'); ctx.fillStyle = helmG; ctx.beginPath(); ctx.ellipse(0, -12, 5.5, 6.5, 0, 0, Math.PI*2); ctx.fill();
                 
                 let cycle = STATE.active ? Date.now() / (300 - Math.min(STATE.spdMph * 2, 250)) : 0;
-                let lpY = 2 + Math.cos(cycle)*6, rpY = 2 + Math.cos(cycle + Math.PI)*6, lkX = -7, lkY = 6 + Math.cos(cycle - 0.5)*4, rkX = 7, rkY = 6 + Math.cos(cycle + Math.PI - 0.5)*4;
+                let lpY = 3 + Math.cos(cycle)*6, rpY = 3 + Math.cos(cycle + Math.PI)*6, lkX = -7, lkY = 6 + Math.cos(cycle - 0.5)*4, rkX = 7, rkY = 6 + Math.cos(cycle + Math.PI - 0.5)*4;
                 ctx.fillStyle = '#ddd'; ctx.fillRect(-6, lpY-2, 3, 4); ctx.fillRect(3, rpY-2, 3, 4);
                 ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round'; ctx.beginPath(); ctx.moveTo(-4, 4); ctx.lineTo(lkX, lkY); ctx.lineTo(-4.5, lpY); ctx.stroke(); ctx.beginPath(); ctx.moveTo(4, 4); ctx.lineTo(rkX, rkY); ctx.lineTo(4.5, rpY); ctx.stroke();
                 
-                ctx.fillStyle = '#0f172a'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-4, 2, 8, 5, 2.5); else ctx.fillRect(-4, 2, 8, 5); ctx.fill();
-                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-2.5, 6, 5, 20, 2); else ctx.fillRect(-2.5, 6, 5, 20); ctx.fill();
+                ctx.fillStyle = '#0f172a'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-4, 3, 8, 6, 2.5); else ctx.fillRect(-4, 3, 8, 6); ctx.fill();
+                ctx.fillStyle = '#111'; ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(-2.5, 7, 5, 20, 2); else ctx.fillRect(-2.5, 7, 5, 20); ctx.fill();
 
                 ctx.restore();
             },
@@ -645,7 +726,6 @@
                 const ctx = Graphics.ctx; ctx.clearRect(0, 0, STATE.w, STATE.h);
                 const isDark = document.body.classList.contains('night-mode') || STATE.craftMode === 1;
 
-                // --- 3D SYNTHETIC VISION ---
                 ctx.save(); ctx.beginPath(); 
                 if (STATE.isFullscreen) { ctx.rect(0, 0, STATE.w, STATE.h); } else { ctx.arc(STATE.cx, STATE.cy, STATE.r, 0, Math.PI * 2); }
                 ctx.clip();
@@ -745,6 +825,16 @@
                         ctx.beginPath(); ctx.moveTo(wX, wY); ctx.lineTo(tipX, tipY); ctx.strokeStyle = windColor; ctx.lineWidth = 2; ctx.stroke();
                         ctx.beginPath(); ctx.arc(tipX, tipY, 3, 0, Math.PI * 2); ctx.fillStyle = windColor; ctx.fill();
                     }
+                    
+                    // Squad Radar Blip
+                    if (STATE.squadData && (Date.now() - STATE.squadData.ts < 10000)) {
+                        const {dist, brg} = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
+                        if (dist <= CFG.RADAR_RANGE_MILES) {
+                            const relAngle = (brg - STATE.hdg - 90) * CFG.TO_RAD; 
+                            const pX = STATE.cx + Math.cos(relAngle) * ((dist / CFG.RADAR_RANGE_MILES) * STATE.r); const pY = STATE.cy + Math.sin(relAngle) * ((dist / CFG.RADAR_RANGE_MILES) * STATE.r);
+                            ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(pX, pY, 5, 0, Math.PI * 2); ctx.fill();
+                        }
+                    }
                 }
 
                 let craftBank = -STATE.leanAngle; 
@@ -778,6 +868,8 @@
                     btn.innerText = "END TRIP"; btn.classList.add("btn-danger"); btn.classList.add("dimmed");
                     requestAnimationFrame(Graphics.renderHUD); 
                     MathUtils.say("Flight Log Started");
+                    const sAudio = document.getElementById('squad-music'); if (sAudio.paused) { sAudio.play().then(()=>sAudio.pause()).catch(e=>{}); }
+                    
                     try { if ('wakeLock' in navigator) STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
                 } else {
                     STATE.active = false; btn.innerText = "START TRIP"; btn.classList.remove("btn-danger"); btn.classList.remove("dimmed");
@@ -842,18 +934,25 @@
             },
 
             init: function() {
-                UX.initDrag(); UX.handleResize(); window.addEventListener('resize', UX.handleResize);
-                window.addEventListener('devicemotion', Hardware.handleMotion); window.addEventListener('deviceorientation', Hardware.handleOrientation);
+                UX.initDrag();
+                UX.handleResize();
+                window.addEventListener('resize', UX.handleResize);
+                window.addEventListener('devicemotion', Hardware.handleMotion); 
+                window.addEventListener('deviceorientation', Hardware.handleOrientation);
+
                 document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
                 
-                const hr = new Date().getHours(); const isNight = (hr >= 19 || hr < 7);
-                STATE.baseTheme = isNight ? 'night-mode' : ''; STATE.craftMode = isNight ? 1 : 0; 
+                const hr = new Date().getHours();
+                const isNight = (hr >= 19 || hr < 7);
+                STATE.baseTheme = isNight ? 'night-mode' : '';
+                STATE.craftMode = isNight ? 1 : 0; 
                 
                 const toggleSvg = document.getElementById('svg-craft');
-                if (STATE.craftMode === 1) { toggleSvg.textContent = "[ 🛸 UFO ]"; toggleSvg.setAttribute('fill', 'var(--primary)'); } 
-                else { toggleSvg.textContent = "[ 🛩️ C182 ]"; toggleSvg.setAttribute('fill', 'var(--secondary)'); }
+                if (STATE.craftMode === 1) { toggleSvg.textContent = "🛸"; toggleSvg.setAttribute('fill', 'var(--primary)'); } 
+                else { toggleSvg.textContent = "🛩️"; toggleSvg.setAttribute('fill', 'var(--secondary)'); }
 
-                API.applyTheme(); Graphics.renderHUD(); 
+                API.applyTheme();
+                Graphics.renderHUD(); 
                 
                 if ("geolocation" in navigator) {
                     watchId = navigator.geolocation.watchPosition(Engine.processGPS, (e) => {
