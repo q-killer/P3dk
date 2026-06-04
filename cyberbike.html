@@ -76,10 +76,9 @@
             box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 0 30px rgba(0,0,0,0.6);
             overflow: hidden; transition: all 1s, transform 0.3s; backface-visibility: hidden;
         }
-        /* Dark is default — pod gets strong shadow; day-mode lightens it */
-        #hud-pod { border-color: rgba(148,163,184,0.4); box-shadow: 0 0 25px rgba(0,0,0,0.5), inset 0 0 30px rgba(0,0,0,0.8); }
+        /* Dark is default — day-mode lightens the pod */
         body.day-mode #hud-pod { border-color: rgba(148,163,184,0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.15), inset 0 0 20px rgba(255,255,255,0.4); }
-        body.ufo-mode #hud-pod { border-color: var(--secondary); box-shadow: 0 0 25px rgba(0,0,0,0.5), inset 0 0 30px rgba(0,0,0,0.8); }
+        body.ufo-mode #hud-pod { border-color: var(--secondary); }
 
         #vector-canvas { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 1; pointer-events: none; }
         .overlay { position: absolute; z-index: 2; pointer-events: none; }
@@ -117,7 +116,7 @@
         }
         #ptt-btn.recording { color: var(--bg); background: var(--danger); border-color: var(--danger); text-shadow: none; box-shadow: 0 0 15px var(--danger); }
         #trip-btn {
-            position: absolute; top: calc(50% + 25px); left: 50%; transform: translateX(-50%);
+            position: absolute; top: calc(50% + 52px); left: 50%; transform: translateX(-50%);
             background: var(--bg); color: var(--primary); border: 2px solid var(--primary);
             padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
             cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px;
@@ -344,6 +343,13 @@
             display: flex; gap: 6px; align-items: center; z-index: 15;
             pointer-events: auto;
         }
+        /* In fullscreen music-strip moves to fixed bottom-center, compact dot-only row */
+        body.fullscreen #music-strip {
+            position: fixed; bottom: 10px; left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.5); border-radius: 20px; padding: 5px 10px;
+            backdrop-filter: blur(4px);
+        }
         .music-dot {
             width: 8px; height: 8px; border-radius: 50%;
             background: var(--secondary); cursor: pointer; transition: 0.15s;
@@ -428,13 +434,15 @@
         <div class="overlay top-hdg" id="heading">000° N</div>
 
         <div class="overlay left-avionics">
+            <!-- ALT block: tappable — future: tap to set QNH or show details -->
             <div class="lbl" style="margin-top:0;">⛰️ ALT</div>
             <div class="val"><span id="altitude">0</span><span class="unit">FT</span></div>
-            <div class="sub-val" id="vsi">0 FPM</div>
+            <div class="sub-val" id="vsi">-- MPG</div>
 
-            <div class="lbl clickable" onclick="Avionics.openFuel()" style="text-decoration:underline dotted;text-underline-offset:2px;">⛽ FUEL</div>
-            <div class="val"><span id="fuel-rem">5.0</span><span class="unit">G</span></div>
-            <div class="sub-val" id="time-rem">TTE: 2:30</div>
+            <!-- FUEL block: tappable → open fuel calibration -->
+            <div class="lbl clickable" onclick="Avionics.openFuel()" style="margin-top:6px;cursor:pointer;">⛽ FUEL</div>
+            <div class="val clickable" onclick="Avionics.openFuel()" style="cursor:pointer;"><span id="fuel-rem">5.0</span><span class="unit">G</span></div>
+            <div class="sub-val clickable" onclick="Avionics.openFuel()" id="time-rem" style="cursor:pointer;">TTE: 2:30</div>
 
             <!-- Cyclist power metrics — shown when craft=bike -->
             <div id="power-block" style="display:none;">
@@ -454,8 +462,9 @@
             <div class="lbl">⏱️ TIME</div>
             <div class="val" id="trip-time">00:00</div>
 
-            <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="text-decoration:underline dotted;text-underline-offset:2px;margin-top:6px;">🎯 WPT</div>
-            <div class="val clickable nav-color" onclick="Avionics.openDest()" style="margin:0;"><span id="dest-id">NONE</span></div>
+            <!-- WPT: tappable → open waypoint picker -->
+            <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="margin-top:6px;cursor:pointer;">🎯 WPT</div>
+            <div class="val clickable nav-color" onclick="Avionics.openDest()" style="cursor:pointer;"><span id="dest-id">NONE</span></div>
             <div class="sub-val nav-color" id="dest-eta" style="line-height:1.0;">-- MI | ETA --:--</div>
         </div>
 
@@ -483,14 +492,19 @@
             </text>
         </svg>
 
-        <!-- Hit zones: outer orbit — LOGS and COMMS and MESH only; FULL moved to ctrl-bar -->
+        <!-- Hit zones: outer orbit -->
         <div class="hit-zone" id="hit-logs"  onclick="TripLogger.openModal()"  title="Logs"></div>
         <div class="hit-zone" id="hit-comms" onclick="Radio.openModal()"        title="Comms"></div>
         <div class="hit-zone" id="hit-mesh"  onclick="Mesh.openModal()"         title="Mesh"></div>
-        <!-- Hit zones: inner orbit — ATS, GPS status, WX theme; CRAFT moved to ctrl-bar -->
+        <!-- Hit zones: inner orbit -->
         <div class="hit-zone" id="hit-ats"   onclick="Avionics.openDest()"      title="Waypoint"></div>
         <div class="hit-zone" id="hit-gps"   title="GPS Status"></div>
         <div class="hit-zone" id="hit-wx"    onclick="Avionics.cycleTheme()"    title="Theme"></div>
+        <!-- Center craft tap zone: cycles plane→UFO→bike→plane -->
+        <div id="hit-craft-center" onclick="Avionics.toggleCraft()" title="Cycle craft"
+             style="position:absolute;width:70px;height:70px;border-radius:50%;
+                    top:50%;left:50%;transform:translate(-50%,-68%);
+                    background:transparent;cursor:pointer;z-index:20;pointer-events:auto;"></div>
 
         <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
         <button id="ptt-btn"
@@ -932,18 +946,8 @@ document.getElementById('gpx-drop').addEventListener('drop', (e) => {
 });
 
 /* ═══════════════════════════════════════════════════════ POWER / VO₂ ══ */
+// Physics model: P = P_aero + P_rolling + P_grade. Only valid in bike mode.
 const PowerCalc = {
-    /**
-     * Cycling power estimate (watts) using physics model:
-     *   P = P_aero + P_rolling + P_grade + P_accel
-     *
-     *   P_aero   = 0.5 * ρ * Cd * A * (v + v_wind_head)³
-     *   P_rolling = Crr * m * g * v
-     *   P_grade  = m * g * sin(θ) * v   (θ from altimeter delta)
-     *   ρ = 1.225 kg/m³, Cd=0.88, A=0.45 m², Crr=0.005, g=9.81
-     *
-     *   Only valid for bike mode (craftMode=2). Returns 0 otherwise.
-     */
     compute(spdMph, gradePct, hwMph) {
         if (STATE.craftMode !== 2 || spdMph < 0.5) return 0;
         const v = spdMph * 0.44704;                     // m/s
@@ -1506,50 +1510,90 @@ window.Radio = {
         });
     },
 
-    // Called when audio ends or errors — clear playing state
-    _onAudioEnd() {
-        this._refreshUI();
-    }
 };
 
-/* ═══════════════════════════════════════════════════════ UX / DRAG ══ */
+/* ═══════════════════════════════════════════════════════ UX / DRAG + PINCH ══ */
 window.UX = {
     wrapper: document.getElementById('hud-wrapper'),
-    isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0, lastTap: 0,
+    isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0,
+    // Pinch state
+    scale: 1, pinchStartDist: 0, pinchStartScale: 1,
+    MIN_SCALE: 0.5, MAX_SCALE: 2.0,
 
     initDrag() {
-        this.wrapper.addEventListener('mousedown', this.dragStart.bind(this), {passive: false});
-        document.addEventListener('mousemove', this.drag.bind(this), {passive: false});
-        document.addEventListener('mouseup', this.dragEnd.bind(this));
-        this.wrapper.addEventListener('touchstart', this.dragStart.bind(this), {passive: false});
-        document.addEventListener('touchmove', this.drag.bind(this), {passive: false});
-        document.addEventListener('touchend', this.dragEnd.bind(this));
+        this.wrapper.addEventListener('mousedown',  this.dragStart.bind(this), {passive: false});
+        document.addEventListener('mousemove',      this.drag.bind(this),      {passive: false});
+        document.addEventListener('mouseup',        this.dragEnd.bind(this));
+        this.wrapper.addEventListener('touchstart', this.touchStart.bind(this), {passive: false});
+        document.addEventListener('touchmove',      this.touchMove.bind(this),  {passive: false});
+        document.addEventListener('touchend',       this.touchEnd.bind(this));
     },
 
+    // ── Mouse drag ──
     dragStart(e) {
         const tag = e.target.tagName.toLowerCase();
         if (tag === 'button' || tag === 'input' || tag === 'textarea' || e.target.classList.contains('clickable')) return;
-        const now = Date.now();
-        if (now - this.lastTap < 300) { this.toggleFullscreen(); this.lastTap = 0; return; }
-        this.lastTap = now;
         this.isDragging = true;
-        const cx = e.type === 'touchstart' ? e.touches[0].clientX : e.clientX;
-        const cy = e.type === 'touchstart' ? e.touches[0].clientY : e.clientY;
-        this.startX = cx - this.initialX;
-        this.startY = cy - this.initialY;
+        this.startX = e.clientX - this.initialX;
+        this.startY = e.clientY - this.initialY;
     },
-
     drag(e) {
         if (!this.isDragging || STATE.isFullscreen) return;
         e.preventDefault();
-        const cx = e.type === 'touchmove' ? e.touches[0].clientX : e.clientX;
-        const cy = e.type === 'touchmove' ? e.touches[0].clientY : e.clientY;
-        this.initialX = cx - this.startX;
-        this.initialY = cy - this.startY;
-        this.wrapper.style.transform = `translate(${this.initialX}px, ${this.initialY}px)`;
+        this.initialX = e.clientX - this.startX;
+        this.initialY = e.clientY - this.startY;
+        this._applyTransform();
     },
-
     dragEnd() { this.isDragging = false; },
+
+    // ── Touch: single finger = drag, two fingers = pinch-zoom ──
+    touchStart(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            this.isDragging = false;
+            this.pinchStartDist = this._touchDist(e.touches);
+            this.pinchStartScale = this.scale;
+        } else if (e.touches.length === 1) {
+            const tag = e.target.tagName.toLowerCase();
+            if (tag === 'button' || tag === 'input' || tag === 'textarea' || e.target.classList.contains('clickable')) return;
+            this.isDragging = true;
+            this.startX = e.touches[0].clientX - this.initialX;
+            this.startY = e.touches[0].clientY - this.initialY;
+        }
+    },
+    touchMove(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dist = this._touchDist(e.touches);
+            const raw  = this.pinchStartScale * (dist / this.pinchStartDist);
+            this.scale = Math.max(this.MIN_SCALE, Math.min(this.MAX_SCALE, raw));
+            this._applyTransform();
+
+            // Auto-fullscreen when pod covers ≥95% of screen width
+            const podPx = 320 * this.scale;
+            const screenMin = Math.min(window.innerWidth, window.innerHeight);
+            if (!STATE.isFullscreen && podPx >= screenMin * 0.95) {
+                this.scale = 1; // reset scale — fullscreen takes over
+                this.toggleFullscreen();
+            }
+        } else if (e.touches.length === 1 && this.isDragging && !STATE.isFullscreen) {
+            e.preventDefault();
+            this.initialX = e.touches[0].clientX - this.startX;
+            this.initialY = e.touches[0].clientY - this.startY;
+            this._applyTransform();
+        }
+    },
+    touchEnd() { this.isDragging = false; },
+
+    _touchDist(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+    },
+    _applyTransform() {
+        if (STATE.isFullscreen) return;
+        this.wrapper.style.transform = `translate(${this.initialX}px, ${this.initialY}px) scale(${this.scale})`;
+    },
 
     toggleFullscreen() {
         STATE.isFullscreen = !STATE.isFullscreen;
@@ -1578,7 +1622,8 @@ window.UX = {
             STATE.w = 320; STATE.h = 320; STATE.cx = 160; STATE.cy = 160; STATE.r = 155;
             this.wrapper.classList.remove('fullscreen-mode');
             document.body.classList.remove('fullscreen');
-            this.wrapper.style.transform = `translate(${this.initialX}px, ${this.initialY}px)`;
+            this.scale = 1;
+            this._applyTransform();
             pod.style.cssText += ';width:320px;height:320px;border-radius:50%;border-width:2px;';
         }
 
@@ -2102,9 +2147,11 @@ const Graphics = {
         ctx.clip();
 
         // ── Roll/pitch canvas ──
+        // NOTE: negate leanAngle — when device tilts right (+gamma), horizon tilts LEFT
+        // This matches real attitude indicator behavior: world stays level, craft banks
         ctx.save();
         ctx.translate(STATE.cx, STATE.cy);
-        ctx.rotate(STATE.leanAngle * CFG.TO_RAD);
+        ctx.rotate(-STATE.leanAngle * CFG.TO_RAD);
         const pitchOffset = STATE.pitchAngle * 2;
 
         // ── Sky + Ground — suppressed in AR mode (camera is the background) ──
@@ -2275,7 +2322,7 @@ const Graphics = {
         // ── Attitude horizon line + slip ball ──
         ctx.save();
         ctx.translate(STATE.cx, STATE.cy);
-        ctx.rotate(STATE.leanAngle * CFG.TO_RAD);
+        ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated — matches SVS canvas rotation
         ctx.strokeStyle = STATE.clrSecondary; ctx.globalAlpha = 0.5; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-STATE.r, 0); ctx.lineTo(STATE.r, 0); ctx.stroke();
         const slipX = Math.max(-STATE.r/2, Math.min(STATE.r/2, (STATE.gX / CFG.MAX_G) * (STATE.r*0.8)));
@@ -2345,10 +2392,10 @@ const Graphics = {
             }
         }
 
-        // ── Craft sprite — suppressed in AR mode (rider IS the vehicle) ──
-        const craftShiftX = -(STATE.leanAngle/90)*15 - (STATE.gX/CFG.MAX_G)*15;
-        const craftShiftY = -(STATE.pitchAngle/90)*15 + (STATE.gY/CFG.MAX_G)*15;
-        const craftBank = -STATE.leanAngle;
+        // ── Craft sprite — centered; no lean shift (sprite = vehicle, not world) ──
+        const craftShiftX = -(STATE.gX / CFG.MAX_G) * 10;
+        const craftShiftY =  (STATE.gY / CFG.MAX_G) * 10 - (STATE.pitchAngle / 90) * 8;
+        const craftBank   = -STATE.leanAngle; // visual bank only
         if (!AR.active) {
             if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank);
             else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank, isDark);
@@ -2631,19 +2678,8 @@ window.Engine = {
 };
 
 /* ═══════════════════════════════════════════════════════ AR WINDSHIELD ══ */
-/**
- * AR Windshield Mode — camera as primary view, HUD as overlay.
- *
- * Design philosophy for sealed streamliners / velomobiles:
- *   • Camera IS the windshield — must always be visible and clear
- *   • SVS sky/ground fills become fully transparent (camera shows through)
- *   • Canvas draws only: horizon line, grid ghost, obstacle markers, speed tape
- *   • Craft sprite suppressed — rider IS the vehicle
- *   • Speed value enlarges to 72px — glanceable without focal shift
- *   • Night vision mode: CSS filter boosts brightness/contrast on camera stream
- *   • Speed warning threshold: configurable, flashes speed readout red
- *   • Handles fullscreen automatically on activation
- */
+// Camera as primary view. getUserMedia rear lens → full-screen video behind HUD canvas.
+// Craft sprite suppressed; SVS sky/ground transparent; speed tape + reticles on canvas.
 const AR = {
     active: false,
     nightVision: false,
@@ -2739,7 +2775,7 @@ const AR = {
         // ── Horizon line — double-stroke for visibility on any background ──
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(STATE.leanAngle * CFG.TO_RAD);
+        ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated: horizon tilts opposite to device lean
         // Outer stroke (dark halo for contrast)
         ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 5;
         ctx.beginPath(); ctx.moveTo(-w, pitchOffset); ctx.lineTo(w, pitchOffset); ctx.stroke();
@@ -2752,14 +2788,14 @@ const AR = {
         ctx.beginPath(); ctx.moveTo(0, pitchOffset-12); ctx.lineTo(0, pitchOffset+12); ctx.stroke();
         ctx.restore();
 
-        // ── Lean angle chevron — shows bank visually ──
+        // ── Lean angle chevron — shows bank direction, not inverted ──
         if (Math.abs(STATE.leanAngle) > 3) {
             ctx.save();
             ctx.translate(cx, cy + pitchOffset);
             const chevSize = 28;
             ctx.strokeStyle = Math.abs(STATE.leanAngle) > 20 ? '#ff4444' : '#ffcc00';
             ctx.lineWidth = 3; ctx.lineCap = 'round';
-            ctx.rotate(STATE.leanAngle * CFG.TO_RAD);
+            ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated: chevron tips into the bank
             ctx.beginPath();
             ctx.moveTo(-chevSize, -chevSize*0.5);
             ctx.lineTo(0, 0);
@@ -2861,22 +2897,8 @@ const AR = {
 };
 
 /* ═══════════════════════════════════════════════════════ RECORDER ══ */
-/**
- * Trip Montage Recorder — captures the HUD canvas (with live camera in AR mode)
- * plus an optional PiP from the front (user-facing) camera.
- *
- * Strategy:
- *   • Grab canvas stream at 10fps via captureStream() — this IS the timelapse rate
- *   • Optionally add front camera as a PiP drawn onto the canvas each frame
- *   • MediaRecorder encodes to WebM/VP8 in real time
- *   • On stop: Blob → Object URL → auto-download link
- *
- * The 10fps capture rate means a 1-hour ride produces a ~6-minute video at 10x
- * without any post-processing. Native timelapse, zero server.
- *
- * Both cameras: AR mode uses rear cam for background; recorder adds front cam as
- * a 120×90 PiP in the bottom-right corner drawn directly onto the HUD canvas.
- */
+// Canvas stream at 10fps (timelapse). Optional front-camera PiP drawn onto canvas.
+// Exports WebM on stop. Auto-stops on END TRIP.
 const Recorder = {
     recorder: null,
     chunks: [],
