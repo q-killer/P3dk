@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>CyberBike HUD v8</title>
+    <title>CyberBike HUD v12</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap');
 
@@ -722,24 +722,16 @@ const STATE = {
     gridScroll: 0, tcasAudioPlayed: false,
     isFullscreen: false, w: 320, h: 320, cx: 160, cy: 160, r: 155,
     squadData: null, wakeLock: null,
-    // GPS health
     gpsLost: false, drStartTs: 0, drLat: null, drLon: null,
-    // Breadcrumb trail
     crumbs: [],
-    // GPX route
     gpxWaypoints: [], gpxActive: false, gpxWptIdx: 0,
-    // Power tracking
     wattsHistory: [], totalJoules: 0, powerTs: 0,
-    // Theme color cache (updated on theme change, not per frame)
-    clrPrimary: '#1e293b', clrSecondary: '#64748b', clrNav: '#10b981',
-    clrWind: '#0ea5e9', clrSquad: '#00ffff', clrDanger: '#e32636',
-    // Hazard cone last spoken
+    clrPrimary: '#f8fafc', clrSecondary: '#94a3b8', clrNav: '#34d399',
+    clrWind: '#38bdf8', clrSquad: '#00ffff', clrDanger: '#ef4444',
+    clrSkyTop: 'rgba(14,165,233,0.25)', clrGndTop: 'rgba(15,118,110,0.7)', clrGndBot: 'rgba(2,6,23,0.95)',
     lastSpokenObstacle: null, lastSpokenTs: 0,
-    // Trip debrief accumulator
-    maxAltFt: 0, peakVsiFpm: 0, hazardCount: 0, tcasCount: 0,
-    wxConditionStr: 'Unknown',
-    // Moving average buffer for grade
-    altBuffer: [],
+    maxAltFt: 0, peakVsiFpm: 0, hazardCount: 0,
+    wxConditionStr: 'Unknown', altBuffer: [],
 };
 
 let watchId = null;
@@ -767,11 +759,9 @@ const MathUtils = {
         return ["N","NE","E","SE","S","SW","W","NW"][Math.round(angle/45)%8];
     },
     haverDist_m(lat1, lon1, lat2, lon2) {
-        // Returns meters
         return this.getDistAndBearing(lat1, lon1, lat2, lon2).dist * 1609.344;
     },
     say(text) {
-        // Interrupt current speech and speak immediately (for urgent/interactive callouts)
         if (!('speechSynthesis' in window)) return;
         window.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
@@ -797,6 +787,9 @@ const ThemeCache = {
         STATE.clrWind      = s.getPropertyValue('--wind').trim();
         STATE.clrSquad     = s.getPropertyValue('--squad').trim();
         STATE.clrDanger    = s.getPropertyValue('--danger').trim();
+        STATE.clrSkyTop    = s.getPropertyValue('--sky-top').trim();
+        STATE.clrGndTop    = s.getPropertyValue('--ground-top').trim();
+        STATE.clrGndBot    = s.getPropertyValue('--ground-bot').trim();
     }
 };
 
@@ -824,7 +817,6 @@ const TripLogger = {
     },
 
     buildReport() {
-        // Use captured elapsed (set at trip end) so duration is never 0
         const elapsed = STATE.tripElapsed || (STATE.startTs > 0 ? Date.now() - STATE.startTs : 0);
         const hrs = elapsed / 3600000;
         const h = Math.floor(elapsed/3600000);
@@ -836,7 +828,6 @@ const TripLogger = {
         const avgW = STATE.wattsHistory.length ? Math.round(STATE.wattsHistory.reduce((a,b)=>a+b,0)/STATE.wattsHistory.length) : 0;
         const totalKJ = (STATE.totalJoules / 1000).toFixed(1);
 
-        // Effective headwind component
         const hwComp = Math.round(STATE.windSpeed * Math.cos((STATE.hdg - STATE.windDir) * CFG.TO_RAD));
 
         return `
@@ -908,7 +899,6 @@ const GPX = {
         STATE.gpxActive = true;
         STATE.gpxWptIdx = 0;
 
-        // Auto-set first waypoint as active destination
         if (STATE.gpxWaypoints.length > 0) {
             const last = STATE.gpxWaypoints[STATE.gpxWaypoints.length - 1];
             STATE.activeDest = { lat: last.lat, lon: last.lon, name: 'GPX END' };
@@ -920,8 +910,6 @@ const GPX = {
         closeModal('log-modal');
     },
 
-    // Returns the upcoming route segment for perspective ribbon rendering
-    // Returns array of {x, y} screen coords projected onto SVS
     getRibbonPoints(pitchOffset, FOV, CAM_H) {
         if (!STATE.gpxActive || !STATE.gpxWaypoints.length || !STATE.lat) return [];
         const pts = [];
@@ -941,7 +929,6 @@ const GPX = {
         return pts;
     },
 
-    // Advance waypoint index when within 50m of current target
     tick() {
         if (!STATE.gpxActive || !STATE.lat || STATE.gpxWptIdx >= STATE.gpxWaypoints.length) return;
         const wp = STATE.gpxWaypoints[STATE.gpxWptIdx];
@@ -953,7 +940,6 @@ const GPX = {
     }
 };
 
-// Drag-over styling for GPX drop zone
 document.getElementById('gpx-drop').addEventListener('dragover', (e) => {
     e.preventDefault();
     document.getElementById('gpx-drop').classList.add('drag-over');
@@ -969,7 +955,6 @@ document.getElementById('gpx-drop').addEventListener('drop', (e) => {
 });
 
 /* ═══════════════════════════════════════════════════════ POWER / VO₂ ══ */
-// Physics model: P = P_aero + P_rolling + P_grade. Only valid in bike mode.
 const PowerCalc = {
     compute(spdMph, gradePct, hwMph) {
         if (STATE.craftMode !== 2 || spdMph < 0.5) return 0;
@@ -1016,7 +1001,6 @@ const PowerCalc = {
         const dt = (now - STATE.powerTs) / 1000; // seconds
         STATE.powerTs = now;
 
-        // Compute grade from altimeter buffer (last 10 samples)
         STATE.altBuffer.push(STATE.altFt);
         if (STATE.altBuffer.length > 10) STATE.altBuffer.shift();
         let gradePct = 0;
@@ -1035,14 +1019,12 @@ const PowerCalc = {
             if (STATE.wattsHistory.length > 300) STATE.wattsHistory.shift(); // 5-min rolling
         }
 
-        // Update power display
         const avgW = STATE.wattsHistory.length
             ? Math.round(STATE.wattsHistory.reduce((a,b)=>a+b,0) / STATE.wattsHistory.length) : 0;
         document.getElementById('watts-now').innerText = watts || '--';
         const vo2 = this.estimateVO2(avgW);
         document.getElementById('vo2-display').innerText = vo2 ? `VO₂≈${vo2} · HW:${hw>=0?'+':''}${hw}` : `HW:${hw>=0?'+':''}${hw}`;
 
-        // Show/hide power block
         document.getElementById('power-block').style.display = STATE.craftMode === 2 ? 'block' : 'none';
     }
 };
@@ -1057,7 +1039,6 @@ const Hardware = {
         const ag = e.accelerationIncludingGravity;
         if (!ag) return;
         const ax = ag.x || 0, ay = ag.y || 0, az = ag.z || 0;
-        // Low-pass filter
         const k = 0.2;
         STATE.gX = STATE.gX * (1-k) + (ax / 9.81) * k;
         STATE.gY = STATE.gY * (1-k) + (ay / 9.81) * k;
@@ -1066,10 +1047,8 @@ const Hardware = {
 
     handleOrientation(e) {
         if (e.beta === null) return;
-        // k=0.08: heavier smoothing reduces jitter while still tracking real tilt
         const k = 0.08;
         // gamma * 0.5: halves raw tilt for natural-feeling horizon response
-        // clamp to ±45° — beyond that is just noise or extreme motion
         const rawLean = Math.max(-45, Math.min(45, (e.gamma || 0) * 0.5));
         STATE.leanAngle  = STATE.leanAngle  * (1-k) + rawLean * k;
         STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 90) * k;
@@ -1078,7 +1057,6 @@ const Hardware = {
 
 /* ═══════════════════════════════════════════════════════ DEAD RECKONING ══ */
 const DeadReckoning = {
-    // Called when GPS position arrives to reset DR state
     reset() {
         STATE.gpsLost = false;
         STATE.drStartTs = 0;
@@ -1089,7 +1067,6 @@ const DeadReckoning = {
         el.setAttribute('fill', 'var(--primary)');
     },
 
-    // Called on GPS timeout/error
     engage() {
         if (STATE.gpsLost) return;
         STATE.gpsLost = true;
@@ -1101,7 +1078,6 @@ const DeadReckoning = {
         el.setAttribute('fill', '#f59e0b');
     },
 
-    // Tick DR position forward using last known heading + speed
     tick() {
         if (!STATE.gpsLost || !STATE.drLat || !STATE.drLon) return;
         const age = (Date.now() - STATE.drStartTs) / 1000;
@@ -1110,13 +1086,11 @@ const DeadReckoning = {
         const dtHrs = 1 / 3600; // 1-second tick
         const distMi = STATE.spdMph * dtHrs;
         const hdgRad = STATE.hdg * CFG.TO_RAD;
-        // Flat-earth approximation for short distances
         const dLat = (distMi / CFG.EARTH_RADIUS) * (180 / Math.PI);
         const dLon = dLat / Math.cos(STATE.drLat * CFG.TO_RAD);
         STATE.drLat += dLat * Math.cos(hdgRad);
         STATE.drLon += dLon * Math.sin(hdgRad);
 
-        // Use DR position as current position
         STATE.lat = STATE.drLat;
         STATE.lon = STATE.drLon;
     }
@@ -1124,47 +1098,35 @@ const DeadReckoning = {
 
 /* ═══════════════════════════════════════════════════════ HAZARD ENGINE ══ */
 const HazardEngine = {
-    /**
-     * Predictive hazard cone check.
-     * Scans obstacles within HAZARD_CONE_MILES directly ahead (±HAZARD_CONE_DEG).
-     * Speaks the closest threat once per 30 seconds — no spam.
-     */
     tick() {
         if (!STATE.active || !STATE.lat || !STATE.obstacles.length) return;
         const now = Date.now();
-
         let closest = null, closestDist = Infinity;
 
         for (const obs of STATE.obstacles) {
             const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
             if (dist > CFG.HAZARD_CONE_MILES) continue;
-
             let rel = brg - STATE.hdg;
             while (rel > 180) rel -= 360;
             while (rel < -180) rel += 360;
             if (Math.abs(rel) > CFG.HAZARD_CONE_DEG) continue;
-
-            STATE.hazardCount++;
-
             if (dist < closestDist) { closestDist = dist; closest = { obs, dist, rel }; }
-
-            // TCAS critical proximity
             if (dist < CFG.TCAS_CRITICAL_MILES && !STATE.tcasAudioPlayed) {
                 STATE.tcasAudioPlayed = true;
-                STATE.tcasCount++;
                 vibrate([50, 30, 50, 30, 50]);
                 this.showToast(`⚠ ${obs.type.toUpperCase()} ${(dist * 5280).toFixed(0)} FT`);
                 setTimeout(() => { STATE.tcasAudioPlayed = false; }, 15000);
             }
         }
 
-        // Speak closest hazard in cone — throttled to 30s, only if new obstacle
+        // Speak closest — throttled 30s, count unique encounters only
         if (closest && (now - STATE.lastSpokenTs > 30000 || STATE.lastSpokenObstacle !== closest.obs)) {
             const clock = Math.round(closest.rel / 30 + 12) % 12 || 12;
             const typeStr = closest.obs.type === 'aerodrome' ? 'airport' : closest.obs.type;
             MathUtils.say(`${typeStr}, ${closest.dist.toFixed(1)} miles, ${clock} o'clock`);
             STATE.lastSpokenTs = now;
             STATE.lastSpokenObstacle = closest.obs;
+            STATE.hazardCount++; // count unique encounters, not per-frame
         }
     },
 
@@ -1178,12 +1140,10 @@ const HazardEngine = {
 };
 
 /* ═══════════════════════════════════════════════════════ MESH ══ */
-/* ═══════════════════════════════════════════════════════ MESH ══ */
 window.Mesh = {
     pc: null, dc: null, localStream: null, connected: false,
     _roomCode: null, _pollTimer: null, _role: null,
 
-    // Public STUN servers for NAT traversal — no server needed for data channel
     _iceConfig: {
         iceServers: [
             { urls: 'stun:stun.l.google.com:19302' },
@@ -1193,7 +1153,6 @@ window.Mesh = {
 
     // Emoji pair → deterministic room key suffix
     _roomKey(a, b) {
-        // Encode emojis to a short safe string via codepoint hex
         const encode = e => [...e].map(c => c.codePointAt(0).toString(16)).join('');
         return `cbhud-${encode(a)}-${encode(b)}`;
     },
@@ -1217,11 +1176,6 @@ window.Mesh = {
         closeModal('mesh-modal');
     },
 
-    // Host: pick emojis → create offer → store in sessionStorage keyed by room code
-    // Partner: pick same emojis → find offer → create answer → store back
-    // Host: poll for answer → setRemoteDescription → done
-    // This requires no server — uses sessionStorage as a local rendezvous only on the same browser
-    // For cross-device: falls back to showing the token for verbal/text sharing
     async hostRoom() {
         const a = document.getElementById('emoji-a').value;
         const b = document.getElementById('emoji-b').value;
@@ -1241,18 +1195,14 @@ window.Mesh = {
         const offer = await this.pc.createOffer();
         await this.pc.setLocalDescription(offer);
 
-        // Wait for ICE gathering to complete
         await this._waitForICE();
         const offerB64 = btoa(JSON.stringify(this.pc.localDescription));
 
-        // Store offer in sessionStorage as rendezvous point
         sessionStorage.setItem(this._roomCode + '-offer', offerB64);
         sessionStorage.removeItem(this._roomCode + '-answer');
 
-        // Also show manual token for cross-device
         document.getElementById('mesh-host-token').value = offerB64;
 
-        // Poll for answer every second (same browser tab sharing, or user pastes manually)
         this._pollTimer = setInterval(() => {
             const ans = sessionStorage.getItem(this._roomCode + '-answer');
             if (ans) {
@@ -1275,7 +1225,6 @@ window.Mesh = {
 
         const offerB64 = sessionStorage.getItem(this._roomCode + '-offer');
         if (!offerB64) {
-            // No local offer found — show manual fallback
             document.getElementById('mesh-join-manual').style.display = 'block';
             document.getElementById('mesh-status').innerText = 'No local host found — use manual token below';
             document.getElementById('mesh-status').style.color = 'var(--wind)';
@@ -1295,7 +1244,6 @@ window.Mesh = {
         document.getElementById('mesh-client-answer').value = answerB64;
     },
 
-    // Manual fallback: host pastes partner's answer token
     async manualAccept() {
         const b64 = document.getElementById('mesh-host-answer').value.trim();
         if (!b64) return;
@@ -1324,7 +1272,6 @@ window.Mesh = {
         });
     },
 
-    // Manual client join (cross-device fallback)
     async clientJoin() {
         const offerB64 = document.getElementById('mesh-client-offer').value.trim();
         if (!offerB64) return;
@@ -1343,7 +1290,6 @@ window.Mesh = {
         document.getElementById('mesh-status').style.color = 'var(--wind)';
     },
 
-    // Wait for ICE gathering to finish (max 4s)
     _waitForICE() {
         return new Promise(resolve => {
             if (this.pc.iceGatheringState === 'complete') { resolve(); return; }
@@ -1485,7 +1431,6 @@ window.Radio = {
 
     openModal() { document.getElementById('radio-modal').style.display = 'flex'; this._refreshUI(); },
 
-    // Tap a station tile → immediately play it
     playStation(url, name) {
         this.currentStation = url;
         this.currentStationName = name;
@@ -1494,7 +1439,6 @@ window.Radio = {
         this.audioEl.currentTime = 0;
         this.audioEl.play().catch(()=>{});
         this._refreshUI();
-        // Sync broadcast if active
         if (this.isBroadcasting) {
             this.broadcastStartTime = Date.now();
             Mesh.sendMusicSync(url, true, this.broadcastStartTime);
@@ -1503,7 +1447,6 @@ window.Radio = {
 
     togglePlayPause() {
         if (!this.currentStation) {
-            // Default to first station if nothing loaded
             this.playStation('https://streams.di.fm/di_vocalchillout', 'VOCAL TRANCE');
             return;
         }
@@ -1519,7 +1462,6 @@ window.Radio = {
         this._refreshUI();
     },
 
-    // Broadcast toggle — stays on until you tap again
     toggleBroadcast() {
         this.isBroadcasting = !this.isBroadcasting;
         if (this.isBroadcasting) {
@@ -1548,7 +1490,6 @@ window.Radio = {
             else { bcBtn.style.background='transparent'; bcBtn.style.color='var(--squad)'; bcBtn.innerText='📡 BROADCAST TO SQUAD'; }
         }
 
-        // Sync HUD dots to active station
         const stationUrls = [
             'https://stream.nightride.fm/nightride.m4a',
             'https://stream.nightride.fm/chillsynth.m4a',
@@ -1560,7 +1501,6 @@ window.Radio = {
             if (dot) dot.classList.toggle('active', this.currentStation === url && !this.audioEl.paused);
         });
 
-        // Highlight active station button in modal
         document.querySelectorAll('.station-btn').forEach(btn => btn.classList.remove('playing'));
         document.querySelectorAll('.station-btn').forEach(btn => {
             if (this.currentStation && btn.getAttribute('onclick')?.includes(this.currentStation)) btn.classList.add('playing');
@@ -1573,7 +1513,6 @@ window.Radio = {
 window.UX = {
     wrapper: document.getElementById('hud-wrapper'),
     isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0,
-    // Pinch state
     scale: 1, pinchStartDist: 0, pinchStartScale: 1,
     MIN_SCALE: 0.5, MAX_SCALE: 2.0,
 
@@ -1625,7 +1564,6 @@ window.UX = {
             const raw  = this.pinchStartScale * (dist / this.pinchStartDist);
 
             if (STATE.isFullscreen) {
-                // In fullscreen: pinch-in exits back to pod mode
                 if (raw < 0.85) {
                     this.toggleFullscreen();
                 }
@@ -1635,7 +1573,6 @@ window.UX = {
             this.scale = Math.max(this.MIN_SCALE, Math.min(this.MAX_SCALE, raw));
             this._applyTransform();
 
-            // Auto-fullscreen when pod covers ≥95% of screen width
             const podPx = 320 * this.scale;
             const screenMin = Math.min(window.innerWidth, window.innerHeight);
             if (!STATE.isFullscreen && podPx >= screenMin * 0.95) {
@@ -1700,13 +1637,10 @@ window.UX = {
 
         svg.setAttribute('width', STATE.w); svg.setAttribute('height', STATE.h);
 
-        // Cap arc radii — in fullscreen the pod radius can be 400+px, causing text to tilt
-        // to extreme angles. Cap at 148px (pod normal) so bezel labels stay readable.
         const arcR = Math.min(STATE.r, 148);
         const rOuter = arcR - 7;
         const rInner = arcR - 21;
 
-        // Scale bezel font size proportionally to screen, capped at 13px
         const bezFontOuter = Math.min(13, Math.max(9, arcR * 0.068));
         const bezFontInner = Math.min(14, Math.max(10, arcR * 0.082));
         document.querySelector('#svg-bezel text:first-of-type').setAttribute('font-size', bezFontOuter);
@@ -1719,7 +1653,6 @@ window.UX = {
         document.getElementById('inner-bot-curve').setAttribute('d', `M ${cx-rInner} ${cy} A ${rInner} ${rInner} 0 0 0 ${cx+rInner} ${cy}`);
 
         // ── Corrected hit-zone positioning ──
-        // Top arc: angle measured from left along upper semicircle (offsetPercent: 0=left, 1=right)
         // Bottom arc: same math, but Y is flipped (sin negated)
         const posTop = (id, radius, offsetPct) => {
             const angle = Math.PI * (1 - offsetPct); // 0% = left end (π), 100% = right end (0)
@@ -1753,13 +1686,11 @@ window.UX = {
 /* ═══════════════════════════════════════════════════════ API ══ */
 const API = {
     applyTheme() {
-        // Dark is the DEFAULT — day-mode is the explicit opt-in
         const wantDay = STATE.themeOverride === 'day' ||
                         (STATE.themeOverride === 'auto' && STATE.baseTheme === 'day-mode');
         const cls = [];
         if (wantDay && STATE.craftMode !== 1) cls.push('day-mode');
         if (STATE.craftMode === 1) cls.push('ufo-mode');
-        // Preserve functional state classes that other modules manage
         if (STATE.isFullscreen) cls.push('fullscreen');
         if (document.body.classList.contains('ar-mode')) cls.push('ar-mode');
         if (document.body.classList.contains('ar-night')) cls.push('ar-night');
@@ -1769,7 +1700,6 @@ const API = {
     },
 
     async fetchEnvironment(lat, lon) {
-        // OSM obstacles
         try {
             const q = `[out:json][timeout:10];((node|way|relation)["aeroway"="aerodrome"](around:5000,${lat},${lon});(node|way|relation)["natural"="peak"](around:5000,${lat},${lon});(node|way|relation)["man_made"~"tower|mast|communications_tower"](around:5000,${lat},${lon}););out center;`;
             const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
@@ -1787,7 +1717,6 @@ const API = {
             STATE.airports = STATE.obstacles.filter(o => o.type === 'aerodrome');
         } catch(e) {}
 
-        // Weather — current + 1hr lookahead for severity score
         try {
             const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=weathercode,windspeed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&windspeed_unit=mph&forecast_days=1`;
             const res = await fetch(url);
@@ -1802,17 +1731,14 @@ const API = {
             const isNight = !STATE.wxIsDay;
             const temp = Math.round(cw.temperature);
 
-            // Build condition string for debrief
             STATE.wxConditionStr = `${icon} ${temp}°F ${STATE.windSpeed}mph wind`;
 
-            // Severity score 0–10
             let score = 0;
             if (cw.weathercode >= 95) score += 5;
             else if (cw.weathercode >= 51) score += 3;
             else if (cw.weathercode >= 45) score += 2;
             if (STATE.windSpeed > 20) score += 2;
             else if (STATE.windSpeed > 10) score += 1;
-            // 1hr lookahead
             const nextCode = d.hourly?.weathercode?.[1] ?? cw.weathercode;
             const nextSpd  = d.hourly?.windspeed_10m?.[1] ?? STATE.windSpeed;
             let lookaheadWarning = '';
@@ -1857,12 +1783,10 @@ const API = {
                 wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan> H:${high}° L:${low}°</tspan>`;
             }
 
-            // Auto theme: day-mode only for clear/cloudy daytime; dark otherwise
             let baseTheme = (STATE.wxIsDay && cw.weathercode < 45) ? 'day-mode' : '';
             STATE.baseTheme = baseTheme;
             API.applyTheme();
 
-            // Temp trend arrow
             let trendArrow = '▶', trendColor = 'var(--secondary)';
             if (STATE.lastTemp !== null) {
                 const t = Math.round(cw.temperature);
@@ -1912,7 +1836,6 @@ window.Avionics = {
         if (svgEl) svgEl.textContent = icons[STATE.craftMode];
         if (ctrlBtn) ctrlBtn.innerText = icons[STATE.craftMode];
         MathUtils.say(names[STATE.craftMode] + ' engaged');
-        // Power block visibility
         document.getElementById('power-block').style.display = STATE.craftMode === 2 ? 'block' : 'none';
         API.applyTheme();
         if (!STATE.active) Graphics.renderHUD();
@@ -1998,52 +1921,42 @@ const Graphics = {
         const highlightColor = isDark ? '#ff8888' : '#ffffff';
         const glassColor = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
 
-        // Shadow pass
         const invRoll = -roll * CFG.TO_RAD;
         ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
         ctx.shadowOffsetX = 8*Math.cos(invRoll) - 15*Math.sin(invRoll);
         ctx.shadowOffsetY = 8*Math.sin(invRoll) + 15*Math.cos(invRoll);
 
-        // Tail horizontal stabilizer shadow
         ctx.fillStyle = shadeColor;
         ctx.beginPath(); this._rr(ctx, -12, 12, 24, 4, 2); ctx.fill();
-        // Tail horizontal stabilizer top
         ctx.fillStyle = baseColor;
         ctx.beginPath(); this._rr(ctx, -12, 12, 24, 1.5, 0.75); ctx.fill();
 
-        // Main wing shadow
         ctx.fillStyle = shadeColor;
         ctx.beginPath(); this._rr(ctx, -35, -4, 70, 8, 4); ctx.fill();
-        // Main wing top
         ctx.fillStyle = baseColor;
         ctx.beginPath(); this._rr(ctx, -35, -4, 70, 2.5, 1.25); ctx.fill();
 
-        // Fuselage gradient
         let fg = ctx.createLinearGradient(-5, 0, 5, 0);
         fg.addColorStop(0, shadeColor); fg.addColorStop(0.3, highlightColor); fg.addColorStop(1, shadeColor);
         ctx.fillStyle = fg; ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
         ctx.beginPath();
         ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
         ctx.fill();
-        // Fuselage outline — ensures visibility on any background
         ctx.strokeStyle = shadeColor; ctx.lineWidth = 0.75;
         ctx.beginPath();
         ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
         ctx.stroke();
 
-        // Cockpit glass
         ctx.fillStyle = glassColor;
         ctx.beginPath();
         ctx.moveTo(0,-11); ctx.quadraticCurveTo(4,-8,3,-3); ctx.lineTo(-3,-3); ctx.quadraticCurveTo(-4,-8,0,-11);
         ctx.fill();
 
-        // Tail fin
         let tg = ctx.createLinearGradient(-1,0,1,0);
         tg.addColorStop(0, shadeColor); tg.addColorStop(1, highlightColor);
         ctx.fillStyle = tg;
         ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(1.5,16); ctx.lineTo(0,18); ctx.lineTo(-1.5,16); ctx.closePath(); ctx.fill();
 
-        // Propeller hub + blades
         ctx.save(); ctx.translate(0, -22);
         const pA = STATE.active ? Date.now() / (20 - Math.min(STATE.spdMph/10, 15)) : Math.PI/4;
         const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
@@ -2055,7 +1968,6 @@ const Graphics = {
         ctx.beginPath(); ctx.ellipse(0,0,2,1.5,0,0,Math.PI*2); ctx.fill();
         ctx.restore();
 
-        // Tail light
         ctx.beginPath(); ctx.arc(0,15,1.5,0,Math.PI*2);
         ctx.fillStyle = isDark ? '#ff0000' : '#ef4444';
         ctx.shadowBlur = 6; ctx.shadowColor = ctx.fillStyle; ctx.fill();
@@ -2082,13 +1994,11 @@ const Graphics = {
         ctx.shadowOffsetX = 8*Math.cos(invRoll)-15*Math.sin(invRoll);
         ctx.shadowOffsetY = 8*Math.sin(invRoll)+15*Math.cos(invRoll);
 
-        // Lower disc
         let lg = ctx.createRadialGradient(0,0,2,0,0,26);
         lg.addColorStop(0, hullMid); lg.addColorStop(1, hullBase);
         ctx.fillStyle = lg; ctx.beginPath(); ctx.ellipse(0,0,26,8,0,0,Math.PI*2); ctx.fill();
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
 
-        // Rotating lights (only on lower rim)
         const time = Date.now() / (150 - Math.min(STATE.spdMph, 120));
         for (let i=0; i<8; i++) {
             const a = time + i*Math.PI/4;
@@ -2101,17 +2011,14 @@ const Graphics = {
             }
         }
 
-        // Upper hull
         let ug = ctx.createLinearGradient(-10,-15,10,5);
         ug.addColorStop(0, hullLight); ug.addColorStop(0.5, hullMid); ug.addColorStop(1, hullDark);
         ctx.fillStyle = ug; ctx.beginPath(); ctx.ellipse(0,-2,16,6,0,0,Math.PI*2); ctx.fill();
 
-        // Dome — always visible regardless of theme
         let dg = ctx.createRadialGradient(0,-6,1,0,-4,10);
         dg.addColorStop(0, '#ffffff'); dg.addColorStop(0.3, '#00eeff'); dg.addColorStop(1, '#003344');
         ctx.fillStyle = dg; ctx.beginPath(); ctx.ellipse(0,-5,10,5,0,0,Math.PI*2); ctx.fill();
 
-        // Engine glow ports
         ctx.shadowColor = secColor; ctx.shadowBlur = 15;
         ctx.fillStyle = '#fff';
         [[0,7,8,2],[- 12,5,4,1],[12,5,4,1]].forEach(([ex,ey,rx,ry]) => {
@@ -2119,7 +2026,6 @@ const Graphics = {
         });
         ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
 
-        // Dome highlight
         ctx.beginPath(); ctx.ellipse(0,-7,4,1.5,0,0,Math.PI*2);
         ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1;
         ctx.restore();
@@ -2140,58 +2046,47 @@ const Graphics = {
         const shirtCol = STATE.clrWind;
         const bikeCol = isDark ? '#475569' : '#94a3b8';
 
-        // Seatpost
         ctx.fillStyle = isDark ? '#64748b' : '#111';
         ctx.beginPath(); this._rr(ctx, -1.5, -28, 3, 14, 1.5); ctx.fill();
 
-        // Frame top tube
         ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(0,-22); ctx.stroke();
 
-        // Handlebar
         ctx.strokeStyle = bikeCol; ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(-13,-20); ctx.lineTo(13,-20); ctx.stroke();
 
         ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
 
-        // Arms
         ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.moveTo(-9,-9); ctx.lineTo(-11,-20); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(9,-9); ctx.lineTo(11,-20); ctx.stroke();
 
-        // Jersey body
         ctx.fillStyle = shirtCol;
         ctx.beginPath();
         ctx.moveTo(-5.5,5); ctx.lineTo(-9,-9); ctx.quadraticCurveTo(0,-12,9,-9); ctx.lineTo(5.5,5);
         ctx.fill();
 
-        // Helmet
         let hg = ctx.createRadialGradient(0,-13,1,0,-10,6);
         hg.addColorStop(0, '#cbd5e1'); hg.addColorStop(1, '#475569');
         ctx.fillStyle = hg; ctx.beginPath(); ctx.ellipse(0,-12,5.5,6.5,0,0,Math.PI*2); ctx.fill();
 
-        // Pedaling legs
         const cycle = STATE.active ? Date.now() / (300 - Math.min(STATE.spdMph*2, 250)) : 0;
         const lpY = 3 + Math.cos(cycle)*6;
         const rpY = 3 + Math.cos(cycle+Math.PI)*6;
         const lkY = 6 + Math.cos(cycle-0.5)*4;
         const rkY = 6 + Math.cos(cycle+Math.PI-0.5)*4;
 
-        // Shoes
         ctx.fillStyle = '#ddd';
         ctx.fillRect(-6, lpY-2, 3, 4);
         ctx.fillRect(3, rpY-2, 3, 4);
 
-        // Leg strokes
         ctx.strokeStyle = isDark ? '#94a3b8' : '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
         ctx.beginPath(); ctx.moveTo(-4,4); ctx.lineTo(-7,lkY); ctx.lineTo(-4.5,lpY); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(4,4); ctx.lineTo(7,rkY); ctx.lineTo(4.5,rpY); ctx.stroke();
 
-        // Saddle
         ctx.fillStyle = isDark ? '#334155' : '#0f172a';
         ctx.beginPath(); this._rr(ctx, -4, 3, 8, 6, 2.5); ctx.fill();
 
-        // Seat tube
         ctx.fillStyle = isDark ? '#475569' : '#111';
         ctx.beginPath(); this._rr(ctx, -2.5, 7, 5, 20, 2); ctx.fill();
 
@@ -2208,8 +2103,6 @@ const Graphics = {
         ctx.clearRect(0, 0, STATE.w, STATE.h);
 
         // ── AR: draw camera frame onto canvas FIRST so recorder captures it ──
-        // The ar-video element is behind the canvas in DOM; recorder only sees the canvas.
-        // By blitting the video frame here, both AR view AND HUD data are in the recording.
         if (AR.active) {
             const vid = document.getElementById('ar-video');
             if (vid && vid.readyState >= 2) {
@@ -2232,7 +2125,6 @@ const Graphics = {
 
         // ── Roll/pitch canvas ──
         // NOTE: negate leanAngle — when device tilts right (+gamma), horizon tilts LEFT
-        // This matches real attitude indicator behavior: world stays level, craft banks
         ctx.save();
         ctx.translate(STATE.cx, STATE.cy);
         ctx.rotate(-STATE.leanAngle * CFG.TO_RAD);
@@ -2240,10 +2132,9 @@ const Graphics = {
 
         // ── Sky + Ground — suppressed in AR mode (camera is the background) ──
         if (!AR.active) {
-            // Colors driven by CSS variables — adapts to dark/day/ufo theme automatically
-            const skyTop  = getComputedStyle(document.body).getPropertyValue('--sky-top').trim()   || 'rgba(14,165,233,0.25)';
-            const gndTop  = getComputedStyle(document.body).getPropertyValue('--ground-top').trim() || 'rgba(15,118,110,0.7)';
-            const gndBot  = getComputedStyle(document.body).getPropertyValue('--ground-bot').trim() || 'rgba(2,6,23,0.95)';
+            const skyTop = STATE.clrSkyTop   || 'rgba(14,165,233,0.25)';
+            const gndTop = STATE.clrGndTop   || 'rgba(15,118,110,0.7)';
+            const gndBot = STATE.clrGndBot   || 'rgba(2,6,23,0.95)';
 
             let skyGrad = ctx.createLinearGradient(0,-STATE.h,0,pitchOffset);
             skyGrad.addColorStop(0, skyTop);
@@ -2373,7 +2264,6 @@ const Graphics = {
                             ctx.fillStyle = '#00ffff';
                             ctx.beginPath(); ctx.arc(sx, baseSy, pulse*scale, 0, Math.PI*2); ctx.fill();
 
-                            // Velocity vector — show where squad will be in 10s
                             if (STATE.squadData.hdg != null && STATE.squadData.spdMph != null) {
                                 const futDist = STATE.squadData.spdMph * (10/3600); // mi in 10s
                                 const futAngle = (STATE.squadData.hdg - STATE.hdg) * CFG.TO_RAD;
@@ -2411,7 +2301,6 @@ const Graphics = {
         ctx.setLineDash([4, 8]);
         ctx.beginPath(); ctx.moveTo(-STATE.r * 0.6, 0); ctx.lineTo(STATE.r * 0.6, 0); ctx.stroke();
         ctx.setLineDash([]);
-        // Slip ball — lateral G indicator
         const slipX = Math.max(-STATE.r/2, Math.min(STATE.r/2, (STATE.gX / CFG.MAX_G) * (STATE.r*0.8)));
         ctx.beginPath(); ctx.arc(slipX, 0, 4, 0, Math.PI*2);
         ctx.fillStyle = STATE.clrSecondary; ctx.globalAlpha = 0.8; ctx.fill();
@@ -2419,7 +2308,6 @@ const Graphics = {
 
         // ── Nav overlay (waypoint line + wind arrow + squad blip on radar) ──
         if (STATE.lat && STATE.active) {
-            // Destination bearing line
             if (STATE.activeDest) {
                 const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
                 const relAngle = (brg - STATE.hdg - 90) * CFG.TO_RAD;
@@ -2443,7 +2331,6 @@ const Graphics = {
         } // end if (STATE.lat && STATE.active) — nav overlay
 
         // ── Windsock — shows always when wind data available, not just during trip ──
-        // windDir is direction wind comes FROM; sock points downwind (windDir+180)
         if (STATE.windSpeed > 0 && STATE.lat) {
             const downwind = STATE.windDir + 180; // direction wind blows TO
             const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
@@ -2453,13 +2340,10 @@ const Graphics = {
             ctx.save();
             ctx.translate(sockX, sockY);
             ctx.rotate(wRel + Math.PI / 2);
-            // Pole — bright orange
             ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1.5;
             ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 6); ctx.stroke();
-            // Sock cone outline
             ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,6); ctx.lineTo(5,6); ctx.closePath(); ctx.stroke();
-            // Sock fill — orange, proportional to wind strength
             if (fill > 0) {
                 const fillH = 16 * fill;
                 ctx.fillStyle = `rgba(255,107,0,${0.35 + fill * 0.55})`;
@@ -2482,14 +2366,8 @@ const Graphics = {
                     const px = STATE.cx + Math.cos(rel)*(dist/CFG.RADAR_RANGE_MILES)*STATE.r;
                     const py = STATE.cy + Math.sin(rel)*(dist/CFG.RADAR_RANGE_MILES)*STATE.r;
                     ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(px,py,5,0,Math.PI*2); ctx.fill();
-                }
-            }
-
-            // Squad off-screen arrow
-            if (STATE.squadData && (Date.now()-STATE.squadData.ts < 10000)) {
-                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
-                if (dist > CFG.RADAR_RANGE_MILES) {
-                    let relA = (brg - STATE.hdg);
+                } else {
+                    let relA = brg - STATE.hdg;
                     while (relA > 180) relA -= 360; while (relA < -180) relA += 360;
                     const trigA = (relA - 90) * CFG.TO_RAD;
                     const edgeR = STATE.isFullscreen ? Math.min(STATE.w,STATE.h)/2 - 20 : STATE.r - 10;
@@ -2517,7 +2395,6 @@ const Graphics = {
         AR.drawOverlays(ctx, pitchOffset, FOV, CAM_H);
 
         // ── Trip clock, fuel, power tick ──
-        // Update speed display every frame (reflects GPS and DR state)
         document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
         if (STATE.active && STATE.startTs > 0) {
             const elapsed = Date.now() - STATE.startTs;
@@ -2535,13 +2412,9 @@ const Graphics = {
                 document.getElementById('time-rem').className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
             }
 
-            // Power calc tick
             PowerCalc.tick(STATE.spdMph);
-            // Hazard engine tick
             HazardEngine.tick();
-            // GPX advance
             GPX.tick();
-            // Dead reckoning tick (if GPS lost)
             if (STATE.gpsLost) DeadReckoning.tick();
         }
 
@@ -2554,29 +2427,23 @@ window.Engine = {
     async toggleTrip() {
         const btn = document.getElementById('trip-btn');
         if (!STATE.active) {
-            // Reset per-trip accumulators
             STATE.dist = 0; STATE.maxSpd = 0; STATE.maxAltFt = 0; STATE.peakVsiFpm = 0;
-            STATE.hazardCount = 0; STATE.tcasCount = 0; STATE.tcasAudioPlayed = false;
+            STATE.hazardCount = 0; STATE.tcasAudioPlayed = false;
             STATE.wattsHistory = []; STATE.totalJoules = 0; STATE.powerTs = 0;
-            STATE.crumbs = []; STATE.altBuffer = [];
+            STATE.crumbs = []; STATE._altBuf = []; STATE._spdBuf = []; STATE._vsiBuf = []; STATE.altBuffer = [];
 
             STATE.active = true; STATE.startTs = Date.now();
             btn.innerText = 'END TRIP';
             btn.style.borderColor = 'var(--danger)';
             btn.style.color = 'var(--danger)';
-
-            if (rafId) cancelAnimationFrame(rafId);
-            rafId = requestAnimationFrame(Graphics.renderHUD);
             MathUtils.sayQueue('Flight log started');
             vibrate([200]);
 
-            // Unlock audio context without interrupting playback
             const sa = document.getElementById('squad-music');
             if (sa.paused && !Radio.currentStation) {
                 sa.play().then(()=>sa.pause()).catch(()=>{});
             }
 
-            // Wake lock
             try { if ('wakeLock' in navigator) STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
         } else {
             STATE.active = false;
@@ -2586,13 +2453,10 @@ window.Engine = {
 
             TripLogger.saveTrip();
             vibrate([100, 100, 300]);
-            // Auto-stop recording if active
             if (Recorder.active) Recorder._stop();
 
-            // Capture elapsed BEFORE resetting DOM display
             STATE.tripElapsed = STATE.startTs > 0 ? Date.now() - STATE.startTs : 0;
 
-            // Clear nav
             STATE.activeDest = null;
             document.getElementById('dest-id').innerText = 'NONE';
             document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
@@ -2603,7 +2467,6 @@ window.Engine = {
 
             if (STATE.wakeLock) { STATE.wakeLock.release().catch(()=>{}); STATE.wakeLock = null; }
 
-            // Show debrief
             setTimeout(() => TripLogger.showReport(), 400);
         }
     },
@@ -2646,7 +2509,6 @@ window.Engine = {
         document.getElementById('heading').innerText = `${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`;
         document.getElementById('altitude').innerText = Math.round(STATE.altFt);
 
-        // Auto-start
         if (!STATE.active) {
             if (STATE.spdMph > CFG.AUTO_START_MPH) { STATE._moveCount = (STATE._moveCount||0)+1; if (STATE._moveCount >= 3) Engine.toggleTrip(); }
             else STATE._moveCount = 0;
@@ -2677,11 +2539,9 @@ window.Engine = {
 
                 const vsiEl = document.getElementById('vsi');
                 if (STATE._rapidCount >= 3) {
-                    // Rapid altitude change — show FPM (safety-relevant)
                     vsiEl.innerText = `${displayVsi > 0 ? '+' : ''}${Math.round(displayVsi)} FPM`;
                     vsiEl.className = displayVsi > 100 ? 'sub-val up-green' : displayVsi < -100 ? 'sub-val down-red' : 'sub-val';
                 } else {
-                    // Default: show MPG (most useful metric on flat terrain)
                     const tripHrs = (ts - STATE.startTs) / 3600000;
                     const fuelUsed = tripHrs * STATE.burnRate;
                     const mpg = (fuelUsed > 0.001 && STATE.dist > 0.05) ? Math.round(STATE.dist / fuelUsed) : '--';
@@ -2690,7 +2550,6 @@ window.Engine = {
                 }
             }
 
-            // Breadcrumb sampling
             if (STATE.lastLat != null) {
                 const crumbDist = MathUtils.haverDist_m(STATE.lastLat, STATE.lastLon, STATE.lat, STATE.lon);
                 if (crumbDist >= CFG.BREADCRUMB_DIST_M) {
@@ -2699,7 +2558,6 @@ window.Engine = {
                 }
             }
 
-            // ETA update
             if (STATE.activeDest) {
                 const { dist } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
                 let etaStr = '--:--';
@@ -2740,7 +2598,6 @@ window.Engine = {
         window.addEventListener('deviceorientation', Hardware.handleOrientation, true);
 
         // iOS 13+: DeviceOrientationEvent requires explicit permission grant.
-        // Request on first tap anywhere — silent if already granted or not needed.
         const requestIOSMotion = async () => {
             if (typeof DeviceOrientationEvent !== 'undefined' &&
                 typeof DeviceOrientationEvent.requestPermission === 'function') {
@@ -2757,7 +2614,6 @@ window.Engine = {
         document.addEventListener('touchstart', requestIOSMotion, { once: true });
         document.addEventListener('click',      requestIOSMotion, { once: true });
 
-        // Wake lock re-acquire on tab visible
         document.addEventListener('visibilitychange', async () => {
             if (document.visibilityState === 'visible' && STATE.active && 'wakeLock' in navigator) {
                 try { STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
@@ -2766,7 +2622,6 @@ window.Engine = {
 
         document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
 
-        // Dark is always default. craftMode: plane by day, UFO at night.
         const hr = new Date().getHours();
         const isNight = hr >= 19 || hr < 7;
         STATE.baseTheme = '';         // dark is default — no class needed
@@ -2780,7 +2635,6 @@ window.Engine = {
         if (ctrlTheme) ctrlTheme.innerText = themeIcons[['auto','day','night'].indexOf(STATE.themeOverride)];
         document.getElementById('power-block').style.display = 'none';
 
-        // Start with dark ATS dot (dim)
         const atsEl = document.getElementById('svg-ats');
         if (atsEl) { atsEl.textContent = '● ATS'; atsEl.setAttribute('fill', 'var(--secondary)'); atsEl.style.opacity = '0.4'; }
 
@@ -2788,12 +2642,10 @@ window.Engine = {
         ThemeCache.update();   // populate color cache before first paint
         Graphics.renderHUD();
 
-        // Wire audio state changes to Radio UI refresh
         document.getElementById('squad-music').addEventListener('ended', () => Radio._refreshUI());
         document.getElementById('squad-music').addEventListener('pause',  () => Radio._refreshUI());
         document.getElementById('squad-music').addEventListener('play',   () => Radio._refreshUI());
         Radio.initDots();
-        // Close station picker on outside tap
         document.addEventListener('click', (e) => {
             const p = document.getElementById('station-picker');
             const strip = document.getElementById('music-strip');
@@ -2810,14 +2662,11 @@ window.Engine = {
             );
         }
 
-        // DR tick on interval (1s) when GPS is lost
         setInterval(() => { if (STATE.gpsLost && STATE.active) DeadReckoning.tick(); }, 1000);
     }
 };
 
 /* ═══════════════════════════════════════════════════════ AR WINDSHIELD ══ */
-// Camera as primary view. getUserMedia rear lens → full-screen video behind HUD canvas.
-// Craft sprite suppressed; SVS sky/ground transparent; speed tape + reticles on canvas.
 const AR = {
     active: false,
     nightVision: false,
@@ -2830,7 +2679,6 @@ const AR = {
 
         if (!this.active) {
             try {
-                // Request highest resolution rear camera available
                 this.stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: { ideal: 'environment' },
@@ -2847,7 +2695,6 @@ const AR = {
                 btn.innerText = '✕ EXIT AR';
                 this.active = true;
 
-                // Force fullscreen — windshield needs the whole screen
                 if (!document.fullscreenElement) {
                     try { await document.documentElement.requestFullscreen(); } catch(e) {}
                 }
@@ -2879,7 +2726,6 @@ const AR = {
         btn.innerText = '📷 AR';
         this.active = false;
         this.nightVision = false;
-        // Return to normal pod mode
         STATE.isFullscreen = false;
         UX.handleResize();
         ThemeCache.update();
@@ -2914,13 +2760,10 @@ const AR = {
         ctx.save();
         ctx.translate(cx, cy);
         ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated: horizon tilts opposite to device lean
-        // Outer stroke (dark halo for contrast)
         ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 5;
         ctx.beginPath(); ctx.moveTo(-w, pitchOffset); ctx.lineTo(w, pitchOffset); ctx.stroke();
-        // Inner stroke (bright)
         ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-w, pitchOffset); ctx.lineTo(w, pitchOffset); ctx.stroke();
-        // Centre cross
         ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.8;
         ctx.beginPath(); ctx.moveTo(-12, pitchOffset); ctx.lineTo(12, pitchOffset); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(0, pitchOffset-12); ctx.lineTo(0, pitchOffset+12); ctx.stroke();
@@ -2943,17 +2786,14 @@ const AR = {
         }
 
         // ── Speed tape — left edge vertical readout ──
-        // Shows current speed with a ±20mph window, like an aircraft airspeed indicator
         const tapeX = 28, tapeH = Math.min(h * 0.55, 300);
         const tapeTop = cy - tapeH/2, tapeBot = cy + tapeH/2;
         const spdRange = 20; // mph visible above/below
         ctx.save();
-        // Tape background
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         ctx.fillRect(tapeX - 24, tapeTop, 48, tapeH);
         ctx.strokeStyle = 'rgba(0,255,204,0.3)'; ctx.lineWidth = 1;
         ctx.strokeRect(tapeX - 24, tapeTop, 48, tapeH);
-        // Tick marks every 5 mph
         for (let t = Math.floor((spdMph - spdRange) / 5) * 5; t <= spdMph + spdRange; t += 5) {
             const yFrac = 1 - (t - (spdMph - spdRange)) / (spdRange * 2);
             const ty = tapeTop + yFrac * tapeH;
@@ -2970,7 +2810,6 @@ const AR = {
                 ctx.textAlign = 'right'; ctx.fillText(t, tapeX - 18, ty + 4);
             }
         }
-        // Current speed pointer
         ctx.fillStyle = this.speedWarnMph > 0 && spdMph >= this.speedWarnMph ? '#ff3030' : '#00ffcc';
         ctx.beginPath();
         ctx.moveTo(tapeX + 4, cy - 8);
@@ -2980,7 +2819,6 @@ const AR = {
         ctx.restore();
 
         // ── Obstacle AR reticles — 2D targeting circles on camera view ──
-        // More prominent than SVS extrusions since this IS the view
         if (STATE.lat && STATE.active) {
             for (const obs of STATE.obstacles) {
                 const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
@@ -2990,7 +2828,6 @@ const AR = {
                 while (relAngle < -Math.PI) relAngle += 2*Math.PI;
                 if (Math.abs(relAngle) > Math.PI / 2) continue;
 
-                // Project to screen
                 const scale = FOV / (Math.cos(relAngle) * dist);
                 const sx = cx + Math.sin(relAngle) * dist * scale;
                 const sy = cy + pitchOffset + CAM_H * scale;
@@ -3005,19 +2842,16 @@ const AR = {
                 ctx.save();
                 ctx.strokeStyle = color; ctx.lineWidth = 2;
                 ctx.globalAlpha = Math.min(1, 0.4 + (1 - dist/2));
-                // Diamond reticle
                 ctx.beginPath();
                 ctx.moveTo(sx, sy - reticleR); ctx.lineTo(sx + reticleR, sy);
                 ctx.lineTo(sx, sy + reticleR); ctx.lineTo(sx - reticleR, sy);
                 ctx.closePath(); ctx.stroke();
-                // Corner ticks
                 [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([dx,dy]) => {
                     ctx.beginPath();
                     ctx.moveTo(sx + dx*reticleR*0.6, sy + dy*reticleR*0.6);
                     ctx.lineTo(sx + dx*(reticleR+6), sy + dy*reticleR*0.6);
                     ctx.stroke();
                 });
-                // Label + distance
                 ctx.fillStyle = color; ctx.globalAlpha = 1;
                 ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
                 ctx.fillText(`${label} ${dist.toFixed(1)}mi`, sx, sy - reticleR - 6);
@@ -3035,8 +2869,6 @@ const AR = {
 };
 
 /* ═══════════════════════════════════════════════════════ RECORDER ══ */
-// Canvas stream at 10fps (timelapse). Optional front-camera PiP drawn onto canvas.
-// Exports WebM on stop. Auto-stops on END TRIP.
 const Recorder = {
     recorder: null,
     chunks: [],
@@ -3059,7 +2891,6 @@ const Recorder = {
         const btn = document.getElementById('ctrl-rec-btn');
         const ind = document.getElementById('rec-indicator');
 
-        // Attempt front camera for PiP
         try {
             this.pipStream = await navigator.mediaDevices.getUserMedia({
                 video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
@@ -3069,14 +2900,11 @@ const Recorder = {
             await this.pipVid.play();
             document.body.classList.add('recording');
         } catch(e) {
-            // Front camera unavailable — record canvas only
             this.pipStream = null;
         }
 
-        // Canvas stream at timelapse FPS
         const stream = canvas.captureStream(this.TIMELAPSE_FPS);
 
-        // Check codec support — prefer VP9, fall back to VP8
         const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
             ? 'video/webm;codecs=vp9'
             : MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
@@ -3119,11 +2947,9 @@ const Recorder = {
             if (this.pipVid.readyState >= 2) {
                 ctx.save();
                 ctx.drawImage(this.pipVid, px, py, pw, ph);
-                // PiP border
                 ctx.strokeStyle = '#00ffcc';
                 ctx.lineWidth = 2 * dpr;
                 ctx.strokeRect(px, py, pw, ph);
-                // Label
                 ctx.fillStyle = 'rgba(0,0,0,0.6)';
                 ctx.fillRect(px, py, 60*dpr, 14*dpr);
                 ctx.fillStyle = '#00ffcc';
@@ -3164,7 +2990,6 @@ const Recorder = {
         MathUtils.say('Video saved. Ready to upload.');
     }
 };
-// Populate all four emoji selects from a single array — DRY
 (function initEmojiSelects() {
     const EMOJIS = ['🔥','🦄','🐺','⚡','🦅','🚴','🛸','💀','🌊','🎯','🏔️','🌙','⭐','🦊','🐉','🎸'];
     ['emoji-a','emoji-b','join-emoji-a','join-emoji-b'].forEach((id, i) => {
@@ -3173,7 +2998,6 @@ const Recorder = {
         EMOJIS.forEach((e, j) => {
             const opt = document.createElement('option');
             opt.textContent = e;
-            // Stagger default selection so A≠B by default
             if (j === (i % 2 === 0 ? 0 : 1)) opt.selected = true;
             sel.appendChild(opt);
         });
