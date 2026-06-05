@@ -61,7 +61,6 @@
             transition: color 1s, background 1s, font-family 0.3s;
         }
 
-        /* ── HUD POD ── */
         #hud-wrapper { position: absolute; transform-origin: center center; transition: transform 0.2s; cursor: grab; }
         #hud-wrapper:active { cursor: grabbing; }
         #hud-wrapper.fullscreen-mode {
@@ -103,10 +102,8 @@
 
         #svg-bezel { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 10; pointer-events: none; }
 
-        /* ── HIT ZONES ── */
         .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; }
 
-        /* ── BUTTONS ── */
         #ptt-btn {
             position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
             background: transparent; border: 1px solid var(--secondary); color: var(--secondary);
@@ -129,7 +126,6 @@
         .up-green { color: var(--nav); }
         .down-red { color: var(--danger); }
 
-        /* ── EXTERNAL CONTROL BAR (outside pod, clearly separated) ── */
         #ctrl-bar {
             position: absolute; bottom: -52px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 10px; align-items: center; z-index: 25;
@@ -146,7 +142,6 @@
         .ctrl-btn.ctrl-craft { border-color: var(--nav); color: var(--nav); font-size: 18px; padding: 6px 12px; }
         .ctrl-btn.ctrl-theme { font-size: 16px; padding: 6px 12px; }
 
-        /* ── MODALS ── */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
         .modal-content { background: var(--modal-bg); border: 2px solid var(--primary); border-radius: 15px; padding: 20px; width: 85%; max-height: 85%; overflow-y: auto; text-align: left; box-shadow: 0 10px 40px rgba(0,0,0,0.4); pointer-events: auto; }
         .modal-content h3 { text-align: center; margin-top: 0; letter-spacing: 2px; color: var(--secondary); font-weight: 900; }
@@ -165,7 +160,6 @@
         .modal-btn-nav { border-color: var(--nav) !important; color: var(--nav) !important; }
         .modal-btn-wind { border-color: var(--wind) !important; color: var(--wind) !important; }
 
-        /* ── EMOJI PICKER & MESH BUTTONS (replaces repeated inline styles) ── */
         .emoji-pick {
             font-size: 28px; background: var(--modal-bg); border: 2px solid; border-radius: 10px;
             padding: 6px; color: var(--primary); font-family: inherit; cursor: pointer;
@@ -290,7 +284,6 @@
         body.ar-mode .speed-value.ar-warn { color: #ff3030 !important; animation: arSpeedWarn 0.4s infinite; }
         @keyframes arSpeedWarn { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-        /* ── FULLSCREEN LAYOUT — instruments spread to screen edges ── */
         body.fullscreen .left-avionics {
             left: max(28px, 3vw) !important;
         }
@@ -337,18 +330,15 @@
             bottom: max(80px, 10vh) !important;
         }
 
-        /* ── MINI MUSIC STRIP — inline on HUD, no modal needed ── */
         #music-strip {
-            position: absolute; bottom: 42px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 6px; align-items: center; z-index: 15;
-            pointer-events: auto;
+            position: absolute; bottom: 68px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; align-items: center; z-index: 15;
+            pointer-events: auto; background: rgba(0,0,0,0.35); border-radius: 16px; padding: 5px 8px;
         }
-        /* In fullscreen music-strip moves to fixed bottom-center, compact dot-only row */
         body.fullscreen #music-strip {
-            position: fixed; bottom: 10px; left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0,0,0,0.5); border-radius: 20px; padding: 5px 10px;
-            backdrop-filter: blur(4px);
+            position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.55); border-radius: 20px; padding: 6px 12px;
+            backdrop-filter: blur(4px); z-index: 30;
         }
         .music-dot {
             width: 8px; height: 8px; border-radius: 50%;
@@ -363,7 +353,22 @@
         }
         #music-playpause.playing { border-color: var(--squad); color: var(--squad); }
 
-        /* ── RECORD INDICATOR ── */
+        #station-picker {
+            position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%);
+            background: var(--modal-bg); border: 1.5px solid var(--secondary);
+            border-radius: 14px; padding: 10px; z-index: 50; display: none;
+            pointer-events: auto; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        #station-picker button {
+            display: block; width: 100%; background: transparent; border: none;
+            color: var(--primary); font-family: var(--font-main); font-size: 11px;
+            font-weight: 900; padding: 8px 12px; text-align: left; cursor: pointer;
+            border-radius: 6px; transition: 0.15s;
+        }
+        #station-picker button:hover, #station-picker button.active-station {
+            background: var(--squad); color: #000;
+        }
+        body.fullscreen #station-picker { position: fixed; bottom: 60px; }
         #rec-indicator {
             position: fixed; top: 12px; right: 12px;
             background: rgba(0,0,0,0.6); border: 1.5px solid var(--danger);
@@ -374,7 +379,6 @@
         #rec-indicator.active { display: block; animation: recPulse 1s infinite; }
         @keyframes recPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-        /* ── PIP CAMERA (record mode front cam) ── */
         #pip-video {
             position: fixed; bottom: 20px; right: 20px;
             width: 120px; height: 90px; border-radius: 8px;
@@ -391,24 +395,20 @@
         }
         .station-btn:active, .station-btn.playing { background: var(--squad); border-color: var(--squad); color: #000; }
 
-        /* ── GPX DROP ZONE ── */
         #gpx-drop { border: 2px dashed var(--secondary); border-radius: 10px; padding: 20px; text-align: center; font-size: 12px; color: var(--secondary); cursor: pointer; transition: 0.2s; margin-bottom: 15px; }
         #gpx-drop.drag-over { border-color: var(--nav); color: var(--nav); background: rgba(16,185,129,0.05); }
         #gpx-drop input[type=file] { display: none; }
 
-        /* ── TRIP REPORT ── */
         .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
         .report-cell { background: rgba(128,128,128,0.08); border-radius: 6px; padding: 8px; }
         .report-cell .r-lbl { font-size: 9px; color: var(--secondary); letter-spacing: 1px; }
         .report-cell .r-val { font-size: 15px; font-weight: 900; color: var(--primary); margin-top: 2px; }
 
-        /* ── ANIMATIONS ── */
         .alert-flash { animation: flashWarning 0.5s infinite; font-weight: 900; }
         @keyframes flashWarning { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
         .scan-anim { text-align: center; color: var(--squad); font-weight: 900; font-size: 14px; animation: pulse 1s infinite; margin: 20px 0; }
         @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
 
-        /* ── HAZARD TOAST ── */
         #hazard-toast {
             position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
             background: rgba(227,38,54,0.9); color: #fff; padding: 8px 18px;
@@ -511,13 +511,26 @@
             onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
             ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
 
-        <!-- Mini music strip — tap dots to change station, tap ▶ to play/pause -->
+        <!-- Mini music strip — tap to cycle station, long-press for picker, ▶ to play/pause -->
         <div id="music-strip">
-            <button class="music-dot" id="mdot-0" onclick="Radio.playStation('https://stream.nightride.fm/nightride.m4a','NIGHTRIDE FM')"   title="Nightride FM"></button>
-            <button class="music-dot" id="mdot-1" onclick="Radio.playStation('https://stream.nightride.fm/chillsynth.m4a','CHILLSYNTH')"     title="Chillsynth"></button>
-            <button class="music-dot" id="mdot-2" onclick="Radio.playStation('https://listen.moe/stream','LOFI JPOP')"                       title="Lofi Jpop"></button>
-            <button class="music-dot" id="mdot-3" onclick="Radio.playStation('https://radio.plaza.one/mp3','VAPORWAVE')"                     title="Vaporwave"></button>
+            <button class="music-dot" id="mdot-0" title="Nightride FM"></button>
+            <button class="music-dot" id="mdot-1" title="Chillsynth"></button>
+            <button class="music-dot" id="mdot-2" title="Lofi Jpop"></button>
+            <button class="music-dot" id="mdot-3" title="Vaporwave"></button>
             <button id="music-playpause" onclick="Radio.togglePlayPause()">▶</button>
+        </div>
+
+        <!-- Station picker — shown on long-press of any music dot -->
+        <div id="station-picker">
+            <button onclick="Radio.playStation('https://stream.nightride.fm/nightride.m4a','NIGHTRIDE FM');Radio.closePicker()">🌃 NIGHTRIDE FM</button>
+            <button onclick="Radio.playStation('https://stream.nightride.fm/chillsynth.m4a','CHILLSYNTH');Radio.closePicker()">🌊 CHILLSYNTH</button>
+            <button onclick="Radio.playStation('https://listen.moe/stream','LOFI JPOP');Radio.closePicker()">🌸 LOFI JPOP</button>
+            <button onclick="Radio.playStation('https://radio.plaza.one/mp3','VAPORWAVE');Radio.closePicker()">🌐 VAPORWAVE</button>
+            <button onclick="Radio.playStation('https://streams.radiomast.io/ref:b5ef4a7b-37ac-4781-a815-b8954e79f862','SYNTHWAVE')">🎹 SYNTHWAVE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SPACE STATION')">🚀 SPACE STATION</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD')">🥗 GROOVE SALAD</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/dronezone-128-mp3','DRONE ZONE')">🌀 DRONE ZONE</button>
+            <button style="color:var(--danger);border-top:1px solid rgba(128,128,128,0.2);margin-top:4px;padding-top:10px;" onclick="Radio.closePicker()">✕ CLOSE</button>
         </div>
     </div>
 
@@ -756,10 +769,18 @@ const MathUtils = {
         return this.getDistAndBearing(lat1, lon1, lat2, lon2).dist * 1609.344;
     },
     say(text) {
+        // Interrupt current speech and speak immediately (for urgent/interactive callouts)
         if (!('speechSynthesis' in window)) return;
         window.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(text);
-        u.rate = 1.1;
+        u.rate = 1.05;
+        window.speechSynthesis.speak(u);
+    },
+    sayQueue(text) {
+        // Queue after current speech without interrupting (for auto-announcements)
+        if (!('speechSynthesis' in window)) return;
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.05;
         window.speechSynthesis.speak(u);
     }
 };
@@ -1043,9 +1064,9 @@ const Hardware = {
 
     handleOrientation(e) {
         if (e.beta === null) return;
-        // beta = fore/aft tilt (-180..180), gamma = left/right (-90..90)
         const k = 0.15;
-        STATE.leanAngle  = STATE.leanAngle  * (1-k) + (e.gamma || 0) * k;
+        // Divide gamma by 2 — raw gamma produces double the intended tilt
+        STATE.leanAngle  = STATE.leanAngle  * (1-k) + ((e.gamma || 0) * 0.5) * k;
         STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 90) * k;
     }
 };
@@ -1421,10 +1442,41 @@ window.Comms = {
 /* ═══════════════════════════════════════════════════════ RADIO ══ */
 window.Radio = {
     audioEl: document.getElementById('squad-music'),
-    currentStation: null,
-    currentStationName: null,
-    isBroadcasting: false,
-    broadcastStartTime: 0,
+    currentStation: null, currentStationName: null,
+    isBroadcasting: false, broadcastStartTime: 0,
+    _longPressTimer: null,
+    PRESETS: [
+        ['https://stream.nightride.fm/nightride.m4a','NIGHTRIDE FM'],
+        ['https://stream.nightride.fm/chillsynth.m4a','CHILLSYNTH'],
+        ['https://listen.moe/stream','LOFI JPOP'],
+        ['https://radio.plaza.one/mp3','VAPORWAVE'],
+    ],
+
+    initDots() {
+        this.PRESETS.forEach(([url, name], i) => {
+            const btn = document.getElementById('mdot-' + i);
+            if (!btn) return;
+            btn.addEventListener('click', () => this.playStation(url, name));
+            btn.addEventListener('touchstart', (e) => {
+                this._longPressTimer = setTimeout(() => { this.openPicker(); }, 600);
+            }, {passive: true});
+            btn.addEventListener('touchend', () => clearTimeout(this._longPressTimer));
+            btn.addEventListener('touchmove', () => clearTimeout(this._longPressTimer));
+            btn.addEventListener('mousedown', () => { this._longPressTimer = setTimeout(() => this.openPicker(), 600); });
+            btn.addEventListener('mouseup', () => clearTimeout(this._longPressTimer));
+        });
+    },
+
+    openPicker() {
+        vibrate([30]);
+        const p = document.getElementById('station-picker');
+        if (p) p.style.display = p.style.display === 'block' ? 'none' : 'block';
+        if (p) p.querySelectorAll('button').forEach(b => {
+            b.classList.toggle('active-station', this.currentStation && b.textContent.includes(this.currentStationName || ''));
+        });
+    },
+
+    closePicker() { const p = document.getElementById('station-picker'); if (p) p.style.display='none'; },
 
     openModal() { document.getElementById('radio-modal').style.display = 'flex'; this._refreshUI(); },
 
@@ -1566,6 +1618,15 @@ window.UX = {
             e.preventDefault();
             const dist = this._touchDist(e.touches);
             const raw  = this.pinchStartScale * (dist / this.pinchStartDist);
+
+            if (STATE.isFullscreen) {
+                // In fullscreen: pinch-in exits back to pod mode
+                if (raw < 0.85) {
+                    this.toggleFullscreen();
+                }
+                return;
+            }
+
             this.scale = Math.max(this.MIN_SCALE, Math.min(this.MAX_SCALE, raw));
             this._applyTransform();
 
@@ -1573,7 +1634,7 @@ window.UX = {
             const podPx = 320 * this.scale;
             const screenMin = Math.min(window.innerWidth, window.innerHeight);
             if (!STATE.isFullscreen && podPx >= screenMin * 0.95) {
-                this.scale = 1; // reset scale — fullscreen takes over
+                this.scale = 1;
                 this.toggleFullscreen();
             }
         } else if (e.touches.length === 1 && this.isDragging && !STATE.isFullscreen) {
@@ -1755,13 +1816,13 @@ const API = {
             else if (nextCode > cw.weathercode && nextCode >= 51) { score += 2; lookaheadWarning = 'Rain expected within the hour.'; }
             else if (nextSpd > STATE.windSpeed + 10 && nextSpd > 20) lookaheadWarning = 'Winds increasing within the hour.';
 
-            // ── Audible weather briefing ──
-            // Always speak on first fetch (STATE.apiTime was 0); repeat on location change
+            // ── Audible weather briefing — queued, not interrupting ──
             const conditionText = this._wxSpeechText(cw.weathercode, STATE.wxIsDay);
-            const windText = STATE.windSpeed > 5 ? `, winds ${Math.round(STATE.windSpeed)} miles per hour` : '';
+            // Say "wind speed X" not "winds X" — TTS mispronounces "winds" as the verb
+            const windText = STATE.windSpeed > 5 ? `, wind speed ${Math.round(STATE.windSpeed)} miles per hour` : '';
             const lookaheadText = lookaheadWarning ? ` ${lookaheadWarning}` : '';
             const rideScore = score <= 2 ? 'Excellent riding conditions.' : score <= 4 ? 'Good riding conditions.' : score <= 6 ? 'Fair conditions, ride with care.' : 'Poor conditions, ride cautiously.';
-            MathUtils.say(`${conditionText}, ${temp} degrees${windText}. ${rideScore}${lookaheadText}`);
+            MathUtils.sayQueue(`${conditionText}, ${temp} degrees${windText}. ${rideScore}${lookaheadText}`);
 
             const wxSvg = document.getElementById('svg-wx');
             if (score >= 6) {
@@ -1903,7 +1964,6 @@ window.Avionics = {
 const Graphics = {
     ctx: document.getElementById('vector-canvas').getContext('2d'),
 
-    /* ── Cessna ── */
     drawCessna(x, y, roll, isDark) {
         const ctx = this.ctx;
         ctx.save();
@@ -1964,12 +2024,6 @@ const Graphics = {
 
         // Propeller hub + blades
         ctx.save(); ctx.translate(0, -22);
-        if (STATE.active) {
-            let bg = ctx.createRadialGradient(0,0,0,0,0,16);
-            bg.addColorStop(0, isDark ? 'rgba(255,50,50,0.4)' : 'rgba(0,0,0,0.25)');
-            bg.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.fillStyle = bg; ctx.beginPath(); ctx.ellipse(0,0,16,2,0,0,Math.PI*2); ctx.fill();
-        }
         const pA = STATE.active ? Date.now() / (20 - Math.min(STATE.spdMph/10, 15)) : Math.PI/4;
         const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
         const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
@@ -1987,7 +2041,6 @@ const Graphics = {
         ctx.restore();
     },
 
-    /* ── UFO ── */
     drawUFO(x, y, roll) {
         const ctx = this.ctx;
         ctx.save();
@@ -2051,7 +2104,6 @@ const Graphics = {
         ctx.restore();
     },
 
-    /* ── Cyclist ── */
     drawBike(x, y, roll, isDark) {
         const ctx = this.ctx;
         ctx.save();
@@ -2130,10 +2182,21 @@ const Graphics = {
         if (ctx.roundRect) { ctx.roundRect(x,y,w,h,r); } else { ctx.rect(x,y,w,h); }
     },
 
-    /* ── Main render loop ── */
     renderHUD() {
         const ctx = Graphics.ctx;
         ctx.clearRect(0, 0, STATE.w, STATE.h);
+
+        // ── AR: draw camera frame onto canvas FIRST so recorder captures it ──
+        // The ar-video element is behind the canvas in DOM; recorder only sees the canvas.
+        // By blitting the video frame here, both AR view AND HUD data are in the recording.
+        if (AR.active) {
+            const vid = document.getElementById('ar-video');
+            if (vid && vid.readyState >= 2) {
+                ctx.save();
+                ctx.drawImage(vid, 0, 0, STATE.w, STATE.h);
+                ctx.restore();
+            }
+        }
 
         const isDark = !document.body.classList.contains('day-mode') || STATE.craftMode === 1;
         const isUFO  = STATE.craftMode === 1;
@@ -2354,14 +2417,36 @@ const Graphics = {
                 ctx.restore();
             }
 
-            // Wind arrow on bezel
+            // ── Windsock on bezel edge ──
             if (STATE.windSpeed > 0) {
                 const wRel = (STATE.windDir - STATE.hdg - 90) * CFG.TO_RAD;
-                const wX = STATE.cx + Math.cos(wRel)*STATE.r, wY = STATE.cy + Math.sin(wRel)*STATE.r;
-                const tX = STATE.cx + Math.cos(wRel)*(STATE.r-20), tY = STATE.cy + Math.sin(wRel)*(STATE.r-20);
-                ctx.beginPath(); ctx.moveTo(wX,wY); ctx.lineTo(tX,tY);
-                ctx.strokeStyle = STATE.clrWind; ctx.lineWidth = 2; ctx.stroke();
-                ctx.beginPath(); ctx.arc(tX,tY,3,0,Math.PI*2); ctx.fillStyle = STATE.clrWind; ctx.fill();
+                const sockX = STATE.cx + Math.cos(wRel) * (STATE.r - 14);
+                const sockY = STATE.cy + Math.sin(wRel) * (STATE.r - 14);
+                // Fill level: 0=calm, 1=strong (>25mph)
+                const fill = Math.min(1, STATE.windSpeed / 25);
+                ctx.save();
+                ctx.translate(sockX, sockY);
+                ctx.rotate(wRel + Math.PI / 2); // orient away from center
+                // Pole
+                ctx.strokeStyle = STATE.clrWind; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 6); ctx.stroke();
+                // Sock outline (cone shape)
+                ctx.strokeStyle = STATE.clrWind; ctx.lineWidth = 1;
+                ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,6); ctx.lineTo(5,6); ctx.closePath(); ctx.stroke();
+                // Sock fill — represents wind strength
+                if (fill > 0) {
+                    const fillH = 16 * fill;
+                    ctx.fillStyle = `rgba(56,189,248,${0.3 + fill * 0.5})`;
+                    ctx.beginPath();
+                    ctx.moveTo(0,-10);
+                    ctx.lineTo(-5 * fill, -10 + fillH);
+                    ctx.lineTo( 5 * fill, -10 + fillH);
+                    ctx.closePath(); ctx.fill();
+                }
+                // Wind speed label
+                ctx.fillStyle = STATE.clrWind; ctx.font = 'bold 8px monospace';
+                ctx.textAlign = 'center'; ctx.fillText(`${Math.round(STATE.windSpeed)}`, 0, 16);
+                ctx.restore();
             }
 
             // Squad radar blip
@@ -2392,14 +2477,15 @@ const Graphics = {
             }
         }
 
-        // ── Craft sprite — centered; no lean shift (sprite = vehicle, not world) ──
-        const craftShiftX = -(STATE.gX / CFG.MAX_G) * 10;
-        const craftShiftY =  (STATE.gY / CFG.MAX_G) * 10 - (STATE.pitchAngle / 90) * 8;
-        const craftBank   = -STATE.leanAngle; // visual bank only
+        // ── Craft sprite — always centered, always nose-forward ──
+        // craftBank = 0: world tilts around fixed sprite (correct attitude indicator behavior)
+        // Small G-force shift gives subtle physical feel without double-rotation
+        const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
+        const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
         if (!AR.active) {
-            if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank);
-            else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank, isDark);
-            else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, craftBank, isDark);
+            if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0);
+            else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
+            else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
         }
 
         // ── AR windshield overlays (horizon, speed tape, reticles) ──
@@ -2434,7 +2520,6 @@ const Graphics = {
             if (STATE.gpsLost) DeadReckoning.tick();
         }
 
-        // Always keep the loop alive — sprites must render even before trip starts
         rafId = requestAnimationFrame(Graphics.renderHUD);
     }
 };
@@ -2457,7 +2542,7 @@ window.Engine = {
 
             if (rafId) cancelAnimationFrame(rafId);
             rafId = requestAnimationFrame(Graphics.renderHUD);
-            MathUtils.say('Flight log started');
+            MathUtils.sayQueue('Flight log started');
             vibrate([200]);
 
             // Unlock audio context without interrupting playback
@@ -2663,6 +2748,15 @@ window.Engine = {
         document.getElementById('squad-music').addEventListener('ended', () => Radio._refreshUI());
         document.getElementById('squad-music').addEventListener('pause',  () => Radio._refreshUI());
         document.getElementById('squad-music').addEventListener('play',   () => Radio._refreshUI());
+        Radio.initDots();
+        // Close station picker on outside tap
+        document.addEventListener('click', (e) => {
+            const p = document.getElementById('station-picker');
+            const strip = document.getElementById('music-strip');
+            if (p && p.style.display === 'block' && !p.contains(e.target) && !strip.contains(e.target)) {
+                p.style.display = 'none';
+            }
+        });
 
         if ('geolocation' in navigator) {
             watchId = navigator.geolocation.watchPosition(
@@ -2964,7 +3058,6 @@ const Recorder = {
         vibrate([200, 100, 200]);
         MathUtils.say('Recording started');
 
-        // Draw PiP onto canvas each frame if front cam available
         if (this.pipStream) this._drawPip();
     },
 
@@ -2977,7 +3070,6 @@ const Recorder = {
         const px = canvas.width - pw - 10 * dpr;
         const py = canvas.height - ph - 10 * dpr;
 
-        // Draw PiP frame (drawn on top of HUD canvas each rAF)
         const drawFrame = () => {
             if (!this.active) return;
             if (this.pipVid.readyState >= 2) {
