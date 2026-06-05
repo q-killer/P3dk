@@ -336,7 +336,7 @@
             pointer-events: auto; background: rgba(0,0,0,0.35); border-radius: 16px; padding: 5px 8px;
         }
         body.fullscreen #music-strip {
-            position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%);
+            position: fixed; top: 12px; bottom: auto; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.55); border-radius: 20px; padding: 6px 12px;
             backdrop-filter: blur(4px); z-index: 30;
         }
@@ -368,7 +368,7 @@
         #station-picker button:hover, #station-picker button.active-station {
             background: var(--squad); color: #000;
         }
-        body.fullscreen #station-picker { position: fixed; bottom: 60px; }
+        body.fullscreen #station-picker { position: fixed; top: 55px; bottom: auto; }
         #rec-indicator {
             position: fixed; top: 12px; right: 12px;
             background: rgba(0,0,0,0.6); border: 1.5px solid var(--danger);
@@ -520,16 +520,17 @@
             <button id="music-playpause" onclick="Radio.togglePlayPause()">▶</button>
         </div>
 
-        <!-- Station picker — shown on long-press of any music dot -->
         <div id="station-picker">
-            <button onclick="Radio.playStation('https://stream.nightride.fm/nightride.m4a','NIGHTRIDE FM');Radio.closePicker()">🌃 NIGHTRIDE FM</button>
-            <button onclick="Radio.playStation('https://stream.nightride.fm/chillsynth.m4a','CHILLSYNTH');Radio.closePicker()">🌊 CHILLSYNTH</button>
-            <button onclick="Radio.playStation('https://listen.moe/stream','LOFI JPOP');Radio.closePicker()">🌸 LOFI JPOP</button>
-            <button onclick="Radio.playStation('https://radio.plaza.one/mp3','VAPORWAVE');Radio.closePicker()">🌐 VAPORWAVE</button>
-            <button onclick="Radio.playStation('https://streams.radiomast.io/ref:b5ef4a7b-37ac-4781-a815-b8954e79f862','SYNTHWAVE')">🎹 SYNTHWAVE</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SPACE STATION')">🚀 SPACE STATION</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD')">🥗 GROOVE SALAD</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/dronezone-128-mp3','DRONE ZONE')">🌀 DRONE ZONE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_vocalchillout','VOCAL TRANCE');Radio.closePicker()">🎤 VOCAL TRANCE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE STATION');Radio.closePicker()">🚀 SOMA SPACE STN</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_drumnbass','DRUM & BASS');Radio.closePicker()">🥁 DRUM &amp; BASS</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_goatrance','GOA TRANCE');Radio.closePicker()">🌀 GOA TRANCE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/deepspaceone-128-mp3','DEEP SPACE ONE');Radio.closePicker()">🌌 DEEP SPACE ONE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_soulfulhouse','SOULFUL HOUSE');Radio.closePicker()">🏠 SOULFUL HOUSE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_progressive','PROGRESSIVE');Radio.closePicker()">⚡ PROGRESSIVE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD');Radio.closePicker()">🥗 GROOVE SALAD</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_psytrance','PSY TRANCE');Radio.closePicker()">🌈 PSY TRANCE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_liquiddnb','LIQUID DnB');Radio.closePicker()">💧 LIQUID DnB</button>
             <button style="color:var(--danger);border-top:1px solid rgba(128,128,128,0.2);margin-top:4px;padding-top:10px;" onclick="Radio.closePicker()">✕ CLOSE</button>
         </div>
     </div>
@@ -577,10 +578,10 @@
 
         <!-- Station grid — tap = play immediately -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-            <button class="station-btn" onclick="Radio.playStation('https://stream.nightride.fm/nightride.m4a','NIGHTRIDE FM')">🌃 NIGHTRIDE FM</button>
-            <button class="station-btn" onclick="Radio.playStation('https://stream.nightride.fm/chillsynth.m4a','CHILLSYNTH')">🌊 CHILLSYNTH</button>
-            <button class="station-btn" onclick="Radio.playStation('https://listen.moe/stream','LOFI JPOP')">🌸 LOFI JPOP</button>
-            <button class="station-btn" onclick="Radio.playStation('https://radio.plaza.one/mp3','VAPORWAVE')">🌐 VAPORWAVE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_vocalchillout','VOCAL TRANCE')">🎤 VOCAL TRANCE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE STATION')">🚀 SOMA SPACE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_drumnbass','DRUM & BASS')">🥁 DRUM &amp; BASS</button>
+            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_goatrance','GOA TRANCE')">🌀 GOA TRANCE</button>
         </div>
 
         <!-- Now playing bar -->
@@ -716,6 +717,7 @@ const STATE = {
     dist: 0, startTs: 0, tripElapsed: 0, fuelCap: 5.0, burnRate: 2.0, riderWeightLbs: 165,
     airports: [], obstacles: [], activeDest: null,
     windSpeed: 0, windDir: 0, wxCode: 0, wxIsDay: true,
+    _wxSpoken: false, _pendingWxSpeech: null,
     gX: 0, gY: 0, gZ: 0, leanAngle: 0, pitchAngle: 0,
     gridScroll: 0, tcasAudioPlayed: false,
     isFullscreen: false, w: 320, h: 320, cx: 160, cy: 160, r: 155,
@@ -1064,9 +1066,12 @@ const Hardware = {
 
     handleOrientation(e) {
         if (e.beta === null) return;
-        const k = 0.15;
-        // Divide gamma by 2 — raw gamma produces double the intended tilt
-        STATE.leanAngle  = STATE.leanAngle  * (1-k) + ((e.gamma || 0) * 0.5) * k;
+        // k=0.08: heavier smoothing reduces jitter while still tracking real tilt
+        const k = 0.08;
+        // gamma * 0.5: halves raw tilt for natural-feeling horizon response
+        // clamp to ±45° — beyond that is just noise or extreme motion
+        const rawLean = Math.max(-45, Math.min(45, (e.gamma || 0) * 0.5));
+        STATE.leanAngle  = STATE.leanAngle  * (1-k) + rawLean * k;
         STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 90) * k;
     }
 };
@@ -1446,10 +1451,10 @@ window.Radio = {
     isBroadcasting: false, broadcastStartTime: 0,
     _longPressTimer: null,
     PRESETS: [
-        ['https://stream.nightride.fm/nightride.m4a','NIGHTRIDE FM'],
-        ['https://stream.nightride.fm/chillsynth.m4a','CHILLSYNTH'],
-        ['https://listen.moe/stream','LOFI JPOP'],
-        ['https://radio.plaza.one/mp3','VAPORWAVE'],
+        ['https://streams.di.fm/di_vocalchillout','VOCAL TRANCE'],
+        ['https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE'],
+        ['https://streams.di.fm/di_drumnbass','DRUM & BASS'],
+        ['https://streams.di.fm/di_goatrance','GOA TRANCE'],
     ],
 
     initDots() {
@@ -1499,7 +1504,7 @@ window.Radio = {
     togglePlayPause() {
         if (!this.currentStation) {
             // Default to first station if nothing loaded
-            this.playStation('https://stream.nightride.fm/nightride.m4a', 'NIGHTRIDE FM');
+            this.playStation('https://streams.di.fm/di_vocalchillout', 'VOCAL TRANCE');
             return;
         }
         if (this.audioEl.paused) {
@@ -1816,13 +1821,29 @@ const API = {
             else if (nextCode > cw.weathercode && nextCode >= 51) { score += 2; lookaheadWarning = 'Rain expected within the hour.'; }
             else if (nextSpd > STATE.windSpeed + 10 && nextSpd > 20) lookaheadWarning = 'Winds increasing within the hour.';
 
-            // ── Audible weather briefing — queued, not interrupting ──
+            // ── Audible weather briefing — deferred until user gesture (browser TTS policy) ──
             const conditionText = this._wxSpeechText(cw.weathercode, STATE.wxIsDay);
-            // Say "wind speed X" not "winds X" — TTS mispronounces "winds" as the verb
             const windText = STATE.windSpeed > 5 ? `, wind speed ${Math.round(STATE.windSpeed)} miles per hour` : '';
             const lookaheadText = lookaheadWarning ? ` ${lookaheadWarning}` : '';
             const rideScore = score <= 2 ? 'Excellent riding conditions.' : score <= 4 ? 'Good riding conditions.' : score <= 6 ? 'Fair conditions, ride with care.' : 'Poor conditions, ride cautiously.';
-            MathUtils.sayQueue(`${conditionText}, ${temp} degrees${windText}. ${rideScore}${lookaheadText}`);
+            const wxSpeech = `${conditionText}, ${temp} degrees${windText}. ${rideScore}${lookaheadText}`;
+            // Store for deferred playback — speak on next user interaction if not yet spoken
+            if (!STATE._wxSpoken) {
+                STATE._pendingWxSpeech = wxSpeech;
+                const speakOnce = () => {
+                    if (STATE._pendingWxSpeech) {
+                        MathUtils.sayQueue(STATE._pendingWxSpeech);
+                        STATE._pendingWxSpeech = null;
+                        STATE._wxSpoken = true;
+                    }
+                    document.removeEventListener('touchstart', speakOnce);
+                    document.removeEventListener('click', speakOnce);
+                };
+                document.addEventListener('touchstart', speakOnce, { once: true });
+                document.addEventListener('click',      speakOnce, { once: true });
+            } else {
+                MathUtils.sayQueue(wxSpeech);
+            }
 
             const wxSvg = document.getElementById('svg-wx');
             if (score >= 6) {
@@ -2382,15 +2403,18 @@ const Graphics = {
         });
         ctx.globalAlpha = 1;
 
-        // ── Attitude horizon line + slip ball ──
+        // ── Fixed horizon reference line + slip ball (no rotation — SVS provides tilt) ──
+        // The sky/ground already shows attitude. This is just a fixed center crosshair.
         ctx.save();
         ctx.translate(STATE.cx, STATE.cy);
-        ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated — matches SVS canvas rotation
-        ctx.strokeStyle = STATE.clrSecondary; ctx.globalAlpha = 0.5; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-STATE.r, 0); ctx.lineTo(STATE.r, 0); ctx.stroke();
+        ctx.strokeStyle = STATE.clrSecondary; ctx.globalAlpha = 0.35; ctx.lineWidth = 1;
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath(); ctx.moveTo(-STATE.r * 0.6, 0); ctx.lineTo(STATE.r * 0.6, 0); ctx.stroke();
+        ctx.setLineDash([]);
+        // Slip ball — lateral G indicator
         const slipX = Math.max(-STATE.r/2, Math.min(STATE.r/2, (STATE.gX / CFG.MAX_G) * (STATE.r*0.8)));
-        ctx.beginPath(); ctx.arc(slipX, 15, 4, 0, Math.PI*2);
-        ctx.fillStyle = STATE.clrSecondary; ctx.globalAlpha = 1; ctx.fill();
+        ctx.beginPath(); ctx.arc(slipX, 0, 4, 0, Math.PI*2);
+        ctx.fillStyle = STATE.clrSecondary; ctx.globalAlpha = 0.8; ctx.fill();
         ctx.restore();
 
         // ── Nav overlay (waypoint line + wind arrow + squad blip on radar) ──
@@ -2416,40 +2440,41 @@ const Graphics = {
                 }
                 ctx.restore();
             }
+        } // end if (STATE.lat && STATE.active) — nav overlay
 
-            // ── Windsock on bezel edge ──
-            if (STATE.windSpeed > 0) {
-                const wRel = (STATE.windDir - STATE.hdg - 90) * CFG.TO_RAD;
-                const sockX = STATE.cx + Math.cos(wRel) * (STATE.r - 14);
-                const sockY = STATE.cy + Math.sin(wRel) * (STATE.r - 14);
-                // Fill level: 0=calm, 1=strong (>25mph)
-                const fill = Math.min(1, STATE.windSpeed / 25);
-                ctx.save();
-                ctx.translate(sockX, sockY);
-                ctx.rotate(wRel + Math.PI / 2); // orient away from center
-                // Pole
-                ctx.strokeStyle = STATE.clrWind; ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 6); ctx.stroke();
-                // Sock outline (cone shape)
-                ctx.strokeStyle = STATE.clrWind; ctx.lineWidth = 1;
-                ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,6); ctx.lineTo(5,6); ctx.closePath(); ctx.stroke();
-                // Sock fill — represents wind strength
-                if (fill > 0) {
-                    const fillH = 16 * fill;
-                    ctx.fillStyle = `rgba(56,189,248,${0.3 + fill * 0.5})`;
-                    ctx.beginPath();
-                    ctx.moveTo(0,-10);
-                    ctx.lineTo(-5 * fill, -10 + fillH);
-                    ctx.lineTo( 5 * fill, -10 + fillH);
-                    ctx.closePath(); ctx.fill();
-                }
-                // Wind speed label
-                ctx.fillStyle = STATE.clrWind; ctx.font = 'bold 8px monospace';
-                ctx.textAlign = 'center'; ctx.fillText(`${Math.round(STATE.windSpeed)}`, 0, 16);
-                ctx.restore();
+        // ── Windsock — shows always when wind data available, not just during trip ──
+        // windDir is direction wind comes FROM; sock points downwind (windDir+180)
+        if (STATE.windSpeed > 0 && STATE.lat) {
+            const downwind = STATE.windDir + 180; // direction wind blows TO
+            const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
+            const sockX = STATE.cx + Math.cos(wRel) * (STATE.r - 14);
+            const sockY = STATE.cy + Math.sin(wRel) * (STATE.r - 14);
+            const fill = Math.min(1, STATE.windSpeed / 25);
+            ctx.save();
+            ctx.translate(sockX, sockY);
+            ctx.rotate(wRel + Math.PI / 2);
+            // Pole — bright orange
+            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 6); ctx.stroke();
+            // Sock cone outline
+            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,6); ctx.lineTo(5,6); ctx.closePath(); ctx.stroke();
+            // Sock fill — orange, proportional to wind strength
+            if (fill > 0) {
+                const fillH = 16 * fill;
+                ctx.fillStyle = `rgba(255,107,0,${0.35 + fill * 0.55})`;
+                ctx.beginPath();
+                ctx.moveTo(0, -10);
+                ctx.lineTo(-5 * fill, -10 + fillH);
+                ctx.lineTo( 5 * fill, -10 + fillH);
+                ctx.closePath(); ctx.fill();
             }
+            ctx.fillStyle = '#ff6b00'; ctx.font = 'bold 8px monospace';
+            ctx.textAlign = 'center'; ctx.fillText(`${Math.round(STATE.windSpeed)}`, 0, 16);
+            ctx.restore();
+        }
 
-            // Squad radar blip
+        if (STATE.lat && STATE.active) {
             if (STATE.squadData && (Date.now()-STATE.squadData.ts < 10000)) {
                 const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
                 if (dist <= CFG.RADAR_RANGE_MILES) {
@@ -2698,6 +2723,7 @@ window.Engine = {
             now - STATE.apiTime > 900000) {
             API.fetchEnvironment(STATE.lat, STATE.lon);
             STATE.apiLat = STATE.lat; STATE.apiLon = STATE.lon; STATE.apiTime = now;
+            STATE._wxSpoken = false; // allow re-announcement after location change
         }
     },
 
@@ -2710,8 +2736,26 @@ window.Engine = {
         UX.handleResize();
         window.addEventListener('resize', () => UX.handleResize());
         document.addEventListener('fullscreenchange', () => UX.handleResize());
-        window.addEventListener('devicemotion', Hardware.handleMotion, true);
+        window.addEventListener('devicemotion',      Hardware.handleMotion,      true);
         window.addEventListener('deviceorientation', Hardware.handleOrientation, true);
+
+        // iOS 13+: DeviceOrientationEvent requires explicit permission grant.
+        // Request on first tap anywhere — silent if already granted or not needed.
+        const requestIOSMotion = async () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' &&
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const r = await DeviceOrientationEvent.requestPermission();
+                    if (r === 'granted') {
+                        window.addEventListener('deviceorientation', Hardware.handleOrientation, true);
+                    }
+                } catch(e) {}
+            }
+            document.removeEventListener('touchstart', requestIOSMotion);
+            document.removeEventListener('click', requestIOSMotion);
+        };
+        document.addEventListener('touchstart', requestIOSMotion, { once: true });
+        document.addEventListener('click',      requestIOSMotion, { once: true });
 
         // Wake lock re-acquire on tab visible
         document.addEventListener('visibilitychange', async () => {
