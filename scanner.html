@@ -1,658 +1,734 @@
 <!DOCTYPE html>
-<!-- P3dK SCANNER — Standalone WebXR Depth Scanner
-  Zero external dependencies. Own WebGL2 context (xrCompatible:true from creation).
-  No makeXRCompatible() = no context loss crash.
-  TSDF + Marching Cubes in Web Worker blob.
-  Exports STL or sends mesh to parent P3dK via BroadcastChannel.
--->
-<html style="margin:0;overflow:hidden;background:#020008">
+<html lang="en">
 <head>
-<meta charset=UTF-8>
-<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK SCANNER</title>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
+<title>P3dK WebXR Native Scanner</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/MarchingCubes.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/SimplifyModifier.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/EdgeSplitModifier.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
 <style>
-:root{--bg:#020008;--fg:#0ff;--ac:#f0f;--dm:#c8e0ff;--p:rgba(2,4,20,.95);--bh:rgba(0,255,255,.5);--g:#0f9;--w:#ffa040}
-*{box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;font-family:'Courier New',monospace}
-body{margin:0;overflow:hidden;background:var(--bg);color:var(--fg)}
-/* CRT overlay */
-body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:500;
-  background:linear-gradient(rgba(18,16,16,0) 50%,rgba(0,255,255,.04) 50%),
-             linear-gradient(90deg,rgba(255,0,0,.01),rgba(0,255,0,.008),rgba(0,0,255,.01));
-  background-size:100% 3px,4px 100%;opacity:.3}
-
-/* Canvas fills viewport */
-#cvs{position:fixed;inset:0;width:100%;height:100%}
-
-/* HUD overlay */
-#hud{position:fixed;top:0;left:0;right:0;z-index:10;padding:12px 16px;
-  background:linear-gradient(var(--p),transparent);pointer-events:none}
-#title{font-size:11px;letter-spacing:3px;color:var(--ac);font-weight:bold;font-style:italic}
-#subtitle{font-size:8px;color:var(--dm);letter-spacing:2px;margin-top:2px}
-#status{font-size:9px;color:var(--g);font-weight:bold;letter-spacing:1px;margin-top:6px;
-  min-height:14px;animation:blk 2s infinite}
-@keyframes blk{0%,100%{opacity:1}50%{opacity:.5}}
-#progress{font-size:8px;color:#fc0;margin-top:3px;min-height:12px;letter-spacing:1px}
-#dims{font-size:8px;color:var(--dm);margin-top:2px;letter-spacing:1px}
-
-/* Scan ring indicator */
-#ring{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  width:80px;height:80px;pointer-events:none;z-index:10;opacity:0;transition:opacity .3s}
-#ring.active{opacity:1}
-#ring svg{width:100%;height:100%}
-
-/* Bottom controls */
-#ctrl{position:fixed;bottom:0;left:0;right:0;z-index:10;padding:16px;
-  background:linear-gradient(transparent,var(--p));
-  display:flex;flex-direction:column;gap:8px;align-items:stretch}
-.btn{background:rgba(20,30,50,.6);color:var(--fg);border:1px solid var(--bh);
-  padding:14px;font:bold 10px 'Courier New';letter-spacing:2px;cursor:pointer;
-  transition:all .15s;text-shadow:0 0 8px var(--bh);width:100%;
-  -webkit-tap-highlight-color:transparent}
-.btn:active{background:var(--bh);color:#000}
-.btn:disabled{border-color:#223;color:#334;text-shadow:none;cursor:not-allowed}
-.btn.g{color:var(--g);border-color:rgba(0,255,153,.5)}
-.btn.g:active{background:rgba(0,255,153,.4)}
-.btn.r{color:#f77;border-color:rgba(255,80,80,.5)}
-.btn.r:active{background:rgba(255,80,80,.3)}
-.btn.m{color:var(--ac);border-color:rgba(255,0,255,.5)}
-.btn.m:active{background:rgba(255,0,255,.3)}
-.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-
-/* Settings panel */
-#settings{background:rgba(2,4,20,.9);border:1px solid rgba(0,255,255,.2);
-  padding:10px;margin-bottom:4px;display:none}
-#settings.open{display:block}
-.sl-row{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:8px;color:var(--dm)}
-.sl-row label{width:80px;letter-spacing:1px}
-.sl-row input[type=range]{flex:1;accent-color:#f0f}
-.sl-row .val{width:28px;text-align:right;color:var(--ac);font-weight:bold}
-.sl-row input[type=checkbox]{accent-color:var(--ac)}
-
-/* Phase indicator dots */
-#phases{display:flex;gap:6px;margin-top:6px}
-.phase{width:6px;height:6px;border-radius:50%;background:rgba(0,255,255,.2);transition:background .3s}
-.phase.done{background:var(--g)}
-.phase.active{background:var(--ac);animation:pulse .8s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-
-/* P3dK send banner */
-#sendBanner{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:var(--p);border:1px solid var(--g);padding:20px;text-align:center;z-index:100}
-#sendBanner h2{color:var(--g);margin:0 0 8px;font-size:12px;letter-spacing:2px}
-#sendBanner p{font-size:8px;color:var(--dm);margin:4px 0}
+* { box-sizing:border-box; margin:0; padding:0; touch-action:none; user-select:none; }
+body { background:#030712; color:#0ff; font-family:'Courier New',monospace; width:100vw; height:100dvh; overflow:hidden; font-size:12px; }
+#hud-root { position:absolute; inset:0; width:100vw; height:100dvh; overflow:hidden; pointer-events:none; }
+#hud-root * { pointer-events:auto; }
+#vid { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; opacity:0.85; }
+#hud { position:absolute; inset:0; z-index:2; pointer-events:none; }
+#inset { position:absolute; bottom:110px; right:12px; width:160px; height:160px; border:1.5px solid rgba(0,255,255,.4); z-index:10; background:#030712; transition:all 0.5s ease; }
+#inset.fullscreen { bottom:0; right:0; width:100vw; height:100vh; border:none; z-index:40; }
+#top, #bot { position:absolute; left:0; right:0; z-index:20; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px 12px; }
+#top { top:0; display:flex; justify-content:space-between; align-items:center; }
+#bot { bottom:0; padding:10px 12px 16px; }
+#boot { position:absolute; inset:0; z-index:100; background:#030712; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
+#done { position:absolute; inset:0; z-index:50; background:rgba(3,7,18,0.96); display:none; flex-direction:column; align-items:center; padding:20px; overflow-y:auto; pointer-events:none; }
+#done * { pointer-events:auto; }
+.btn { background:rgba(0,20,20,.6); border:1px solid rgba(0,255,255,.4); color:#0ff; font-family:inherit; padding:10px; cursor:pointer; font-weight:bold; border-radius:2px; width:100%; transition:.1s; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing: 1px; }
+.btn:active { background:#0ff; color:#000; }
+.btn.go { border-color:#0f9; color:#0f9; }
+.btn.go2 { border-color:#ffb000; color:#ffb000; }
+.btn.go3 { border-color:#ff00ff; color:#ff00ff; }
+.dot { width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,255,255,.3); background:rgba(0,0,0,.5); }
+.dot.active { background:#0ff; box-shadow:0 0 8px #0ff; transform:scale(1.2); }
+.slider-group { width:100%; max-width:320px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#888; }
+.slider-group input { width:60%; accent-color:#0f9; }
+#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0f9; color:#000; padding:12px 24px; font-weight:bold; border-radius:3px; z-index:120; box-shadow:0 0 15px rgba(16,185,129,0.5); opacity:0; pointer-events:none; transition:opacity 0.3s, transform 0.3s; text-align:center; max-width:90vw; }
+#toast.show { opacity:1; transform:translate(-50%, -10px); }
+.loader-text { animation: pulse 1.5s infinite; }
+@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
 </style>
+<script>
+window.addEventListener('error', function(e) {
+    const bs = document.getElementById('bs');
+    if (bs) { bs.innerText = "CRITICAL ERROR: " + (e.message || "Module failed"); bs.style.color = '#f55'; }
+});
+</script>
 </head>
 <body>
-<canvas id=cvs></canvas>
 
-<!-- HUD top -->
-<div id=hud>
-  <div id=title>P3dK // SCANNER</div>
-  <div id=subtitle>WEBXR DEPTH CAPTURE · TSDF · STL</div>
-  <div id=phases>
-    <div class=phase id=ph0 title="AR Ready"></div>
-    <div class=phase id=ph1 title="Scanning"></div>
-    <div class=phase id=ph2 title="Processing"></div>
-    <div class=phase id=ph3 title="Complete"></div>
-  </div>
-  <div id=status>◎ INITIALISING...</div>
-  <div id=progress></div>
-  <div id=dims></div>
-  <div id=dist style="font-size:8px;color:rgba(0,255,204,.5);margin-top:2px"></div>
+<div id="hud-root">
+    <video id="vid" autoplay playsinline muted></video>
+    <canvas id="hud"></canvas>
+    <div id="inset"></div>
+
+    <div id="top">
+        <div><span style="color:#0f9">▶</span> P3DK WEBXR NATIVE</div>
+        <div style="display:flex;align-items:center;gap:8px;">IDX: <span id="qv">--</span>
+            <svg width="16" height="16" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/><circle id="qr" cx="10" cy="10" r="8" stroke="#0ff" stroke-width="2" fill="none" stroke-dasharray="50.3" stroke-dashoffset="50.3"/></svg>
+        <span id="qb">WAIT</span></div>
+    </div>
+
+    <div id="bot">
+        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:10px;">
+            <div id="legacy-ui">
+                <div style="font-size:9px; color:#888; margin-bottom:4px;">SECTORS</div>
+                <div id="sectors" style="display:flex;gap:6px;"></div>
+            </div>
+            <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end;">
+                <div id="cc" style="font-size:16px; font-weight:bold;">0 FRAMES</div>
+                <label id="lbl-tt" style="font-size:9px; color:#888; cursor:pointer; margin-top:4px;"><input type="checkbox" id="chk-tt" checked> TURNTABLE MODE</label>
+                <label style="font-size:9px; color:#888; cursor:pointer; margin-top:2px;"><input type="checkbox" id="chk-sym" checked> SYMMETRY FILL</label>
+            </div>
+        </div>
+        <div id="clg">READY. ALIGN SCANNER WITH OBJECT.</div>
+        <button id="btn-xr-finalize" class="btn go" style="display:none; margin-top:10px;">FINALIZE MESH</button>
+    </div>
+
+    <div id="boot">
+        <div style="font-size:18px; font-weight:bold; color:#0ff; margin-bottom:10px;">P3DK SYSTEM</div>
+        <button id="btn-start" class="btn go" style="width:200px;">START SCANNER</button>
+        <div style="width:200px; height:6px; border:1px solid #0ff; border-radius:3px; margin: 10px 0;"><div id="bp" style="width:0; height:100%; background:#0ff;"></div></div>
+        <div id="bs" style="font-size:10px; color:#fff; text-align:center;">CHECKING HARDWARE...</div>
+    </div>
+
+    <div id="done">
+        <div style="text-align:center; margin:10px 0 20px; z-index:60; pointer-events:none;">
+            <div style="color:#0f9; font-size:22px; font-weight:bold; text-shadow: 0 2px 10px #000;">✔ SCAN COMPLETE</div>
+            <div id="es" style="font-size:11px; color:#ccc; margin-top:4px; text-shadow: 0 1px 4px #000;">0 POINTS · 0 TRIANGLES</div>
+            <div id="async-status" class="loader-text" style="font-size:10px; color:#ffb000; margin-top:6px; font-weight:bold; text-shadow: 0 1px 4px #000; display:none;">PROCESSING...</div>
+        </div>
+        
+        <div style="flex-grow:1; min-height:80px;"></div> 
+
+        <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(0,255,255,0.2); padding:16px; width:100%; max-width:360px; margin-bottom:16px;">
+            <div style="color:#0f9; font-weight:bold; margin-bottom:12px; font-size:11px;">FUSION CONFIGURATION</div>
+            <div class="slider-group"><span>RESOLUTION</span><input type="range" id="sl-res" min="32" max="128" step="8" value="64"></div>
+            <div class="slider-group"><span>BLOB SIZE</span><input type="range" id="sl-str" min="0.0001" max="0.01" step="0.0001" value="0.0015"></div>
+            <div class="slider-group"><span>TIGHTNESS</span><input type="range" id="sl-iso" min="10" max="200" step="5" value="80"></div>
+            <div class="slider-group"><span>FALLOFF</span><input type="range" id="sl-sub" min="1" max="20" step="1" value="8"></div>
+            <div class="slider-group"><span>DECIMATION</span><input type="range" id="sl-det" min="0.05" max="1.0" step="0.05" value="0.25"></div>
+            <div class="slider-group" style="margin-top:10px; justify-content:flex-end;">
+                <label style="color:#fff; cursor:pointer;"><input type="checkbox" id="chk-edge" checked> ENABLE EDGESPLIT</label>
+            </div>
+        </div>
+
+        <div style="width:100%; max-width:360px; display:flex; flex-direction:column;">
+            <button id="dl-stl" class="btn go">↓ EXPORT WATERTIGHT STL</button>
+            <button id="dl-glb" class="btn go3">↓ EXPORT COLOR GLB</button>
+            <button id="dl-ply" class="btn go2">↓ EXPORT COLOR PLY</button>
+            <button id="rs" class="btn" style="border:1px dashed #555; background:transparent; margin-top:8px;">⟳ SCAN ANOTHER</button>
+        </div>
+    </div>
+    <div id="toast">FILE GENERATED successfully!</div>
 </div>
 
-<!-- Crosshair ring -->
-<div id=ring>
-  <svg viewBox="0 0 80 80">
-    <circle cx=40 cy=40 r=36 fill=none stroke="rgba(0,255,204,.4)" stroke-width=1 stroke-dasharray="6 3"/>
-    <circle cx=40 cy=40 r=24 fill=none stroke="rgba(0,255,204,.7)" stroke-width=1/>
-    <line x1=40 y1=4 x2=40 y2=20 stroke="rgba(0,255,204,.6)" stroke-width=1/>
-    <line x1=40 y1=60 x2=40 y2=76 stroke="rgba(0,255,204,.6)" stroke-width=1/>
-    <line x1=4 y1=40 x2=20 y2=40 stroke="rgba(0,255,204,.6)" stroke-width=1/>
-    <line x1=60 y1=40 x2=76 y2=40 stroke="rgba(0,255,204,.6)" stroke-width=1/>
-    <circle id=ringDot cx=40 cy=40 r=2 fill="rgba(255,0,255,.8)"/>
-  </svg>
-</div>
+<script type="module">
+import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0';
 
-<!-- Controls bottom -->
-<div id=ctrl>
-  <div id=settings>
-    <div class=sl-row>
-      <label>VOXEL mm</label>
-      <input type=range id=sVox min=2 max=12 step=1 value=4 oninput="document.getElementById('sVoxV').textContent=this.value">
-      <span class=val id=sVoxV>4</span>
-    </div>
-    <div class=sl-row>
-      <label>FRAMES</label>
-      <input type=range id=sFr min=20 max=150 step=10 value=60 oninput="document.getElementById('sFrV').textContent=this.value">
-      <span class=val id=sFrV>60</span>
-    </div>
-    <div class=sl-row>
-      <label>ISO LEVEL</label>
-      <input type=range id=sIso min=-15 max=15 step=1 value=0 oninput="document.getElementById('sIsoV').textContent=this.value">
-      <span class=val id=sIsoV>0</span>
-    </div>
-    <div class=sl-row>
-      <label>MIN DIST m</label>
-      <input type=range id=sMin min=10 max=50 step=5 value=20 oninput="document.getElementById('sMinV').textContent=(this.value/100).toFixed(2)">
-      <span class=val id=sMinV>0.20</span>
-    </div>
-    <div class=sl-row>
-      <label>MAX DIST m</label>
-      <input type=range id=sMax min=50 max=400 step=25 value=200 oninput="document.getElementById('sMaxV').textContent=(this.value/100).toFixed(2)">
-      <span class=val id=sMaxV>2.00</span>
-    </div>
-    <div class=sl-row>
-      <label><input type=checkbox id=sSmooth checked> SMOOTH</label>
-      <label><input type=checkbox id=sSend> SEND→P3dK</label>
-    </div>
-  </div>
-  <button class="btn g" id=bStart>[ 📷 START SCAN ]</button>
-  <div class=btn-row>
-    <button class="btn r" id=bStop disabled>[ ⏹ STOP ]</button>
-    <button class="btn" id=bSettings onclick="document.getElementById('settings').classList.toggle('open')">[ ⚙ SETTINGS ]</button>
-  </div>
-  <button class="btn m" id=bBake disabled>[ ∴ BAKE MESH → STL ]</button>
-</div>
+const MAX_P = 8, RES = 45, V_SZ = 0.015, R2D = 180 / Math.PI, tanH = Math.tan(Math.PI / 6);
+const $ = id => document.getElementById(id), lC = m => $('clg').innerText = m;
+const showToast = msg => { const t=$('toast'); if(!t)return; t.innerText=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4500); };
+const yieldLoop = () => new Promise(r => setTimeout(r, 0)); 
 
-<div id=sendBanner>
-  <h2>✔ SENT TO P3dK</h2>
-  <p>Mesh loaded into P3dK scene.</p>
-  <p>Switch back to P3dK tab to use it.</p>
-  <button class=btn onclick="document.getElementById('sendBanner').style.display='none'">[ OK ]</button>
-</div>
+const state = { mode: '', pipe:null, rmbg:null, pht:[], rawPts:[], dsPts:[], spatialHash:new Map(), cR:new THREE.Quaternion(), lQ:null, sQ:null, aV:0, lCap:0, lck:false, wMesh:null, scan:false, vw:640, vh:480, scaleFactor:1, mnX:0, mnY:0, mnZ:0, lastCamPos: null };
 
-<!-- Download confirmation -->
-<div id=dlBanner style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:var(--p);border:1px solid var(--g);padding:20px;text-align:center;z-index:100;width:85%">
-  <h2 style="color:var(--g);margin:0 0 8px;font-size:12px;letter-spacing:2px">✔ STL DOWNLOADED</h2>
-  <p style="font-size:8px;color:var(--dm);margin:4px 0">Saved to your Downloads folder:</p>
-  <p id=dlName style="font-size:8px;color:var(--ac);margin:4px 0;word-break:break-all"></p>
-  <p style="font-size:8px;color:var(--dm);margin:8px 0 4px">Open with: Chrome → ⋮ → Downloads<br>Or: Files app → Downloads</p>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px">
-    <button class=btn onclick="document.getElementById('dlBanner').style.display='none'">[ OK ]</button>
-    <button class="btn g" onclick="document.getElementById('bBake').click();document.getElementById('dlBanner').style.display='none'">[ ↺ RE-BAKE ]</button>
-  </div>
-</div>
+let iScn, iCam, iRnd, iCtl, hCtx, ManifoldClass = null;
+const arCam = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
+const dCtx = document.createElement('canvas').getContext('2d', {willReadFrequently:true}); dCtx.canvas.width = dCtx.canvas.height = 128;
+const eBuf = new Uint8ClampedArray(128*128*4);
 
-<!-- Tips overlay shown before first scan -->
-<div id=tipsBanner style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  background:var(--p);border:1px solid var(--bh);padding:20px;text-align:center;z-index:100;width:90%">
-  <h2 style="color:var(--ac);margin:0 0 10px;font-size:11px;letter-spacing:2px">SCANNING TIPS</h2>
-  <div style="font-size:8px;color:var(--dm);text-align:left;line-height:2">
-    ◎ Hold phone <b style="color:var(--fg)">30–60cm</b> from object<br>
-    ◎ Move <b style="color:var(--fg)">slowly</b> around it<br>
-    ◎ Scan stops <b style="color:var(--fg)">auto</b> when stable<br>
-    ◎ Objects 10–40cm work best<br>
-    ◎ Good light helps ARCore depth<br>
-    ◎ STL saves to <b style="color:var(--fg)">Downloads</b> folder
-  </div>
-  <button class="btn g" style="margin-top:12px" onclick="document.getElementById('tipsBanner').style.display='none';document.getElementById('bStart').click()">[ START SCAN ]</button>
-  <button class=btn style="margin-top:6px" onclick="document.getElementById('tipsBanner').style.display='none'">[ SKIP ]</button>
-</div>
-
-<script>
-// ── TSDF + MARCHING CUBES WEB WORKER ────────────────────────────────────────
-const WORKER_CODE=`
-let nx=0,ny=0,nz=0,voxSz=0,bbMin={x:0,y:0,z:0},tsdf=null,weight=null;
-const TRUNC=80; // mm — truncation band
-self.onmessage=function(ev){
-  const{type,data}=ev;
-  if(type==='init'){
-    nx=data.nx;ny=data.ny;nz=data.nz;voxSz=data.voxSz;bbMin=data.bbMin;
-    const N=nx*ny*nz;
-    tsdf=new Float32Array(N).fill(TRUNC);
-    weight=new Float32Array(N);
-    self.postMessage({type:'ready'});
-  }
-  else if(type==='integrate'){
-    const pts=data.points;
-    const vi=(x,y,z)=>x+y*nx+z*nx*ny;
-    for(let i=0;i<pts.length;i+=3){
-      const px=pts[i],py=pts[i+1],pz=pts[i+2];
-      const vx=Math.floor((px-bbMin.x)/voxSz)|0;
-      const vy=Math.floor((py-bbMin.y)/voxSz)|0;
-      const vz=Math.floor((pz-bbMin.z)/voxSz)|0;
-      const band=Math.ceil(TRUNC/voxSz)+1;
-      for(let dz=-band;dz<=band;dz++){
-        const vzi=vz+dz;
-        if(vx<0||vy<0||vzi<0||vx>=nx||vy>=ny||vzi>=nz)continue;
-        const idx=vi(vx,vy,vzi);
-        const sdf=Math.max(-TRUNC,Math.min(TRUNC,(pz-bbMin.z)-(vzi*voxSz+voxSz*.5)));
-        const w=weight[idx];
-        tsdf[idx]=(tsdf[idx]*w+sdf)/(w+1);
-        weight[idx]=Math.min(w+1,255);
-      }
+function resizeHUD() {
+    const v = $('vid'), h = $('hud');
+    if (v && h) {
+        state.vw = v.videoWidth || window.innerWidth; state.vh = v.videoHeight || window.innerHeight;
+        h.width = v.clientWidth || window.innerWidth; h.height = v.clientHeight || window.innerHeight;
     }
-    self.postMessage({type:'integrated'});
-  }
-  else if(type==='march'){
-    const iso=data.iso||0,minW=data.minW||3;
-    const vi=(x,y,z)=>x+y*nx+z*nx*ny;
-    const verts=[];
-    const interp=(p1,p2,v1,v2)=>{
-      const t=(iso-v1)/((v2-v1)||.0001);
-      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
-    };
-    const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
-    for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
-      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
-               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
-      const vals=c.map(([x,y,z])=>{const idx=vi(x,y,z);return weight[idx]<minW?TRUNC:tsdf[idx]});
-      const pos=c.map(([x,y,z])=>[bbMin.x+x*voxSz+voxSz*.5,bbMin.y+y*voxSz+voxSz*.5,bbMin.z+z*voxSz+voxSz*.5]);
-      for(const[a,b,cc,d]of tets){
-        const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
-        const inside=sv.map(v=>v<iso?1:0);
-        const bit=inside[0]|(inside[1]<<1)|(inside[2]<<2)|(inside[3]<<3);
-        if(!bit||bit===15)continue;
-        const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
-        for(const[ea,eb]of edges)if(inside[ea]!==inside[eb])cuts.push(interp(sp[ea],sp[eb],sv[ea],sv[eb]));
-        if(cuts.length>=3){verts.push(...cuts[0],...cuts[1],...cuts[2]);if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3])}
-      }
-    }
-    const arr=new Float32Array(verts);
-    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
-  }
-};`;
-
-// ── STATE ────────────────────────────────────────────────────────────────────
-let xrSession=null,xrRefSpace=null,gl=null,worker=null;
-let frameCount=0,ptCount=0,lastIntegrate=0;
-let bboxStable=0,bboxLast={x:0,y:0,z:0};
-let xrBBox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-let allPts=[]; // accumulated for live preview
-let glProg=null,glPtBuf=null,glPtCount=0; // minimal WebGL point renderer
-
-// ── DOM ───────────────────────────────────────────────────────────────────────
-const cvs=document.getElementById('cvs');
-const sts=t=>document.getElementById('status').textContent=t;
-const prg=t=>document.getElementById('progress').textContent=t;
-const dim=t=>document.getElementById('dims').textContent=t;
-const phase=(n,state)=>{const el=document.getElementById('ph'+n);if(el){el.className='phase '+(state||'')}}
-
-// ── MINIMAL WEBGL SETUP ──────────────────────────────────────────────────────
-// Create our OWN context with xrCompatible:true from the start.
-// This is the key fix — no makeXRCompatible() call = no context loss crash.
-function initGL(){
-  cvs.width=innerWidth;cvs.height=innerHeight;
-  gl=cvs.getContext('webgl2',{xrCompatible:true,alpha:true,antialias:false});
-  if(!gl)gl=cvs.getContext('webgl',{xrCompatible:true,alpha:true});
-  if(!gl){sts('⚠ WEBGL NOT AVAILABLE');return false}
-  // Simple point shader for live preview
-  const vs=`attribute vec3 pos;uniform mat4 mvp;void main(){gl_Position=mvp*vec4(pos,1.0);gl_PointSize=2.5;}`;
-  const fs=`precision mediump float;void main(){gl_FragColor=vec4(0.0,1.0,0.8,0.7);}`;
-  const compile=(type,src)=>{const s=gl.createShader(type);gl.shaderSource(s,src);gl.compileShader(s);return s};
-  glProg=gl.createProgram();
-  gl.attachShader(glProg,compile(gl.VERTEX_SHADER,vs));
-  gl.attachShader(glProg,compile(gl.FRAGMENT_SHADER,fs));
-  gl.linkProgram(glProg);
-  glPtBuf=gl.createBuffer();
-  return true;
 }
 
-// ── AR CAPABILITY CHECK ───────────────────────────────────────────────────────
-(async()=>{
-  if(!initGL()){return}
-  if(!navigator.xr){sts('⚠ WEBXR NOT AVAILABLE — needs Chrome on Android');document.getElementById('bStart').disabled=true;return}
-  try{
-    const ok=await navigator.xr.isSessionSupported('immersive-ar');
-    if(!ok){sts('⚠ AR NOT SUPPORTED — needs ARCore device');document.getElementById('bStart').disabled=true;return}
-    sts('✔ AR READY — tap START SCAN');
-    phase(0,'done');
-    // Show tips on first visit
-    if(!sessionStorage.getItem('p3dk-scanned')){
-      document.getElementById('tipsBanner').style.display='block';
-    }
-  }catch(e){sts('⚠ XR CHECK FAILED: '+e.message);document.getElementById('bStart').disabled=true}
-})();
+function initThreeJS() {
+    hCtx = $('hud').getContext('2d');
+    iScn = new THREE.Scene(); iScn.background = new THREE.Color('#020617');
+    iCam = new THREE.PerspectiveCamera(45, 1, 0.05, 10); iCam.position.set(0.35, 0.35, 0.35);
+    iRnd = new THREE.WebGLRenderer({ antialias:true, alpha:true }); iRnd.setSize(160, 160); 
+    
+    iRnd.toneMapping = THREE.ACESFilmicToneMapping; iRnd.outputEncoding = THREE.sRGBEncoding;
+    const pmrem = new THREE.PMREMGenerator(iRnd); iScn.environment = pmrem.fromScene(new THREE.Scene(), 0.04).texture;
 
-// ── WORKER INIT ───────────────────────────────────────────────────────────────
-function spawnWorker(voxSz){
-  if(worker)worker.terminate();
-  worker=new Worker(URL.createObjectURL(new Blob([WORKER_CODE],{type:'text/javascript'})));
-  const maxVox=150;
-  const range=maxVox*voxSz; // e.g. 150*4=600mm cube
-  const bbMin={x:-range/2,y:-range/2,z:150}; // centred, z starts 150mm in front
-  worker.postMessage({type:'init',data:{nx:maxVox,ny:maxVox,nz:maxVox,voxSz,bbMin}});
-  return bbMin;
+    $('inset').appendChild(iRnd.domElement);
+    iCtl = new THREE.OrbitControls(iCam, iRnd.domElement); iCtl.enableDamping = true; iCtl.autoRotate = true;
+    
+    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
+    const dl1 = new THREE.DirectionalLight(0x06b6d4, 1.5); dl1.position.set(1, 2, 1);
+    iScn.add(ambient, dl1);
 }
 
-// ── START SCAN ────────────────────────────────────────────────────────────────
-document.getElementById('bStart').onclick=async()=>{
-  // Clean up any previous session
-  if(xrSession){try{await xrSession.end()}catch(e){};xrSession=null;await new Promise(r=>setTimeout(r,300))}
+// ----------------------------------------------------------------------
+// THE 3-TIER ARCHITECTURE ROUTER
+// ----------------------------------------------------------------------
+$('btn-start').onclick = async () => {
+    $('btn-start').style.display = 'none';
+    $('bs').innerText = 'INITIALIZING SYSTEM...';
+    try { initThreeJS(); } catch (err) { $('bs').innerText = "THREE.JS INIT FAILED: " + err.message; return; }
 
-  const voxSz=+document.getElementById('sVox').value;
-  const targetFrames=+document.getElementById('sFr').value;
-  frameCount=0;ptCount=0;lastIntegrate=0;bboxStable=0;
-  xrBBox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
-  allPts=[];
-
-  const bbMin=spawnWorker(voxSz);
-  worker.onmessage=ev=>{if(ev.data.type==='ready')sts('◉ SCANNING...')};
-
-  try{
-    xrSession=await navigator.xr.requestSession('immersive-ar',{
-      requiredFeatures:['local-floor'],
-      optionalFeatures:['depth-sensing','dom-overlay'],
-      domOverlay:{root:document.body},
-      depthSensing:{
-        usagePreference:['cpu-optimized','gpu-optimized'],
-        dataFormatPreference:['luminance-alpha','float32']
-      }
-    });
-  }catch(e){
-    sts('⚠ SESSION FAILED: '+e.message.slice(0,50));
-    console.error('XR session error:',e);
-    return;
-  }
-
-  xrRefSpace=await xrSession.requestReferenceSpace('local-floor');
-  // Use our pre-created xrCompatible context — NO makeXRCompatible() needed
-  // alpha:true is essential — lets passthrough camera show through transparent pixels
-  await xrSession.updateRenderState({baseLayer:new XRWebGLLayer(xrSession,gl,{alpha:true,antialias:false})});
-
-  document.getElementById('bStart').disabled=true;
-  document.getElementById('bStop').disabled=false;
-  document.getElementById('bBake').disabled=true;
-  document.getElementById('ring').classList.add('active');
-  document.getElementById('tipsBanner').style.display='none';
-  sessionStorage.setItem('p3dk-scanned','1');
-  phase(0,'done');phase(1,'active');
-
-  xrSession.addEventListener('end',()=>{
-    xrSession=null;
-    document.getElementById('bStart').disabled=false;
-    document.getElementById('bStop').disabled=true;
-    document.getElementById('ring').classList.remove('active');
-    if(frameCount>5)document.getElementById('bBake').disabled=false;
-    phase(1,'done');
-  });
-
-  const minDist=+document.getElementById('sMin').value/100; // cm→m
-  const maxDist=+document.getElementById('sMax').value/100;
-
-  const onFrame=(t,frame)=>{
-    if(!xrSession)return;
-    xrSession.requestAnimationFrame(onFrame);
-    if(!frame)return;
-
-    const pose=frame.getViewerPose(xrRefSpace);
-    const layer=xrSession.renderState.baseLayer;
-    if(!pose||!layer)return;
-
-    // Clear the XR framebuffer each frame (required)
-    gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);
-    gl.viewport(0,0,layer.framebufferWidth,layer.framebufferHeight);
-    gl.clearColor(0,0,0,0); // transparent — shows passthrough camera
-    gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-
-    // Render live point cloud preview
-    if(allPts.length>0&&glPtBuf&&glProg){
-      const step=Math.max(1,Math.floor(allPts.length/3/6000))*3;
-      const previewPts=[];
-      for(let i=0;i<allPts.length;i+=step*3)previewPts.push(allPts[i]/1000,allPts[i+1]/1000,allPts[i+2]/1000);
-      const pa=new Float32Array(previewPts);
-      gl.bindBuffer(gl.ARRAY_BUFFER,glPtBuf);
-      gl.bufferData(gl.ARRAY_BUFFER,pa,gl.DYNAMIC_DRAW);
-      gl.useProgram(glProg);
-      // Build simple MVP from XR view
-      const view=pose.views[0];
-      const proj=view.projectionMatrix;
-      const viewMat=view.transform.inverse.matrix;
-      // Combined proj*view matrix (column major)
-      const mvp=mat4mul(proj,viewMat);
-      const mvpLoc=gl.getUniformLocation(glProg,'mvp');
-      gl.uniformMatrix4fv(mvpLoc,false,mvp);
-      const posLoc=gl.getAttribLocation(glProg,'pos');
-      gl.enableVertexAttribArray(posLoc);
-      gl.vertexAttribPointer(posLoc,3,gl.FLOAT,false,0,0);
-      gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE);
-      gl.drawArrays(gl.POINTS,0,pa.length/3);
-      gl.disable(gl.BLEND);
-      glPtCount=pa.length/3;
-    }
-
-    // Throttle depth integration to 250ms
-    const doIntegrate=(t-lastIntegrate)>250;
-    if(!doIntegrate)return;
-    lastIntegrate=t;
-
-    for(const view of pose.views){
-      let depth=null;
-      try{depth=frame.getDepthInformation?.(view)}catch(e){continue}
-      if(!depth)continue;
-
-      const vp=view.projectionMatrix;
-      const invView=view.transform.inverse.matrix;
-      const pts=[];
-      let nearestDist=Infinity;
-      // Sample depth at 5% grid (≈every 5th pixel at typical AR resolution)
-      for(let u=0.025;u<0.975;u+=0.05)for(let v=0.025;v<0.975;v+=0.05){
-        const dm=depth.getDepthInMeters(u,v);
-        if(!dm||dm<minDist||dm>maxDist)continue;
-        if(dm<nearestDist)nearestDist=dm;
-        // Correct perspective unproject via projection matrix
-        // vp[0]=focal_x, vp[5]=focal_y (column-major)
-        const ndcX=u*2-1,ndcY=1-v*2;
-        const cx=ndcX*dm/vp[0],cy=ndcY*dm/vp[5];
-        // Camera-space point → world via inverse view transform
-        const wx=invView[0]*cx+invView[4]*cy+invView[8]*(-dm)+invView[12];
-        const wy=invView[1]*cx+invView[5]*cy+invView[9]*(-dm)+invView[13];
-        const wz=invView[2]*cx+invView[6]*cy+invView[10]*(-dm)+invView[14];
-        // Convert m→mm for TSDF
-        pts.push(wx*1000,wy*1000,wz*1000);
-        // Update bbox
-        if(wx*1000<xrBBox.minX)xrBBox.minX=wx*1000;if(wx*1000>xrBBox.maxX)xrBBox.maxX=wx*1000;
-        if(wy*1000<xrBBox.minY)xrBBox.minY=wy*1000;if(wy*1000>xrBBox.maxY)xrBBox.maxY=wy*1000;
-        if(wz*1000<xrBBox.minZ)xrBBox.minZ=wz*1000;if(wz*1000>xrBBox.maxZ)xrBBox.maxZ=wz*1000;
-      }
-      if(pts.length){
-        worker.postMessage({type:'integrate',data:{points:new Float32Array(pts)}});
-        ptCount+=pts.length/3|0;
-        if(allPts.length<360000)allPts.push(...pts);
-        // Show distance guide
-        if(nearestDist<Infinity){
-          const distEl=document.getElementById('dist');
-          const dm=nearestDist;
-          const ok=dm>=0.2&&dm<=0.8;
-          if(distEl)distEl.textContent=(dm<0.15?'⚠ TOO CLOSE ':dm>0.8?'⚠ TOO FAR ':'◎ GOOD RANGE ')+(dm*100).toFixed(0)+'cm to nearest object';
-          if(distEl)distEl.style.color=ok?'rgba(0,255,153,.8)':'rgba(255,160,64,.9)';
+    // Tier 1: WebXR AR + Metric Depth (Android ARCore)
+    if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')) {
+        try {
+            $('bs').innerText = 'REQUESTING ARCORE SENSORS...';
+            const session = await navigator.xr.requestSession('immersive-ar', {
+                requiredFeatures: ['depth-sensing'],
+                optionalFeatures: ['dom-overlay'],
+                depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha'] },
+                domOverlay: { root: document.getElementById('hud-root') }
+            });
+            state.mode = 'xr-depth';
+            return initXRSession(session);
+        } catch(e) {
+            console.warn("XR Metric Depth failed, dropping to Tier 3 Legacy Fallback", e);
         }
-      }
     }
-    frameCount++;
-
-    // After 5 frames: reinit TSDF to actual scan bbox for better grid fit.
-    // This ensures the voxel grid covers the real object, not a fixed cube.
-    if(frameCount===5&&ptCount>50){
-      const voxSz2=+document.getElementById('sVox').value;
-      const pad=voxSz2*20; // 20-voxel padding around detected bbox
-      const sx2=xrBBox.maxX-xrBBox.minX,sy2=xrBBox.maxY-xrBBox.minY,sz2=xrBBox.maxZ-xrBBox.minZ;
-      // Cap each dimension at 150 voxels
-      const nvx=Math.min(150,Math.ceil((sx2+pad*2)/voxSz2));
-      const nvy=Math.min(150,Math.ceil((sy2+pad*2)/voxSz2));
-      const nvz=Math.min(150,Math.ceil((sz2+pad*2)/voxSz2));
-      const bbMin2={
-        x:xrBBox.minX-pad,
-        y:xrBBox.minY-pad,
-        z:xrBBox.minZ-pad
-      };
-      worker.postMessage({type:'init',data:{nx:nvx,ny:nvy,nz:nvz,voxSz:voxSz2,bbMin:bbMin2}});
-      sts('◉ GRID ADAPTED TO SCAN AREA...');
-      console.log('TSDF reinit to bbox:',nvx+'x'+nvy+'x'+nvz,'voxels, bbMin:',bbMin2);
-    }
-
-    // Update HUD
-    const sx=((xrBBox.maxX-xrBBox.minX)||0).toFixed(0);
-    const sy=((xrBBox.maxY-xrBBox.minY)||0).toFixed(0);
-    const sz=((xrBBox.maxZ-xrBBox.minZ)||0).toFixed(0);
-    prg(`⬤ ${frameCount}fr · ${(ptCount/1000).toFixed(0)}k pts`);
-    dim(`${sx}×${sy}×${sz}mm`);
-
-    // Auto-stop: stable bbox for 10 consecutive integrations (~2.5s)
-    const spanX=xrBBox.maxX-xrBBox.minX,spanY=xrBBox.maxY-xrBBox.minY,spanZ=xrBBox.maxZ-xrBBox.minZ;
-    const grew=Math.abs(spanX-bboxLast.x)+Math.abs(spanY-bboxLast.y)+Math.abs(spanZ-bboxLast.z);
-    bboxLast={x:spanX,y:spanY,z:spanZ};
-    if(grew<4)bboxStable++;else bboxStable=0;
-    if(frameCount>=targetFrames||bboxStable>10){
-      sts('◉ SCAN STABLE — tap BAKE MESH');
-      prg('ready to bake');
-      stopScan();
-    }
-  };
-  xrSession.requestAnimationFrame(onFrame);
+    
+    // Tier 3: Legacy Gyro + DA2 Neural Pipeline (iOS / Old Devices)
+    state.mode = 'gyro-da2';
+    bootLegacy();
 };
 
-// ── STOP ──────────────────────────────────────────────────────────────────────
-function stopScan(){
-  if(xrSession){xrSession.end().catch(()=>{})}
+// ----------------------------------------------------------------------
+// TIER 1: WEBXR METRIC DEPTH LOOP
+// ----------------------------------------------------------------------
+function initXRSession(session) {
+    state.session = session;
+    $('boot').style.display = 'none';
+    $('vid').style.display = 'none'; // Passthrough handles background
+    $('legacy-ui').style.display = 'none';
+    $('lbl-tt').style.display = 'none';
+    $('btn-xr-finalize').style.display = 'block';
+    $('btn-xr-finalize').onclick = finalize;
+    document.body.style.background = 'transparent';
+    state.scan = true;
+    lC("WALK AROUND OBJECT. METRIC DEPTH ACTIVE.");
+
+    iRnd.xr.enabled = true;
+    iRnd.xr.setReferenceSpaceType('local');
+    iRnd.xr.setSession(session);
+    
+    iRnd.setAnimationLoop(renderXRLoop);
 }
-document.getElementById('bStop').onclick=()=>{
-  stopScan();
-  sts('◉ STOPPED — tap BAKE MESH');
-};
 
-// ── BAKE MESH → STL ───────────────────────────────────────────────────────────
-document.getElementById('bBake').onclick=()=>{
-  if(!worker||frameCount<3){sts('⚠ NOT ENOUGH DATA');return}
-  sts('⚗ MARCHING CUBES...');
-  prg('processing TSDF volume...');
-  phase(2,'active');
-  const iso=+document.getElementById('sIso').value;
-  worker.onmessage=ev=>{
-    if(ev.data.type==='mesh'){
-      phase(2,'done');phase(3,'active');
-      let verts=ev.data.verts;
-      if(!verts||verts.length<9){sts('⚠ NO SURFACE — try more frames or smaller voxel');phase(2,'');return}
-      sts('⚗ SMOOTHING...');
-      if(document.getElementById('sSmooth').checked){
-        verts=laplacianSmooth(verts,5);
-      }
-      sts('⚗ BUILDING STL...');
-      const stl=vertsToSTL(verts);
-      phase(3,'done');
-      sts('✔ COMPLETE — '+Math.round(verts.length/9).toLocaleString()+' triangles');
-      prg('');
+function renderXRLoop(time, frame) {
+    if (!frame || !state.scan) return;
+    const refSpace = iRnd.xr.getReferenceSpace();
+    const pose = frame.getViewerPose(refSpace);
+    if (!pose) return;
+    
+    const view = pose.views[0];
+    const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
+    const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
 
-      if(document.getElementById('sSend').checked&&window.opener){
-        // Send to parent P3dK window
-        try{
-          window.opener.postMessage({type:'p3dk-scan-mesh',stl:stl},'*');
-          document.getElementById('sendBanner').style.display='block';
-        }catch(e){downloadSTL(stl)}
-      }else{
-        // BroadcastChannel for same-origin P3dK tabs
-        try{
-          const bc=new BroadcastChannel('p3dk');
-          bc.postMessage({type:'scan-mesh',stl:stl});
-          bc.close();
-          sts('✔ SENT TO P3dK — switch tabs');
-          phase(3,'done');
-        }catch(e){}
-        // Also download directly
-        downloadSTL(stl);
-      }
+    // Auto Capture via True 6DoF Translation Delta
+    const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
+    if (!state.lastCamPos) state.lastCamPos = camPos.clone();
+    
+    if (camPos.distanceTo(state.lastCamPos) > 0.08) { // 8cm delta translation
+        state.lastCamPos.copy(camPos);
+        const depthInfo = frame.getDepthInformation(view);
+        if (depthInfo) {
+            accumulateDepthFrame(depthInfo, camMatrix, invProj);
+            state.pht.push({ pq: camMatrix }); // Dummy tracker for metrics
+            $('cc').innerText = `${state.pht.length} FRAMES`;
+            if (state.pht.length >= 60) finalize(); // Auto finalize at dense cap
+        }
     }
-  };
-  worker.postMessage({type:'march',data:{iso,minW:3}});
-};
+    
+    iRnd.render(iScn, iCam); 
+}
 
-// ── LAPLACIAN SMOOTH ──────────────────────────────────────────────────────────
-function laplacianSmooth(verts,passes){
-  const n=verts.length/3|0;
-  // Build adjacency from shared positions
-  const adj=new Map();
-  for(let i=0;i<n;i++)adj.set(i,new Set());
-  for(let i=0;i<n;i+=3){
-    const a=i,b=i+1,c=i+2;
-    adj.get(a).add(b);adj.get(a).add(c);
-    adj.get(b).add(a);adj.get(b).add(c);
-    adj.get(c).add(a);adj.get(c).add(b);
-  }
-  const pos=new Float32Array(verts);
-  for(let p=0;p<passes;p++){
-    const np=new Float32Array(pos.length);
-    for(let i=0;i<n;i++){
-      const nb=adj.get(i);
-      if(!nb||!nb.size){np[i*3]=pos[i*3];np[i*3+1]=pos[i*3+1];np[i*3+2]=pos[i*3+2];continue}
-      let cx=0,cy=0,cz=0;
-      for(const j of nb){cx+=pos[j*3];cy+=pos[j*3+1];cz+=pos[j*3+2]}
-      const f=1/nb.size;
-      np[i*3]=pos[i*3]+(cx*f-pos[i*3])*.5;
-      np[i*3+1]=pos[i*3+1]+(cy*f-pos[i*3+1])*.5;
-      np[i*3+2]=pos[i*3+2]+(cz*f-pos[i*3+2])*.5;
+function accumulateDepthFrame(depth, camMatrix, invProj) {
+    const STEP = 0.02; // ~50x50 metric samples per frame
+    const addedPoints = [];
+    for (let ny = 0; ny < 1; ny += STEP) {
+        for (let nx = 0; nx < 1; nx += STEP) {
+            const d = depth.getDepthInMeters(nx, ny);  
+            if (!d || d < 0.1 || d > 1.5) continue; // Metric physical cutoff removes walls/desks naturally!
+            
+            const ndc = new THREE.Vector3(nx*2-1, (1-ny)*2-1, 0.5);
+            const ray = ndc.clone().applyMatrix4(invProj);
+            ray.divideScalar(ray.z === 0 ? 1 : -ray.z);  
+            const viewPt = ray.multiplyScalar(d);          
+            const world = viewPt.applyMatrix4(camMatrix);
+            
+            // Generate a scan-like gradient color based on physical depth limits
+            const normDist = Math.max(0, Math.min(1, (d - 0.1) / 1.4));
+            world.col = new THREE.Color().setHSL(0.5 + normDist*0.3, 0.8, 0.6); 
+            world.conf = 1.0; // Hardware depth is trusted fully
+            state.rawPts.push(world);
+            addedPoints.push(world);
+        }
     }
-    pos.set(np);
-  }
-  return pos;
+    
+    // Low-cost visual preview for AR Overlay
+    if (state.pht.length % 3 === 0 && addedPoints.length > 0) {
+        const pts = [], cols = [];
+        for(let i=0; i<addedPoints.length; i+=5) {
+            pts.push(addedPoints[i].x, addedPoints[i].y, addedPoints[i].z);
+            cols.push(addedPoints[i].col.r, addedPoints[i].col.g, addedPoints[i].col.b);
+        }
+        const bg=new THREE.BufferGeometry();
+        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
+        bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
+        iScn.add(new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.01})));
+    }
 }
 
-// ── STL BINARY EXPORT ─────────────────────────────────────────────────────────
-function vertsToSTL(verts){
-  const nTri=verts.length/9|0;
-  const buf=new ArrayBuffer(84+nTri*50);
-  const view=new DataView(buf);
-  // Header (80 bytes)
-  const enc=new TextEncoder();
-  const hdr=enc.encode('P3dK Scanner STL');
-  for(let i=0;i<Math.min(80,hdr.length);i++)view.setUint8(i,hdr[i]);
-  view.setUint32(80,nTri,true);
-  let off=84;
-  for(let i=0;i<nTri;i++){
-    const b=i*9;
-    const ax=verts[b],ay=verts[b+1],az=verts[b+2];
-    const bx=verts[b+3],by=verts[b+4],bz=verts[b+5];
-    const cx=verts[b+6],cy=verts[b+7],cz=verts[b+8];
-    // Normal
-    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;
-    const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
-    const nl=Math.hypot(nx,ny,nz)||1;
-    view.setFloat32(off,nx/nl,true);view.setFloat32(off+4,ny/nl,true);view.setFloat32(off+8,nz/nl,true);off+=12;
-    view.setFloat32(off,ax,true);view.setFloat32(off+4,ay,true);view.setFloat32(off+8,az,true);off+=12;
-    view.setFloat32(off,bx,true);view.setFloat32(off+4,by,true);view.setFloat32(off+8,bz,true);off+=12;
-    view.setFloat32(off,cx,true);view.setFloat32(off+4,cy,true);view.setFloat32(off+8,cz,true);off+=12;
-    view.setUint16(off,0,true);off+=2;
-  }
-  return buf;
-}
-function downloadSTL(buf){
-  const ts=new Date().toISOString().slice(0,16).replace('T','-').replace(':','');
-  const fname='p3dk-scan-'+ts+'.stl';
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
-  a.download=fname;a.click();
-  // Show download confirmation banner
-  document.getElementById('dlName').textContent=fname;
-  document.getElementById('dlBanner').style.display='block';
-  hx(30); // strong haptic on download
+// ----------------------------------------------------------------------
+// TIER 3: LEGACY GYRO + NEURAL DA2 LOOP
+// ----------------------------------------------------------------------
+function bootLegacy() {
+    for(let i=0; i<MAX_P; i++) $('sectors').innerHTML += `<div id="s${i}" class="dot"></div>`;
+    env.allowLocalModels = false; env.useBrowserCache = true;
+    if(env.backends && env.backends.onnx) env.backends.onnx.logLevel = 'fatal';
+
+    (async () => {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                let st = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}}}).catch(()=>navigator.mediaDevices.getUserMedia({video:true}));
+                $('vid').srcObject = st; 
+                await new Promise(r => { $('vid').onloadedmetadata = r; setTimeout(r, 2000); });
+                $('vid').play().catch(()=>{});
+            } catch(e) { lC("Camera fallback initialized."); }
+        }
+        resizeHUD(); window.addEventListener('resize', resizeHUD);
+    })();
+
+    try {
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            $('bs').innerText = 'TAP TO GRANT SENSOR PERMISSION';
+            const btnG = document.createElement('button'); btnG.className = 'btn go'; btnG.innerText = 'GRANT GYRO PERMISSIONS';
+            btnG.onclick = async () => {
+                btnG.style.display = 'none';
+                try { if (await DeviceOrientationEvent.requestPermission() === 'granted') setupSensors(); else fallbackSensors(); } catch(err) { fallbackSensors(); }
+                loadAIEngine();
+            };
+            $('boot').appendChild(btnG);
+        } else { setupSensors(); loadAIEngine(); }
+    } catch (e) { fallbackSensors(); loadAIEngine(); }
 }
 
-// ── MAT4 MULTIPLY (column-major, WebXR standard) ─────────────────────────────
-// WebXR matrices are column-major Float32Arrays.
-// out = a * b where columns are stored sequentially: col0=[0-3], col1=[4-7], etc.
-// Element [row r, col c] = a[r,c] = a[r + c*4]
-// (a*b)[r,c] = sum_k a[r,k] * b[k,c]
-function mat4mul(a,b){
-  const o=new Float32Array(16);
-  for(let c=0;c<4;c++)for(let r=0;r<4;r++){
-    o[r+c*4]=a[r+0*4]*b[0+c*4]+a[r+1*4]*b[1+c*4]+a[r+2*4]*b[2+c*4]+a[r+3*4]*b[3+c*4];
-  }
-  return o;
+async function loadAIEngine() {
+    $('bs').innerText = 'DOWNLOADING AI...';
+    try {
+        const pCb = p => { if(p.status==='progress') { $('bp').style.width=Math.round(p.progress)+'%'; $('bs').innerText=`LOADING AI... ${(p.loaded/(1024**2)).toFixed(1)}MB`; } };
+        const optsGPU = { device: 'webgpu', dtype: 'fp16', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
+        const optsRmbgGPU = { device: 'webgpu', dtype: 'q8', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
+        const optsCPU = { progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
+        
+        try {
+            if (!navigator.gpu) throw new Error("No WebGPU");
+            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsGPU);
+            $('bp').style.width='0%';
+            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsRmbgGPU);
+        } catch(e) {
+            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsCPU);
+            $('bp').style.width='0%';
+            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsCPU);
+        }
+        
+        $('boot').style.display='none'; state.scan=true;
+        requestAnimationFrame(loopLegacy); setInterval(evalQuality, 350); setInterval(captureGate, 120);
+    } catch(e) { $('bs').innerText="AI FAILURE: "+e.message; $('bs').style.color = '#f55'; }
 }
 
-// ── RESIZE ────────────────────────────────────────────────────────────────────
-window.onresize=()=>{cvs.width=innerWidth;cvs.height=innerHeight};
+function setupSensors() {
+    window.addEventListener('deviceorientation', e => {
+        state.gyroAvailable = true;
+        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(e.beta||0), THREE.MathUtils.degToRad(e.alpha||0), -THREE.MathUtils.degToRad(e.gamma||0), 'YXZ'))
+            .multiply(new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2))
+            .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -THREE.MathUtils.degToRad(window.orientation||0)));
+        if(!state.sQ) state.sQ=q.clone();
+        if(state.lQ) {
+            state.aV = 2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.lQ.clone().conjugate()).w)));
+            const chkT = $('chk-tt');
+            if(2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.sQ.clone().conjugate()).w)))*R2D > 15 && chkT && chkT.checked) chkT.checked=false;
+        }
+        state.lQ=q.clone(); state.cR.copy(q);
+    });
+}
+function fallbackSensors() { state.gyroAvailable = false; }
 
-// ── P3dK BroadcastChannel LISTENER (if opened from P3dK) ─────────────────────
-// P3dK listens on the 'p3dk' channel for scan-mesh messages
-// Nothing needed here — we just broadcast, P3dK receives
+function evalQuality() {
+    if(!state.scan||!state.vw || state.mode !== 'gyro-da2') return; dCtx.drawImage($('vid'),0,0,128,128);
+    const px=dCtx.getImageData(0,0,128,128).data, gy=new Uint8Array(16384), la=new Float32Array(16384); let lS=0, lV=0, cr=0, tL=0, ovr=0, drk=0;
+    for(let i=0;i<16384;i++) { gy[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2]; tL+=gy[i]; if(gy[i]>235)ovr++; if(gy[i]<25)drk++; }
+    for(let y=1;y<127;y++) for(let x=1;x<127;x++) { let i=x+y*128, v=-4*gy[i]+gy[i-1]+gy[i+1]+gy[i-128]+gy[i+128]; la[i]=v; lS+=v; }
+    for(let y=1;y<127;y++) for(let x=1;x<127;x++) lV+=(la[x+y*128]-lS/15876)**2;
+    let bS = Math.min(100, (lV/15876)*1.8);
 
-// ── HAPTICS ───────────────────────────────────────────────────────────────────
-const hx=(ms=10)=>navigator.vibrate?.(ms);
-document.getElementById('bStart').addEventListener('pointerdown',()=>hx(15));
-document.getElementById('bStop').addEventListener('pointerdown',()=>hx(15));
-document.getElementById('bBake').addEventListener('pointerdown',()=>hx(20));
+    const ci=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
+    for(let y=3;y<125;y+=3) for(let x=3;x<125;x+=3) {
+        let v=gy[x+y*128], br=0, dr=0, mb=0, md=0;
+        for(let i=0; i<32; i++) { let n=gy[(x+ci[i%16][0])+(y+ci[i%16][1])*128]; if(n>v+18){br++;mb=Math.max(mb,br)}else br=0; if(n<v-18){dr++;md=Math.max(md,dr)}else dr=0; }
+        if(mb>8||md>8) cr++;
+    }
+    let fS = Math.min(100, (cr/40)*100), mL = tL/16384, eS=100, l="OK";
+    if(mL<55){eS=40;l="DIM";} else if(mL>215){eS=55;l="BRIGHT";} else if(ovr/16384>.15){eS=30;l="OVER";} else if(drk/16384>.3){eS=20;l="DARK";}
+    
+    state.quality = bS*0.4 + fS*0.4 + eS*0.2;
+    $('qv').innerText = Math.round(state.quality); $('qr').style.strokeDashoffset = 50.3 - (state.quality/100)*50.3; $('qb').innerText = l; $('qb').style.color = state.quality>57 ? '#0f9' : '#f90';
+}
+
+function captureGate() {
+    if(!state.scan||state.lck||performance.now()-state.lCap<1400||state.quality<58 || state.mode !== 'gyro-da2') return;
+    if(state.aV>0.12) return lC("STABILIZE...");
+    if(state.pht.length>=MAX_P) return finalize();
+    const chkT = $('chk-tt');
+    if(!chkT || !chkT.checked) for(const p of state.pht) if(state.cR.angleTo(new THREE.Quaternion(...p.pq))*R2D < 22) return lC("ROTATE SCANNER...");
+    doCaptureLegacy();
+}
+
+function smoothDepthMap(raw, W, H) {
+    const sm = new Float32Array(raw.length); sm.set(raw);
+    for(let y=1; y<H-1; y++) {
+        for(let x=1; x<W-1; x++) {
+            let sum=0, val=0, c=0;
+            for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++) { val = raw[(y+dy)*W + (x+dx)]; if(Number.isFinite(val)) { sum+=val; c++; } }
+            sm[y*W+x] = c>0 ? sum/c : raw[y*W+x];
+        }
+    } return sm;
+}
+
+async function doCaptureLegacy() {
+    state.lck=true; state.lCap=performance.now(); lC("CAPTURING & SEGMENTING..."); navigator.vibrate?.([35]);
+    const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=512;
+    sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 512, 512); 
+    
+    const rgb = sX.getImageData(0,0,512,512).data;
+    const aMask = new Uint8Array(262144); aMask.fill(255); 
+    try {
+        const maskRes = await state.rmbg(sC), mC = document.createElement('canvas'); mC.width=mC.height=512; const mCtx = mC.getContext('2d');
+        if (maskRes && maskRes.length && maskRes[0].mask && maskRes[0].mask.toCanvas) mCtx.drawImage(maskRes[0].mask.toCanvas(), 0, 0, 512, 512);
+        else if (maskRes && maskRes.toCanvas) mCtx.drawImage(maskRes.toCanvas(), 0, 0, 512, 512);
+        else if (maskRes && maskRes.canvas) mCtx.drawImage(maskRes.canvas, 0, 0, 512, 512);
+        const mData = mCtx.getImageData(0,0,512,512).data; for(let i=0; i<262144; i++) aMask[i] = mData[i*4]; 
+    } catch(err) {}
+
+    const res = await state.pipe(sC); 
+    const raw = smoothDepthMap(res.predicted_depth.data, res.predicted_depth.width, res.predicted_depth.height);
+    const sortedRaw = Float32Array.from(raw).sort(), medRaw = sortedRaw[Math.floor(raw.length/2)] || 0.001;
+    const depth = new Float32Array(raw.length); 
+    for(let i=0;i<raw.length;i++) {
+        let val = raw[i]; if (!Number.isFinite(val) || val === 0) val = 0.001; 
+        depth[i] = medRaw / val; if (!Number.isFinite(depth[i])) depth[i] = 1.0;
+    }
+    
+    const chkT = $('chk-tt');
+    let pq=[state.cR.x, state.cR.y, state.cR.z, state.cR.w];
+    if(chkT && chkT.checked) {
+        let fQ = new THREE.Quaternion(...pq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), state.pht.length*(Math.PI/4)));
+        pq = [fQ.x, fQ.y, fQ.z, fQ.w];
+    }
+    
+    state.pht.push({ depth, aMask, dW:res.predicted_depth.width, dH:res.predicted_depth.height, pq, rgb, isT:(chkT && chkT.checked) });
+    let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
+    
+    if(state.pht.length===1) {
+        iScn.children.filter(c=>c.isPoints).forEach(m=>{m.geometry.dispose(); m.material.dispose(); iScn.remove(m);});
+        const pts=[], bg=new THREE.BufferGeometry();
+        for(let y=0;y<RES;y++) for(let x=0;x<RES;x++) {
+            let u = Math.floor((x/RES)*res.predicted_depth.width), v = Math.floor((y/RES)*res.predicted_depth.height);
+            let dv = depth[v * res.predicted_depth.width + u]; 
+            if (!Number.isFinite(dv)) dv = 1.0; 
+            pts.push((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
+        }
+        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3)); iScn.add(new THREE.Points(bg, new THREE.PointsMaterial({color:0x0ff900, size:0.02})));
+    }
+    state.lck=false;
+}
+
+function loopLegacy() {
+    requestAnimationFrame(loopLegacy); iCtl.update(); iRnd.render(iScn, iCam);
+    if(!state.scan || !state.vw || !hCtx) return; const hw=$('hud').width, hh=$('hud').height; hCtx.clearRect(0,0,hw,hh);
+    dCtx.drawImage($('vid'), 0, 0, 128, 128); const p=dCtx.getImageData(0,0,128,128).data, g=new Uint8Array(16384), e=new Float32Array(16384), eV=[];
+    for(let i=0; i<16384; i++) g[i]=0.299*p[i*4]+0.587*p[i*4+1]+0.114*p[i*4+2];
+    for(let y=1; y<127; y++) for(let x=1; x<127; x++) {
+        let i=x+y*128, gx=(-g[i-129]-2*g[i-1]-g[i+127])+(g[i-127]+2*g[i+1]+g[i+129]), gy=(-g[i-129]-2*g[i-128]-g[i-127])+(g[i+127]+2*g[i+128]+g[i+129]), mg=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128); e[i]=mg; eV.push(mg);
+    }
+    const aT=Math.max(0.27, eV.sort((a,b)=>a-b)[Math.floor(eV.length*0.85)]);
+    for(let i=0; i<16384; i++) { if(e[i]>aT){ eBuf[i*4]=0; eBuf[i*4+1]=195; eBuf[i*4+2]=160; eBuf[i*4+3]=Math.min(155,((e[i]-aT)/(1-aT))*430)|0; } else eBuf[i*4+3]=0; }
+    hCtx.putImageData(new ImageData(eBuf,128,128), 0, 0); 
+}
+
+// ----------------------------------------------------------------------
+// UNIFIED PIPELINE (MARCHING CUBES FUSION)
+// ----------------------------------------------------------------------
+function decimate(geo, targetRatio = 0.25) {
+    if (targetRatio >= 0.99) return geo;
+    const mod = new THREE.SimplifyModifier(), triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3, target = Math.floor(triCount * targetRatio);
+    try { return mod.modify(geo, target); } catch(e) { return geo; }
+}
+
+async function finalize() {
+    state.scan=false;
+    
+    if (state.session) {
+        await state.session.end().catch(()=>{});
+        iRnd.xr.enabled = false;
+        iRnd.setAnimationLoop(null);
+    }
+    
+    $('inset').classList.add('fullscreen'); 
+    document.body.style.background = '#030712'; // Restore solid background if XR used
+    setTimeout(()=>{iRnd.setSize(window.innerWidth, window.innerHeight); iCam.aspect=window.innerWidth/window.innerHeight; iCam.updateProjectionMatrix();}, 500);
+    $('done').style.display='flex'; $('async-status').style.display='block';
+    $('btn-xr-finalize').style.display='none';
+    
+    await yieldLoop();
+
+    // 1. Point Cloud Construction (Legacy Extraction if needed)
+    if (state.mode === 'gyro-da2') {
+        let allD=[];
+        state.pht.forEach(ph=>{for(let i=0;i<ph.depth.length;i+=100)if(Number.isFinite(ph.depth[i]))allD.push(ph.depth[i]);});
+        const medZ = allD.sort((a,b)=>a-b)[Math.floor(allD.length/2)] || 0.35, sF = 0.35/medZ; state.scaleFactor = sF;
+
+        for(const ph of state.pht) {
+            ph.orbitPivot = medZ;
+            const sr=Array.from(ph.depth).filter(Number.isFinite).sort((a,b)=>a-b), p05=sr[Math.floor(sr.length*0.05)], p95=sr[Math.floor(sr.length*0.95)], q=new THREE.Quaternion(...ph.pq);
+            for(let y=0; y<RES; y++) for(let x=0; x<RES; x++) {
+                const u=Math.floor((x/RES)*ph.dW), v=Math.floor((y/RES)*ph.dH), dv=ph.depth[v*ph.dW+u];
+                if(ph.aMask[Math.floor((y/RES)*512)*512+Math.floor((x/RES)*512)] < 128) continue; 
+                if(dv<p05||dv>p95||!Number.isFinite(dv)) continue;
+                let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
+                if(ph.isT) pt.z+=medZ; pt.applyQuaternion(q).multiplyScalar(sF);
+                
+                let grad = 0;
+                if (u > 0 && u < ph.dW - 1 && v > 0 && v < ph.dH - 1) {
+                    const dx = ph.depth[v*ph.dW + (u+1)] - ph.depth[v*ph.dW + (u-1)];
+                    const dy = ph.depth[(v+1)*ph.dW + u] - ph.depth[(v-1)*ph.dW + u];
+                    grad = Math.hypot(dx, dy);
+                }
+                pt.conf = Math.max(0.2, Math.min(1.0, 1.0 - (grad * 10)));
+                if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) state.rawPts.push(pt);
+            }
+        }
+    }
+    
+    const rPts = state.rawPts;
+    
+    // Symmetry-Mirror Back-Fill 
+    if ($('chk-sym') && $('chk-sym').checked && rPts.length > 50) {
+        let cx=0,cy=0,cz=0; rPts.forEach(p=>{cx+=p.x;cy+=p.y;cz+=p.z;}); cx/=rPts.length; cy/=rPts.length; cz/=rPts.length;
+        let nx=0,ny=0,nz=0; 
+        if (state.pht.length > 0 && state.mode === 'gyro-da2') {
+            state.pht.forEach(ph=>{ const f=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion(...ph.pq)); nx+=f.x;ny+=f.y;nz+=f.z; });
+        } else {
+            nx = 0; ny = 0; nz = 1; // Default backwards for XR
+        }
+        const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
+        const mirrored=[];
+        for (const p of rPts) {
+            const dx=p.x-cx, dy=p.y-cy, dz=p.z-cz, d=dx*nx+dy*ny+dz*nz;
+            if (d < 0 || !Number.isFinite(d)) continue; 
+            const m = new THREE.Vector3(p.x-2*d*nx, p.y-2*d*ny, p.z-2*d*nz);
+            if (Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.z)) {
+                m.conf = (p.conf||1) * 0.8; 
+                if(p.col) m.col = p.col;
+                mirrored.push(m);
+            }
+        } rPts.push(...mirrored);
+    }
+    
+    // Adaptive Voxel Density Downsampling
+    const counts=new Map(), map=new Map(); let mnX=1e9,mnY=1e9,mnZ=1e9; rPts.forEach(p=>{mnX=Math.min(mnX,p.x); mnY=Math.min(mnY,p.y); mnZ=Math.min(mnZ,p.z);});
+    state.mnX = mnX; state.mnY = mnY; state.mnZ = mnZ;
+    
+    rPts.forEach(p=>{ const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; counts.set(k, (counts.get(k)||0)+1); });
+    rPts.forEach(p=>{ 
+        const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; 
+        if(!map.has(k)) { p.density = counts.get(k); p.sumConf = p.conf||1; map.set(k,p); } else { map.get(k).sumConf += (p.conf||1); }
+    });
+    state.dsPts = Array.from(map.values()).map(p => { p.conf = p.sumConf / p.density; return p; });
+    state.spatialHash = map; 
+    
+    buildWatertightMesh();
+}
+
+async function buildWatertightMesh() {
+    if (!state.dsPts || state.dsPts.length < 5) {
+        $('async-status').innerText = "ERROR: Insufficient spatial points.";
+        return;
+    }
+    $('async-status').style.display='block'; $('async-status').innerText = "MARCHING CUBES..."; await yieldLoop();
+    
+    const xs = state.dsPts.map(p => p.x).sort((a,b)=>a-b), ys = state.dsPts.map(p => p.y).sort((a,b)=>a-b), zs = state.dsPts.map(p => p.z).sort((a,b)=>a-b), N = state.dsPts.length;
+    const b = { w:xs[Math.floor(N*.98)]-xs[Math.floor(N*.02)], h:ys[Math.floor(N*.98)]-ys[Math.floor(N*.02)], d:zs[Math.floor(N*.98)]-zs[Math.floor(N*.02)], cx:(xs[Math.floor(N*.98)]+xs[Math.floor(N*.02)])/2, cy:(ys[Math.floor(N*.98)]+ys[Math.floor(N*.02)])/2, cz:(zs[Math.floor(N*.98)]+zs[Math.floor(N*.02)])/2 }, sz = Math.max(b.w,b.h,b.d)*1.3 || 0.1;
+    
+    const mc = new THREE.MarchingCubes(parseInt($('sl-res').value), new THREE.MeshStandardMaterial(), true, true, 100000);
+    mc.isolation = parseFloat($('sl-iso').value); const str = parseFloat($('sl-str').value), sub = parseFloat($('sl-sub').value);
+    
+    for(let i=0; i<state.dsPts.length; i++) {
+        if (i%500===0) await yieldLoop(); 
+        const p = state.dsPts[i], nx=(p.x-b.cx)/sz+0.5, ny=(p.y-b.cy)/sz+0.5, nz=(p.z-b.cz)/sz+0.5;
+        if(nx>0&&nx<1&&ny>0&&ny<1&&nz>0&&nz<1) mc.addBall(nx, ny, nz, (str / Math.sqrt(p.density || 1)) * (p.conf || 1), sub); 
+    }
+    
+    $('async-status').innerText = "DECIMATING & WELDING..."; await yieldLoop();
+    let geo = mc.generateBufferGeometry();
+    if (!geo || !geo.attributes.position || geo.attributes.position.count === 0) {
+        $('async-status').innerText = "ERROR: Empty surface extracted.";
+        return;
+    }
+
+    geo.scale(sz/2, sz/2, sz/2); geo.translate(b.cx, b.cy, b.cz);
+    geo = THREE.BufferGeometryUtils.mergeVertices(geo);
+    geo = decimate(geo, parseFloat($('sl-det').value));
+    
+    try {
+        if(!ManifoldClass) { const mod = await import('https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js'); const wasm = await mod.default(); wasm.setup(); ManifoldClass = wasm.Manifold; }
+        const mObj = { vertProperties: geo.attributes.position.array, triVerts: geo.index.array, numProp: 3 };
+        const solid = ManifoldClass.ofMesh(mObj).asOriginal(); const rep = solid.getMesh(); solid.delete();
+        const rp=[], ri=[];
+        for(let i=0; i<rep.vertProperties.length; i++) rp.push(rep.vertProperties[i]);
+        for(let i=0; i<rep.triVerts.length; i++) ri.push(rep.triVerts[i]);
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); geo.setIndex(ri);
+    } catch(e) { console.warn("Manifold skipped.", e); }
+    
+    if($('chk-edge').checked) geo = new THREE.EdgeSplitModifier().modify(geo, 30 * Math.PI / 180);
+    geo.computeVertexNormals();
+
+    $('async-status').innerText = "PROJECTING VERTEX COLORS..."; await yieldLoop();
+    
+    const pos = geo.attributes.position.array, nrm = geo.attributes.normal.array, col = new Float32Array(pos.length);
+    const scale = state.scaleFactor || 1;
+
+    if (state.mode === 'gyro-da2') {
+        state.pht.forEach(ph => {
+            ph._q = new THREE.Quaternion(...ph.pq);
+            ph._qInv = ph._q.clone().invert();
+            ph._fwd = new THREE.Vector3(0,0,-1).applyQuaternion(ph._q);
+        });
+
+        for(let i=0; i<pos.length; i+=3) {
+            if(i%3000===0) await yieldLoop(); 
+            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]), n = new THREE.Vector3(nrm[i], nrm[i+1], nrm[i+2]);
+            const vUnscaled = v.clone().multiplyScalar(1/scale);
+            
+            let sumR=0, sumG=0, sumB=0, totalW=0.0001;
+            for(let ph of state.pht) {
+                const facing = n.dot(ph._fwd);
+                if(facing > 0.1) {
+                    const l = vUnscaled.clone().applyQuaternion(ph._qInv);
+                    if (ph.isT) l.z -= ph.orbitPivot;
+                    if(l.z < 0) {
+                        const u = (l.x / -l.z) / tanH, vv = (l.y / -l.z) / tanH;
+                        if(Math.abs(u)<1 && Math.abs(vv)<1 && ph.rgb) {
+                            const ix = Math.floor((u*.5+.5)*512), iy = Math.floor((.5-vv*.5)*512);
+                            if (ph.aMask[iy*512+ix] < 128) continue; 
+
+                            const w = Math.pow(facing, 4); 
+                            const idx=(iy*512+ix)*4;
+                            sumR += ph.rgb[idx]*w; sumG += ph.rgb[idx+1]*w; sumB += ph.rgb[idx+2]*w; totalW += w;
+                        }
+                    }
+                }
+            }
+            
+            let nearby = 0;
+            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
+            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
+                const k = `${gx+dx},${gy+dy},${gz+dz}`;
+                if(state.spatialHash.has(k)) nearby += state.spatialHash.get(k).density;
+            }
+            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
+
+            col[i] = (sumR/totalW/255)*aoCoeff; col[i+1] = (sumG/totalW/255)*aoCoeff; col[i+2] = (sumB/totalW/255)*aoCoeff;
+        }
+    } else {
+        // XR Mode: Sample colors directly from spatial hash metric density mapping
+        for(let i=0; i<pos.length; i+=3) {
+            if(i%3000===0) await yieldLoop(); 
+            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
+            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
+            let sR=0, sG=0, sB=0, cw=0, nearby=0;
+            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
+                const k = `${gx+dx},${gy+dy},${gz+dz}`;
+                if(state.spatialHash.has(k)) {
+                    const pt = state.spatialHash.get(k);
+                    if(pt.col) { sR += pt.col.r; sG += pt.col.g; sB += pt.col.b; cw++; }
+                    nearby += pt.density;
+                }
+            }
+            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
+            if(cw > 0) { col[i] = (sR/cw)*aoCoeff; col[i+1] = (sG/cw)*aoCoeff; col[i+2] = (sB/cw)*aoCoeff; }
+            else { col[i] = 0.5*aoCoeff; col[i+1] = 0.5*aoCoeff; col[i+2] = 0.5*aoCoeff; }
+        }
+    }
+    
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+
+    iScn.children.filter(c=>c.isMesh||c.isPoints).forEach(m=>{m.geometry.dispose();m.material.dispose();iScn.remove(m);});
+    state.wMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, metalness:0.12, roughness:0.58, envMapIntensity:1.0 })); 
+    iScn.add(state.wMesh);
+    
+    const sr = geo.boundingSphere || new THREE.Sphere(new THREE.Vector3(), 0.1);
+    iCam.position.set(0,0,sr.radius*2.8); iCtl.target.set(0,0,0); iCtl.autoRotate=true; iCtl.update();
+    
+    const triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3;
+    $('es').innerText = `${state.pht.length || state.rawPts.length} FRAMES/POINTS · ${(geo.attributes.position.count/3).toLocaleString()} TRIANGLES`;
+    $('async-status').style.display='none';
+}
+
+['sl-res','sl-str','sl-iso','sl-sub','sl-det','chk-edge'].forEach(id => { const e = $(id); if(e) e.onchange = buildWatertightMesh; });
+
+if($('dl-ply')) {
+    $('dl-ply').onclick = async () => {
+        if(!state.wMesh) return; const btn=$('dl-ply'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING PLY..."; await yieldLoop();
+        try {
+            const g = state.wMesh.geometry, pos = g.attributes.position, col = g.attributes.color, n = pos.count;
+            let head = `ply\nformat ascii 1.0\nelement vertex ${n}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\n`;
+            const idx = g.index ? g.index.array : null, fcount = idx ? idx.length/3 : n/3;
+            head += `element face ${fcount}\nproperty list uchar int vertex_index\nend_header\n`;
+            let body = '';
+            for(let i=0; i<n; i++) {
+                if(i%1000===0) await yieldLoop();
+                const r = col ? Math.round(col.getX(i)*255) : 200, gg = col ? Math.round(col.getY(i)*255) : 200, bb = col ? Math.round(col.getZ(i)*255) : 200;
+                body += `${pos.getX(i)} ${pos.getY(i)} ${pos.getZ(i)} ${r} ${gg} ${bb}\n`;
+            }
+            for(let i=0; i<fcount; i++) { if(i%1000===0) await yieldLoop(); const a = idx?idx[i*3]:i*3, b = idx?idx[i*3+1]:i*3+1, c = idx?idx[i*3+2]:i*3+2; body += `3 ${a} ${b} ${c}\n`; }
+            const aLink = document.createElement('a'); aLink.href = URL.createObjectURL(new Blob([head+body], {type:'text/plain'}));
+            aLink.download = `p3dk-color-${Date.now()}.ply`; aLink.click(); showToast("Color PLY Exported!");
+        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
+    };
+}
+
+if($('dl-stl')) {
+    $('dl-stl').onclick = async () => {
+        if(!state.wMesh) return; const btn=$('dl-stl'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING STL..."; await yieldLoop();
+        try {
+            const pos = state.wMesh.geometry.attributes.position, idx = state.wMesh.geometry.index ? state.wMesh.geometry.index.array : null;
+            const nT = idx ? idx.length/3 : pos.count/3, B = new ArrayBuffer(84 + nT * 50), V = new DataView(B); let O = 84;
+            new TextEncoder().encode('P3dK Watertight STL').forEach((b,i)=>V.setUint8(i,b)); V.setUint32(80, nT, true);
+            for(let t=0; t<nT; t++) {
+                if(t%2000===0) await yieldLoop();
+                const i0 = idx ? idx[t*3] : t*3, i1 = idx ? idx[t*3+1] : t*3+1, i2 = idx ? idx[t*3+2] : t*3+2;
+                const ax = pos.getX(i0), ay = pos.getY(i0), az = pos.getZ(i0), bx = pos.getX(i1), by = pos.getY(i1), bz = pos.getZ(i1), cx = pos.getX(i2), cy = pos.getY(i2), cz = pos.getZ(i2);
+                const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
+                let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx, len = Math.sqrt(nx*nx + ny*ny + nz*nz);
+                if(len > 0) { nx /= len; ny /= len; nz /= len; }
+                V.setFloat32(O, nx, true); V.setFloat32(O+4, ny, true); V.setFloat32(O+8, nz, true);
+                V.setFloat32(O+12, ax, true); V.setFloat32(O+16, ay, true); V.setFloat32(O+20, az, true);
+                V.setFloat32(O+24, bx, true); V.setFloat32(O+28, by, true); V.setFloat32(O+32, bz, true);
+                V.setFloat32(O+36, cx, true); V.setFloat32(O+40, cy, true); V.setFloat32(O+44, cz, true); V.setUint16(O+48, 0, true); O += 50;
+            }
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([B], {type:'application/octet-stream'})); a.download = `p3dk-geometry-${Date.now()}.stl`; a.click(); showToast("STL Exported Successfully!");
+        } catch(e) { showToast("Export failed: " + e.message); } btn.disabled = false; btn.innerText = orig;
+    };
+}
+
+if($('dl-glb')) {
+    $('dl-glb').onclick = async () => {
+        if(!state.wMesh) return; const btn=$('dl-glb'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING GLB..."; await yieldLoop();
+        try {
+            new THREE.GLTFExporter().parse(state.wMesh, gltf => {
+                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(gltf)], {type:'model/gltf+json'}));
+                a.download = `p3dk-color-${Date.now()}.gltf`; a.click(); showToast("GLB Exported!");
+            }, { binary: false });
+        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
+    };
+}
+
+if($('rs')) $('rs').onclick = () => location.reload();
 </script>
 </body>
 </html>

@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<!-- P3dK Scanner v2 — Clean Architecture
+  Single coordinate system: Three.js units (≈ meters)
+  Phase 1: INIT — camera starts, ORB runs, user frames object
+  Phase 2: SCAN — tap to capture frames, TSDF builds in background  
+  Phase 3: BAKE — one tap, mesh appears, STL downloads
+  No unit mismatch. No mode confusion. Minimal buttons.
+-->
+<html>
+<head>
+<meta charset=UTF-8>
+<meta name=viewport content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>P3dK SCANNER</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<style>
+:root{--c:#0ff;--a:#ffb000;--m:#f0f;--g:#0f9;--bg:#050505}
+*{box-sizing:border-box;user-select:none;margin:0;padding:0;overflow:hidden}
+body{background:var(--bg);color:var(--c);font-family:'Courier New',monospace;touch-action:none}
+/* Camera feed — fullscreen background */
+#vid{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:1}
+/* ORB keypoint HUD — drawn on 2D canvas */
+#hud{position:fixed;inset:0;z-index:2;pointer-events:none}
+/* Three.js — point cloud + baked mesh review */
+#glc{position:fixed;inset:0;z-index:3;background:transparent;pointer-events:none}
+/* Ghost overlay for alignment */
+#ghost{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;z-index:4;
+  opacity:0;pointer-events:none;mix-blend-mode:screen;transition:opacity .4s}
+/* Progress bar */
+#pb{position:fixed;top:0;left:0;height:3px;background:var(--a);z-index:20;width:0%;transition:width .6s ease-out}
+/* Flash on capture */
+#flash{position:fixed;inset:0;background:#fff;z-index:30;opacity:0;pointer-events:none;transition:opacity .08s}
+/* UI panels */
+#ui{position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;
+  justify-content:space-between;pointer-events:none;padding:10px}
+.pan{background:rgba(0,12,12,.15);border:1px solid rgba(0,255,255,.25);
+  padding:10px;pointer-events:auto;backdrop-filter:blur(3px)}
+/* Phase indicator */
+#phase{font-size:11px;font-weight:bold;line-height:1.8;pointer-events:none}
+#phase .ph{color:rgba(0,255,255,.4);font-size:10px}
+#phase .ph.active{color:var(--c)}
+#phase .info{font-size:12px;color:var(--a);min-height:16px}
+/* Sensor chips */
+#chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px}
+.chip{font-size:9px;padding:2px 7px;border-radius:2px;font-weight:bold}
+.chip.ok{background:rgba(0,255,153,.15);color:var(--g);border:1px solid rgba(0,255,153,.3)}
+.chip.off{background:rgba(60,60,60,.2);color:#555;border:1px solid #333}
+.chip.warn{background:rgba(255,176,0,.15);color:var(--a);border:1px solid rgba(255,176,0,.3)}
+/* Buttons */
+.btn{background:rgba(0,20,20,.2);color:var(--c);border:1px solid rgba(0,255,255,.4);
+  padding:14px;font:bold 13px 'Courier New';cursor:pointer;text-transform:uppercase;
+  width:100%;margin-top:8px;transition:.1s;pointer-events:auto;letter-spacing:1px}
+.btn:active{background:var(--c);color:#000}
+.btn:disabled{opacity:.3;pointer-events:none}
+.btn.primary{border-color:var(--c);border-width:2px;font-size:16px;height:68px}
+.btn.danger{border-color:var(--m);color:var(--m)}
+.btn.go{border-color:var(--g);color:var(--g)}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+/* Frame counter arc */
+#arc{position:fixed;top:12px;right:12px;z-index:11;pointer-events:none}
+/* Phase 3 review panel */
+#rev{display:none}
+.sl-row{display:flex;align-items:center;gap:8px;margin:6px 0}
+.sl-row span{font-size:10px;color:#ccc;width:80px;flex-shrink:0}
+.sl-row input[type=range]{flex:1;accent-color:var(--a)}
+.sl-row .val{font-size:11px;color:var(--a);width:32px;text-align:right}
+/* Instruction overlay — shown in Phase 1 */
+#instr{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:11;text-align:center;pointer-events:none;display:none}
+#instr .big{font-size:32px;color:rgba(0,255,255,.8);animation:pulse 2s infinite}
+#instr .sub{font-size:12px;color:var(--a);margin-top:8px}
+@keyframes pulse{0%,100%{opacity:.5}50%{opacity:1}}
+/* Frame dots strip */
+#fdots{display:flex;gap:4px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.fdot{width:8px;height:8px;border-radius:50%;background:rgba(0,255,255,.25);
+  border:1px solid rgba(0,255,255,.3);transition:background .3s}
+.fdot.done{background:var(--c)}
+.fdot.active{background:var(--a);animation:pulse .5s infinite}
+</style>
+</head>
+<body>
+<video id=vid autoplay playsinline muted></video>
+<canvas id=hud></canvas>
+<canvas id=glc></canvas>
+<img id=ghost src="">
+<div id=pb></div>
+<div id=flash></div>
+
+<!-- Capture instruction crosshair -->
+<div id=instr>
+  <div class=big>⊕</div>
+  <div class=sub>FRAME OBJECT · TAP TO CAPTURE</div>
+</div>
+
+<!-- Orbital guide ring (top right) - drawn by canvas overlay -->
+<!-- Frame arc progress (top right) -->
+<svg id=arc width=62 height=62 viewBox="0 0 62 62" style="position:fixed;top:8px;right:8px;z-index:11;pointer-events:none">
+  <circle cx=31 cy=31 r=26 fill="rgba(0,0,0,.5)" stroke="rgba(0,255,255,.12)" stroke-width=1/>
+  <!-- 8 orbital slots around edge -->
+  <g id=orbSlots></g>
+  <!-- Frame count arc -->
+  <circle id=arcFill cx=31 cy=31 r=26 fill=none stroke="var(--c)" stroke-width=3
+    stroke-dasharray="0 163" stroke-dashoffset="41" transform="rotate(-90 31 31)"
+    style="transition:stroke-dasharray .4s"/>
+  <!-- Gyro direction needle drawn on canvas overlay -->
+  <text x=31 y=36 text-anchor=middle font-size=16 font-family="Courier New"
+    font-weight=bold fill="var(--c)" id=arcTxt>0</text>
+</svg>
+
+<div id=ui>
+  <!-- TOP: status -->
+  <div class=pan>
+    <div id=phase>
+      <div id=phLine>INITIALISING...</div>
+      <div class=info id=info></div>
+    </div>
+    <div id=chips>
+      <span class="chip off" id=cGY>Gyro</span>
+      <span class="chip off" id=cCA>Cam</span>
+      <span class="chip off" id=cOR>ORB</span>
+      <span class="chip off" id=cTS>TSDF</span>
+    </div>
+    <div id=fdots></div>
+  </div>
+
+  <!-- BOTTOM: action buttons (phase-dependent) -->
+  <div>
+    <!-- Phase 1: INIT -->
+    <div id=p1 class=pan>
+      <button class="btn primary" id=bStart>▶ START SCANNING</button>
+    </div>
+
+    <!-- Phase 2: SCAN -->
+    <div id=p2 class=pan style=display:none>
+      <button class="btn primary" id=bCapture>[ ⬤ CAPTURE FRAME ]</button>
+      <div class=g2>
+        <button class=btn id=bDone disabled>REVIEW 3D →</button>
+        <button class="btn danger" id=bStop>✕ STOP</button>
+      </div>
+    </div>
+
+    <!-- Phase 3: REVIEW -->
+    <div id=p3 class=pan style=display:none>
+      <div id=rev>
+        <div style="font-size:10px;color:var(--a);font-weight:bold;margin-bottom:4px">MESH CALIBRATION</div>
+        <div class=sl-row><span>ISO LEVEL</span>
+          <input type=range id=sliso min=-8 max=8 step=1 value=-2
+            oninput="$('viso').textContent=this.value">
+          <span class=val id=viso>-2</span></div>
+        <div class=sl-row><span>POINT SIZE</span>
+          <input type=range id=slps min=0.005 max=0.06 step=0.005 value=0.015
+            oninput="$('vps').textContent=this.value;window.resizePts?.()">
+          <span class=val id=vps>0.015</span></div>
+        <div class=sl-row>
+          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;cursor:pointer">
+            <input type=checkbox id=cbSm checked> SMOOTH</label>
+          <label style="font-size:11px;color:#ccc;display:flex;align-items:center;gap:5px;margin-left:10px;cursor:pointer">
+            <input type=checkbox id=cbWire> WIRE</label>
+        </div>
+      </div>
+      <button class="btn go" id=bBake>∴ BAKE → STL</button>
+      <div class=g2>
+        <button class=btn id=bMore>+ MORE FRAMES</button>
+        <button class="btn danger" id=bDiscard>DISCARD</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script type=module>
+import{pipeline,env}from'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0/dist/transformers.min.js';
+env.allowLocalModels=false;env.useBrowserCache=true;
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const $=id=>document.getElementById(id);
+const sts=t=>{$('phLine').textContent=t};
+const info=t=>{$('info').textContent=t};
+const chip=(id,s,t)=>{const e=$(id);e.className='chip '+s;e.textContent=t};
+const vid=$('vid'),ghost=$('ghost'),glc=$('glc'),hud=$('hud');
+const pb=$('pb'),flash=$('flash');
+const hudCtx=hud.getContext('2d');
+hud.width=innerWidth;hud.height=innerHeight;
+
+// ── THREE.JS ──────────────────────────────────────────────────────────────────
+const scene=new THREE.Scene();
+const cam3=new THREE.PerspectiveCamera(60,innerWidth/innerHeight,.01,100);
+cam3.position.set(0,0,2);
+const rend=new THREE.WebGLRenderer({canvas:glc,antialias:true,alpha:true});
+rend.setPixelRatio(Math.min(devicePixelRatio,2));
+rend.setSize(innerWidth,innerHeight);
+const oc=new THREE.OrbitControls(cam3,rend.domElement);
+oc.enableDamping=true;oc.enabled=false;
+scene.add(new THREE.AmbientLight(0xffffff,.6));
+const dl=new THREE.DirectionalLight(0x00ffff,.5);dl.position.set(2,3,2);scene.add(dl);
+const ptGroup=new THREE.Group();scene.add(ptGroup);
+const meshGroup=new THREE.Group();scene.add(meshGroup);
+let reviewMesh=null,lastVerts=null;
+
+// ── TSDF WORKER ───────────────────────────────────────────────────────────────
+// ALL coordinates in Three.js units (≈ meters). VoxSz=0.008m=8mm.
+const WC=`
+let nx=0,ny=0,nz=0,sz=0,bb={x:0,y:0,z:0},sd=null,wt=null;
+const TR=3; // truncation in meters (3× voxel size)
+const vi=(x,y,z)=>x+y*nx+z*nx*ny;
+self.onmessage=function(e){
+  const{type,data}=e;
+  if(type==='init'){
+    nx=data.nx;ny=data.ny;nz=data.nz;sz=data.sz;bb=data.bb;
+    const N=nx*ny*nz;
+    sd=new Float32Array(N).fill(TR);
+    wt=new Float32Array(N);
+    self.postMessage({type:'ready',dims:[nx,ny,nz]});
+  }
+  else if(type==='integrate'){
+    if(!sd)return;
+    const p=data.pts; // Float32Array of xyz in meters
+    const wts=data.wts; // Float32Array per-point weights (0..1), optional
+    for(let i=0;i<p.length;i+=3){
+      const px=p[i],py=p[i+1],pz=p[i+2];
+      // Per-point weight: quality × facing ratio (default 1 if no weights passed)
+      const ptW=wts?Math.max(0.05,wts[i/3]):1;
+      const vx=Math.floor((px-bb.x)/sz)|0;
+      const vy=Math.floor((py-bb.y)/sz)|0;
+      const vz=Math.floor((pz-bb.z)/sz)|0;
+      const bv=Math.ceil(TR/sz)+1;
+      for(let dz2=-bv;dz2<=bv;dz2++){
+        const zi=vz+dz2;
+        if(vx<0||vy<0||zi<0||vx>=nx||vy>=ny||zi>=nz)continue;
+        const idx=vi(vx,vy,zi);
+        const s=Math.max(-TR,Math.min(TR,(pz-bb.z)-(zi*sz+sz*.5)));
+        const w=wt[idx];
+        // Weight the SDF update by per-point quality
+        const addW=ptW;
+        sd[idx]=(sd[idx]*w+s*addW)/(w+addW);
+        wt[idx]=Math.min(w+addW,255);
+      }
+    }
+    self.postMessage({type:'done'});
+  }
+  else if(type==='march'){
+    if(!sd){self.postMessage({type:'mesh',verts:new Float32Array(0)});return}
+    const iso=data.iso||0,minW=data.minW||1,verts=[];
+    const ip=(p1,p2,v1,v2)=>{
+      const t=(iso-v1)/((v2-v1)||.0001);
+      return[p1[0]+(p2[0]-p1[0])*t,p1[1]+(p2[1]-p1[1])*t,p1[2]+(p2[2]-p1[2])*t];
+    };
+    const tets=[[0,1,3,4],[1,4,5,6],[1,3,4,6],[3,6,7,4],[1,2,3,6]];
+    for(let iz=0;iz<nz-1;iz++)for(let iy=0;iy<ny-1;iy++)for(let ix=0;ix<nx-1;ix++){
+      const c=[[ix,iy,iz],[ix+1,iy,iz],[ix+1,iy+1,iz],[ix,iy+1,iz],
+               [ix,iy,iz+1],[ix+1,iy,iz+1],[ix+1,iy+1,iz+1],[ix,iy+1,iz+1]];
+      const vals=c.map(([x,y,z])=>{
+        const idx=vi(Math.min(nx-1,x),Math.min(ny-1,y),Math.min(nz-1,z));
+        return wt[idx]<minW?TR:sd[idx];
+      });
+      const pos=c.map(([x,y,z])=>[bb.x+x*sz+sz*.5,bb.y+y*sz+sz*.5,bb.z+z*sz+sz*.5]);
+      for(const[a,b,cc,d]of tets){
+        const sv=[vals[a],vals[b],vals[cc],vals[d]],sp=[pos[a],pos[b],pos[cc],pos[d]];
+        const ins=sv.map(v=>v<iso?1:0),bit=ins[0]|(ins[1]<<1)|(ins[2]<<2)|(ins[3]<<3);
+        if(!bit||bit===15)continue;
+        const edges=[[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]],cuts=[];
+        for(const[ea,eb]of edges)if(ins[ea]!==ins[eb])cuts.push(ip(sp[ea],sp[eb],sv[ea],sv[eb]));
+        if(cuts.length>=3){
+          verts.push(...cuts[0],...cuts[1],...cuts[2]);
+          if(cuts.length>=4)verts.push(...cuts[0],...cuts[2],...cuts[3]);
+        }
+      }
+    }
+    const arr=new Float32Array(verts);
+    self.postMessage({type:'mesh',verts:arr},[arr.buffer]);
+  }
+};`;
+
+// ── STATE ─────────────────────────────────────────────────────────────────────
+let depthPipe=null,worker=null;
+let phase=1;
+let fc=0,pc=0;
+let integBusy=false,bakeQ=false,adapted=false,replayBusy=false;
+let bakeRetries=0,queuedPts=null;
+let capturedFrames=[];
+let bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+const dQ=new THREE.Quaternion();
+let hasGyro=false,vTrack=null;
+// Orbital coverage tracking — yaw angles captured (from gyro, in degrees 0-360)
+let coveredAngles=[];
+// Frame quality — last computed scores
+let lastQuality={blur:0,corners:0,exposure:0,score:0};
+// Temporal depth stabilization — EMA across frames (ChatGPT #3)
+// DA2 depth flickers ±20% even on static scenes. EMA at 0.7 weight dramatically
+// smooths TSDF integration and reduces floating geometry.
+let prevDepth=null; // Float32Array of last frame's normalized depth
+// Depth scale/shift per-frame (Gemini #1)
+// DA2 relative depth has unknown scale each frame. Store last norm for alignment.
+let prevNormDepth=null; // for scale alignment
+let prevMatchKP=null,prevMatchDesc=null; // ORB state at last capture for alignment
+
+// ── ORB ────────────────────────────────────────────────────────────────────────
+const BP=(()=>{const p=[],r=()=>{s=(s^s<<13)^s>>7^(s^s<<17)>>>0;return(s>>>0)%31-15};
+  let s=42;for(let i=0;i<256;i++)p.push(r(),r(),r(),r());return p})();
+function brief(g,W,H,cx,cy){
+  const d=new Uint32Array(8);
+  for(let i=0;i<256;i++){const b=i*4,
+    x1=Math.max(0,Math.min(W-1,cx+BP[b])),y1=Math.max(0,Math.min(H-1,cy+BP[b+1])),
+    x2=Math.max(0,Math.min(W-1,cx+BP[b+2])),y2=Math.max(0,Math.min(H-1,cy+BP[b+3]));
+    if(g[y1*W+x1]>g[y2*W+x2])d[i>>5]|=1<<(i&31);}
+  return d;
+}
+function hamming(a,b){let h=0;for(let i=0;i<8;i++){let x=a[i]^b[i];x-=(x>>1)&0x55555555;x=(x&0x33333333)+((x>>2)&0x33333333);h+=((x+(x>>4)&0xF0F0F0F)*0x1010101)>>24}return h}
+function fastCorners(g,W,H){
+  const of=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
+  const raw=[];
+  for(let y=4;y<H-4;y+=2)for(let x=4;x<W-4;x+=2){
+    const c=g[y*W+x];let br=0,dk=0;
+    for(const[dx,dy]of of){const v=g[(y+dy)*W+(x+dx)];if(v>c+20)br++;else if(v<c-20)dk++}
+    if(br>=9||dk>=9)raw.push({x,y,s:Math.abs(br-dk)});
+  }
+  raw.sort((a,b)=>b.s-a.s);
+  const k=[],m=12;
+  for(const p of raw){if(k.length>=30)break;if(!k.some(q=>Math.abs(q.x-p.x)<m&&Math.abs(q.y-p.y)<m))k.push(p)}
+  return k;
+}
+
+// ── WIRE MESH / DEPTH VISUALIZATION ENGINE ────────────────────────────────────
+// Replaces flickering magenta corner dots with stable edge lines (Sobel)
+// and real-time depth contours — the "sculptor's eye" view of the scene.
+// All computed on the existing 128×128 luma buffer — zero extra cost.
+
+// Sobel edge map: returns Float32Array of edge magnitudes [0..1] at 128×128
+function sobelEdges(gray,W,H){
+  const out=new Float32Array(W*H);
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    const gx=(-gray[(y-1)*W+(x-1)]-2*gray[y*W+(x-1)]-gray[(y+1)*W+(x-1)])
+             +( gray[(y-1)*W+(x+1)]+2*gray[y*W+(x+1)]+gray[(y+1)*W+(x+1)]);
+    const gy=(-gray[(y-1)*W+(x-1)]-2*gray[(y-1)*W+x]-gray[(y-1)*W+(x+1)])
+             +( gray[(y+1)*W+(x-1)]+2*gray[(y+1)*W+x]+gray[(y+1)*W+(x+1)]);
+    out[y*W+x]=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128);
+  }
+  return out;
+}
+
+// Depth contour lines: draw iso-depth lines on the HUD canvas
+// depthMap is Float32Array [0..1] at dW×dH, mapped to screen
+// contourLevels: e.g. [0.2,0.35,0.5,0.65,0.8]
+let lastLiveDepth=null; // cached from last preview inference
+let liveDepthW=0,liveDepthH=0;
+const CONTOUR_LEVELS=[0.18,0.32,0.46,0.60,0.74,0.88];
+// Colors cycling cyan→green→amber (depth near→far)
+const CONTOUR_COLORS=[
+  'rgba(0,255,255,.55)','rgba(0,220,180,.5)','rgba(0,255,100,.45)',
+  'rgba(100,255,0,.4)','rgba(255,200,0,.35)','rgba(255,120,0,.3)'
+];
+
+function drawDepthContours(ox,oy,dw,dh){
+  if(!lastLiveDepth||!liveDepthW)return;
+  const W=liveDepthW,H=liveDepthH;
+  const sx=dw/W,sy=dh/H;
+  for(let ci=0;ci<CONTOUR_LEVELS.length;ci++){
+    const lvl=CONTOUR_LEVELS[ci];
+    hudCtx.strokeStyle=CONTOUR_COLORS[ci];
+    hudCtx.lineWidth=1.2;
+    hudCtx.beginPath();
+    // March squares to find contour crossings
+    for(let y=0;y<H-1;y++)for(let x=0;x<W-1;x++){
+      const tl=lastLiveDepth[y*W+x],tr=lastLiveDepth[y*W+x+1];
+      const bl=lastLiveDepth[(y+1)*W+x],br=lastLiveDepth[(y+1)*W+x+1];
+      // Quick reject: no crossing in this cell
+      const mn=Math.min(tl,tr,bl,br),mx=Math.max(tl,tr,bl,br);
+      if(lvl<mn||lvl>mx)continue;
+      // Linear interpolation along edges that cross the contour
+      const pts=[];
+      if((tl<lvl)!==(tr<lvl)){const t=(lvl-tl)/(tr-tl);pts.push([ox+(x+t)*sx,oy+y*sy])}
+      if((tr<lvl)!==(br<lvl)){const t=(lvl-tr)/(br-tr);pts.push([ox+(x+1)*sx,oy+(y+t)*sy])}
+      if((bl<lvl)!==(br<lvl)){const t=(lvl-bl)/(br-bl);pts.push([ox+(x+t)*sx,oy+(y+1)*sy])}
+      if((tl<lvl)!==(bl<lvl)){const t=(lvl-tl)/(bl-tl);pts.push([ox+x*sx,oy+(y+t)*sy])}
+      if(pts.length>=2){hudCtx.moveTo(pts[0][0],pts[0][1]);hudCtx.lineTo(pts[1][0],pts[1][1])}
+    }
+    hudCtx.stroke();
+  }
+}
+
+// Draw Sobel wire mesh overlay on live feed
+let edgeMap=null; // updated by trackLoop
+function drawWireMesh(ox,oy,dw,dh){
+  if(!edgeMap)return;
+  const W=128,H=128,sx=dw/W,sy=dh/H;
+  const threshold=0.25; // only draw significant edges
+  // Draw edge pixels as small glowing dots
+  hudCtx.fillStyle='rgba(0,255,200,.6)';
+  for(let y=1;y<H-1;y++)for(let x=1;x<W-1;x++){
+    if(edgeMap[y*W+x]>threshold){
+      const px=ox+x*sx,py=oy+y*sy;
+      hudCtx.fillRect(px-0.6,py-0.6,1.2,1.2);
+    }
+  }
+}
+
+// Alignment delta arrows — shown after stitch, replaces confusing ghost
+// Shows HOW FAR and WHICH DIRECTION to move for next capture
+let stitchDelta={x:0,y:0,frames:0}; // accumulated translation since last stitch
+function drawAlignmentGuide(){
+  if(!stitchKP.length||stitchDelta.frames<2)return;
+  const cx=innerWidth/2,cy=innerHeight*0.35;
+  const dx=stitchDelta.x,dy=stitchDelta.y;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+  if(dist<8)return; // at capture position — no arrow needed
+  // Draw arrow showing accumulated movement direction
+  const angle=Math.atan2(dy,dx);
+  const len=Math.min(60,dist*0.8);
+  const ex=cx+Math.cos(angle)*len,ey=cy+Math.sin(angle)*len;
+  hudCtx.strokeStyle='rgba(255,176,0,.7)';hudCtx.lineWidth=2;
+  hudCtx.beginPath();hudCtx.moveTo(cx,cy);hudCtx.lineTo(ex,ey);
+  // Arrowhead
+  hudCtx.lineTo(ex-Math.cos(angle-.4)*12,ey-Math.sin(angle-.4)*12);
+  hudCtx.moveTo(ex,ey);
+  hudCtx.lineTo(ex-Math.cos(angle+.4)*12,ey-Math.sin(angle+.4)*12);
+  hudCtx.stroke();
+  // Distance label
+  hudCtx.fillStyle='rgba(255,176,0,.8)';
+  hudCtx.font='bold 10px Courier New';
+  hudCtx.textAlign='center';
+  hudCtx.fillText(`MOVED ${Math.round(dist)}px`,cx,cy-10);
+  hudCtx.textAlign='left';
+}
+
+// Live depth preview: run DA2 at 128px every 1.5s for contour overlay
+let depthPreviewBusy=false;
+let smallInferCvs=document.createElement('canvas');
+let smallInferCtx=smallInferCvs.getContext('2d');
+async function updateDepthPreview(){
+  if(!depthPipe||depthPreviewBusy||phase!==2||!vid.videoWidth)return;
+  depthPreviewBusy=true;
+  try{
+    smallInferCvs.width=128;smallInferCvs.height=96;
+    smallInferCtx.drawImage(vid,0,0,128,96);
+    const res=await depthPipe(smallInferCvs);
+    if(res.predicted_depth){
+      const dd=res.predicted_depth.data instanceof Float32Array?
+        res.predicted_depth.data:new Float32Array(res.predicted_depth.data);
+      let mn=Infinity,mx=-Infinity;
+      for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
+      const rng=(mx-mn)||1;
+      lastLiveDepth=new Float32Array(dd.length);
+      for(let i=0;i<dd.length;i++)lastLiveDepth[i]=(dd[i]-mn)/rng;
+      liveDepthW=128;liveDepthH=96;
+    }
+  }catch(e){}
+  depthPreviewBusy=false;
+}
+// Post-bake shape analysis using PCA on point cloud
+function analyzeShape(pts){
+  if(!pts||pts.length<30)return null;
+  // Compute centroid
+  let cx=0,cy=0,cz=0,n=pts.length/3;
+  for(let i=0;i<pts.length;i+=3){cx+=pts[i];cy+=pts[i+1];cz+=pts[i+2]}
+  cx/=n;cy/=n;cz/=n;
+  // Covariance matrix (3×3 upper triangle)
+  let c00=0,c11=0,c22=0,c01=0,c02=0,c12=0;
+  for(let i=0;i<pts.length;i+=3){
+    const dx=pts[i]-cx,dy=pts[i+1]-cy,dz=pts[i+2]-cz;
+    c00+=dx*dx;c11+=dy*dy;c22+=dz*dz;c01+=dx*dy;c02+=dx*dz;c12+=dy*dz;
+  }
+  c00/=n;c11/=n;c22/=n;c01/=n;c02/=n;c12/=n;
+  // Approximate eigenvalues (Gershgorin circles → actual iteration overkill)
+  // Use diagonal variances as proxy for extent in each axis
+  const extents=[Math.sqrt(c00),Math.sqrt(c11),Math.sqrt(c22)].sort((a,b)=>b-a);
+  const [e0,e1,e2]=extents; // largest to smallest
+  // Shape classification by aspect ratios
+  const r10=e1/e0,r20=e2/e0; // both in [0..1]
+  let shape,color,description;
+  if(r10>0.8&&r20>0.8){shape='● SPHERE / CUBE';color='#0ff';description='equidimensional — all axes similar'}
+  else if(r10>0.6&&r20<0.4){shape='▬ DISC / PLANE';color='#0f9';description='flat — one short axis'}
+  else if(r10<0.4){shape='| CYLINDER / CONE';color='#ffb000';description='elongated — one long axis dominates'}
+  else{shape='◈ IRREGULAR';color='#f0f';description='complex shape — multiple features'}
+  return{shape,color,description,extents:[e0.toFixed(3),e1.toFixed(3),e2.toFixed(3)]};
+}
+// Laplacian variance: measures image sharpness (blur detection)
+// High variance = sharp. Low variance = blurry.
+function laplacianVariance(gray,W,H){
+  let sum=0,sum2=0,n=0;
+  for(let y=1;y<H-1;y+=2)for(let x=1;x<W-1;x+=2){
+    const v=(-gray[(y-1)*W+x]-gray[y*W+(x-1)]+4*gray[y*W+x]-gray[y*W+(x+1)]-gray[(y+1)*W+x]);
+    sum+=v;sum2+=v*v;n++;
+  }
+  const mean=sum/n;const variance=sum2/n-mean*mean;
+  return Math.min(100,variance/30); // 0-100, 30 = "acceptably sharp"
+}
+
+// Exposure score: 0=too dark, 100=perfect, check for clipping
+function exposureScore(gray,W,H){
+  let sum=0,bright=0,dark=0,n=0;
+  for(let i=0;i<gray.length;i+=4){
+    const v=gray[i];sum+=v;n++;
+    if(v>235)bright++;
+    if(v<20)dark++;
+  }
+  const mean=sum/n;
+  const brightPct=bright/n,darkPct=dark/n;
+  if(brightPct>0.15)return{score:30,label:'OVEREXPOSED — reduce light'};
+  if(darkPct>0.3)return{score:20,label:'TOO DARK — add light'};
+  if(mean<60)return{score:40,label:'UNDEREXPOSED'};
+  if(mean>210)return{score:50,label:'BRIGHT — risk of glare'};
+  return{score:100,label:'EXPOSURE OK'};
+}
+
+// Compute overall frame quality: blur + features + exposure
+// Called every 500ms on live video, result shown in HUD
+let _qualTimer=0;
+function computeQuality(){
+  const w=vid.videoWidth,h=vid.videoHeight;
+  if(!w||phase!==2)return;
+  const mD=Math.min(w,h),sx=(w-mD)/2,sy=(h-mD)/2;
+  tCtx.drawImage(vid,sx,sy,mD,mD,0,0,128,128);
+  const px=tCtx.getImageData(0,0,128,128).data;
+  for(let i=0;i<px.length;i+=4)tGray[i>>2]=(px[i]*.299+px[i+1]*.587+px[i+2]*.114)|0;
+  const blur=laplacianVariance(tGray,128,128);
+  const kp=fastCorners(tGray,128,128);
+  const exp=exposureScore(px,128,128);
+  const cornerScore=Math.min(100,(kp.length/25)*100); // 25 corners = 100%
+  // Weighted final score: blur 40%, features 40%, exposure 20%
+  const score=Math.round(blur*.4+cornerScore*.4+exp.score*.2);
+  lastQuality={blur:Math.round(blur),corners:kp.length,exposure:exp.score,label:exp.label,score};
+  hudKP=kp;hudAge=0;
+  // Update quality bar in HUD
+  drawQualityBar(score,kp.length,exp.label);
+}
+
+// Draw a quality bar overlay on the HUD canvas
+const QY=innerHeight-80; // position just above buttons
+function drawQualityBar(score,corners,expLabel){
+  if(phase!==2)return;
+  const W=Math.min(innerWidth-40,400),X=(innerWidth-W)/2;
+  const Y=innerHeight-90;
+  // Background
+  hudCtx.fillStyle='rgba(0,0,0,.6)';
+  hudCtx.fillRect(X,Y,W,38);
+  // Color: red<40, amber<70, green>=70
+  const col=score<40?'#f04':score<70?'var(--a)':'var(--g)';
+  const barW=Math.round(W*score/100);
+  hudCtx.fillStyle=score<40?'rgba(255,0,64,.5)':score<70?'rgba(255,176,0,.4)':'rgba(0,255,153,.4)';
+  hudCtx.fillRect(X,Y,barW,38);
+  // Border
+  hudCtx.strokeStyle=score<40?'#f04':score<70?'#ffb000':'#0f9';
+  hudCtx.lineWidth=1;hudCtx.strokeRect(X,Y,W,38);
+  // Text
+  hudCtx.font='bold 11px Courier New';
+  hudCtx.fillStyle=score<40?'#f04':score<70?'#ffb000':'#0f9';
+  hudCtx.fillText(`QUALITY ${score}% · ${corners} FEATURES · ${expLabel}`,X+8,Y+14);
+  hudCtx.fillStyle='rgba(255,255,255,.5)';
+  hudCtx.font='9px Courier New';
+  if(score<40)hudCtx.fillText('⚠ LOW — move closer, improve lighting, or add texture',X+8,Y+28);
+  else if(score<70)hudCtx.fillText('◎ FAIR — better results possible with more light',X+8,Y+28);
+  else hudCtx.fillText('✔ GOOD — tap CAPTURE',X+8,Y+28);
+}
+
+// ── ORBITAL COVERAGE GUIDE ────────────────────────────────────────────────────
+// Inspired by OpenScan's systematic orbital pattern (8 positions around, 2 elevations)
+// Shows a compass ring with green sectors where frames have been captured
+function drawOrbitalGuide(){
+  if(phase!==2||!hasGyro)return;
+  const cx=innerWidth-44,cy=44,r=30;
+  // Background circle
+  hudCtx.beginPath();hudCtx.arc(cx,cy,r,0,Math.PI*2);
+  hudCtx.fillStyle='rgba(0,0,0,.5)';hudCtx.fill();
+  hudCtx.strokeStyle='rgba(0,255,255,.25)';hudCtx.lineWidth=1;hudCtx.stroke();
+  // Draw covered sectors (every 45° = 8 slots)
+  for(const angle of coveredAngles){
+    const a=angle*Math.PI/180;
+    hudCtx.beginPath();
+    hudCtx.moveTo(cx,cy);
+    hudCtx.arc(cx,cy,r-2,a-Math.PI/8,a+Math.PI/8);
+    hudCtx.closePath();
+    hudCtx.fillStyle='rgba(0,255,153,.5)';hudCtx.fill();
+  }
+  // Current direction indicator
+  if(dQ.length()>.1){
+    const euler=new THREE.Euler().setFromQuaternion(dQ,'YXZ');
+    const yaw=-euler.y; // yaw in radians
+    const nx2=cx+Math.sin(yaw)*(r-6),ny2=cy-Math.cos(yaw)*(r-6);
+    hudCtx.beginPath();hudCtx.moveTo(cx,cy);hudCtx.lineTo(nx2,ny2);
+    hudCtx.strokeStyle='var(--a)';hudCtx.lineWidth=2;hudCtx.stroke();
+  }
+  // Frame count in center
+  hudCtx.font='bold 12px Courier New';hudCtx.fillStyle='var(--c)';
+  hudCtx.textAlign='center';hudCtx.fillText(fc,cx,cy+4);hudCtx.textAlign='left';
+}
+
+// Update coverage when a frame is captured
+function recordCoverage(){
+  if(!hasGyro||dQ.length()<.1)return;
+  const euler=new THREE.Euler().setFromQuaternion(dQ,'YXZ');
+  const yawDeg=(((-euler.y)*180/Math.PI)%360+360)%360;
+  // Snap to nearest 45° slot
+  const slot=Math.round(yawDeg/45)*45;
+  if(!coveredAngles.includes(slot))coveredAngles.push(slot);
+}
+const tCvs=document.createElement('canvas');tCvs.width=tCvs.height=128;
+const tCtx=tCvs.getContext('2d',{willReadFrequently:true});
+const tGray=new Uint8Array(128*128);
+let pKP=null,pDesc=null,snapTx=0,snapTy=0;
+let hudKP=[],stitchKP=[],hudAge=0;
+
+// Persistent RAF HUD loop
+function drawHUD(){
+  hudCtx.clearRect(0,0,hud.width,hud.height);
+  if(phase!==2||!vid.videoWidth)return;
+  const vw=vid.videoWidth,vh=vid.videoHeight;
+  const sc=Math.max(innerWidth/vw,innerHeight/vh);
+  const dw=vw*sc,dh=vh*sc,ox=(innerWidth-dw)/2,oy=(innerHeight-dh)/2;
+  const mD=Math.min(vw,vh),sx2=(vw-mD)/2,sy2=(vh-mD)/2;
+  const ms=(px,py)=>({x:ox+(sx2+(px/128)*mD)*sc,y:oy+(sy2+(py/128)*mD)*sc});
+
+  // 1. Depth contour lines (topographic / sculptor's eye view)
+  //    Shows depth structure of the scene as iso-depth lines
+  drawDepthContours(ox,oy,dw,dh);
+
+  // 2. Sobel wire mesh — stable edge lines that follow real-world geometry
+  //    NOT flickering dots. Edges are where surfaces change direction.
+  drawWireMesh(ox,oy,dw,dh);
+
+  // 3. Frozen stitch markers (cyan crosshairs) — painted onto captured position
+  //    These DO NOT move — they show where features were at capture time
+  for(const p of stitchKP){
+    const pt=ms(p.x,p.y);
+    hudCtx.strokeStyle='rgba(0,220,255,.95)';hudCtx.lineWidth=1.5;
+    hudCtx.strokeRect(pt.x-6,pt.y-6,12,12);
+    // Crosshair inside square
+    hudCtx.beginPath();
+    hudCtx.moveTo(pt.x-9,pt.y);hudCtx.lineTo(pt.x+9,pt.y);
+    hudCtx.moveTo(pt.x,pt.y-9);hudCtx.lineTo(pt.x,pt.y+9);
+    hudCtx.stroke();
+  }
+
+  // 4. Alignment guide arrows (replaces confusing ghost image)
+  drawAlignmentGuide();
+
+  // 5. Quality bar and orbital guide
+  if(lastQuality.score>0)drawQualityBar(lastQuality.score,lastQuality.corners,lastQuality.label||'');
+  drawOrbitalGuide();
+  hudAge++;
+}
+(function raf(){requestAnimationFrame(raf);drawHUD();rend.render(scene,cam3);if(oc.enabled)oc.update()})();
+
+// Quality scoring runs every 500ms
+setInterval(()=>{if(phase===2)computeQuality()},500);
+// Live depth preview for contour lines — every 1.5s
+// Runs DA2 at 128×96 (much faster than full 512px inference)
+setInterval(()=>{if(phase===2)updateDepthPreview()},1500);
+
+// ── TSDF WORKER LIFECYCLE ─────────────────────────────────────────────────────
+function mkWorker(vSz,bb,dims,replay){
+  if(worker)worker.terminate();
+  worker=new Worker(URL.createObjectURL(new Blob([WC],{type:'text/javascript'})));
+  integBusy=true;
+  chip('cTS','warn',`TSDF ${dims.join('×')}`);
+  worker.onmessage=ev=>{
+    const{type}=ev.data;
+    if(type==='ready'){
+      integBusy=false;
+      chip('cTS','ok',`TSDF ${ev.data.dims.join('×')}`);
+      // Replay historical frames + flush queued
+      (async()=>{
+        replayBusy=true;
+        for(const pts of (replay||[])){
+          await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
+          if(!worker)break;
+          integBusy=true;worker.postMessage({type:'integrate',data:{pts}});
+        }
+        if(queuedPts&&worker){
+          const q=queuedPts;queuedPts=null;
+          await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
+          if(worker){integBusy=true;worker.postMessage({type:'integrate',data:{pts:q}})}
+        }
+        await new Promise(r=>{const ck=()=>integBusy?setTimeout(ck,25):r();ck()});
+        replayBusy=false;
+        chip('cTS','ok',`TSDF ${dims.join('×')} ✔`);
+        info(`${fc} frames · tap BAKE STL`);
+      })();
+    }
+    else if(type==='done'){integBusy=false}
+    else if(type==='mesh'){
+      integBusy=false;bakeQ=false;bakeRetries=0;
+      const v=ev.data.verts;
+      if(!v||v.length<9){
+        sts('NO SURFACE');info('Try: lower ISO, more frames, scan closer');
+        $('bBake').disabled=false;return;
+      }
+      // Smooth
+      sts('SMOOTHING...');
+      const out=$('cbSm').checked?smoothMesh(v,3):v;
+      // Display
+      if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose()}
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.BufferAttribute(out.slice(),3));
+      geo.computeVertexNormals();
+      reviewMesh=new THREE.Mesh(geo,
+        $('cbWire').checked
+          ?new THREE.MeshBasicMaterial({color:0x00ffcc,wireframe:true})
+          :new THREE.MeshStandardMaterial({color:0x33ddcc,roughness:.4,metalness:.15,side:THREE.DoubleSide})
+      );
+      meshGroup.add(reviewMesh);
+      // Center camera on mesh
+      geo.computeBoundingBox();
+      const bc=new THREE.Vector3();geo.boundingBox.getCenter(bc);
+      const bs=new THREE.Vector3();geo.boundingBox.getSize(bs);
+      const d=Math.max(.5,Math.max(bs.x,bs.y,bs.z)*1.8);
+      oc.target.copy(bc);cam3.position.set(bc.x,bc.y,bc.z+d);
+      cam3.lookAt(bc);oc.update();
+      lastVerts=out;$('bBake').disabled=false;
+      const tris=(out.length/9|0).toLocaleString();
+      // Post-bake shape analysis — PCA → primitive classification
+      const allPts=[];
+      capturedFrames.forEach(f=>{for(let i=0;i<f.pts.length;i++)allPts.push(f.pts[i])});
+      const shape=analyzeShape(new Float32Array(allPts));
+      const shapeStr=shape?` · ${shape.shape}`:'';
+      sts('MESH READY — '+tris+' tris'+shapeStr);
+      if(shape){
+        info(`${shape.description} · extents ${shape.extents.join('/')}m`);
+        // Flash shape color
+        $('bBake').style.borderColor=shape.color;$('bBake').style.color=shape.color;
+      }else{info('Drag to orbit · tap BAKE STL to download');}
+      dlSTL(out);
+    }
+  };
+  worker.postMessage({type:'init',data:{nx:dims[0],ny:dims[1],nz:dims[2],sz:vSz,bb}});
+}
+
+// Initial worker — 2m×2m×2m grid centered on origin
+function initWorker(){
+  const vSz=0.04,r=vSz*50; // 2m range, 50 voxels each axis
+  mkWorker(vSz,{x:-r,y:-r,z:-r},[100,100,100]);
+}
+
+// ── DEPTH INFERENCE ────────────────────────────────────────────────────────────
+const iCvs=document.createElement('canvas');
+const iCtx=iCvs.getContext('2d',{willReadFrequently:true});
+
+// ── DEPTH SCALE/SHIFT ALIGNMENT (Gemini #1, corrected) ───────────────────────
+// DA2 produces relative depth with unknown scale per frame.
+// Use ORB matches between frames to solve: prevDepth ≈ s*currDepth + t
+// Least-squares solution keeps all frames in consistent depth space.
+// Coord mapping: ORB operates in 128×128, depth map is 512×dH.
+// We map ORB coords → depth coords via scale factor.
+function alignDepthScale(prevNorm,currNorm,matches,dW,dH){
+  if(!prevNorm||!matches||matches.length<4)return{s:1,t:0};
+  const dMin=Math.min(dW,dH),dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
+  let sx=0,sy=0,sxy=0,sx2=0,n=0;
+  for(const m of matches){
+    // Map from 128×128 ORB space to depth map pixel coords
+    const du=Math.floor(dsx+(m.bx/128)*dMin),dv=Math.floor(dsy+(m.by/128)*dMin);
+    const pu=Math.floor(dsx+(m.ax/128)*dMin),pv=Math.floor(dsy+(m.ay/128)*dMin);
+    if(du<0||du>=dW||dv<0||dv>=dH||pu<0||pu>=dW||pv<0||pv>=dH)continue;
+    const vc=currNorm[dv*dW+du];
+    const vp=prevNorm[pv*dW+pu];
+    if(vc<=0||vp<=0)continue;
+    sx+=vc;sy+=vp;sxy+=vc*vp;sx2+=vc*vc;n++;
+  }
+  if(n<4)return{s:1,t:0};
+  const denom=n*sx2-sx*sx;
+  if(Math.abs(denom)<1e-9)return{s:1,t:0};
+  const s=(n*sxy-sx*sy)/denom;
+  const t=(sy-s*sx)/n;
+  // Sanity check: reject extreme scale factors (noise or degenerate)
+  if(s<0.2||s>5)return{s:1,t:0};
+  return{s,t};
+}
+
+// Apply scale/shift to normalize depth map relative to previous frame
+function applyDepthAlignment(norm,s,t){
+  if(s===1&&t===0)return norm;
+  const out=new Float32Array(norm.length);
+  for(let i=0;i<norm.length;i++){
+    out[i]=Math.max(0,Math.min(1,s*norm[i]+t));
+  }
+  return out;
+}
+
+// ── TEMPORAL DEPTH STABILIZATION (ChatGPT #3) ─────────────────────────────────
+// Exponential moving average across frames. Alpha=0.3 on new, 0.7 on history.
+// Reduces DA2 depth flicker without adding latency (pure memory operation).
+function temporalSmooth(norm){
+  if(!prevDepth||prevDepth.length!==norm.length){
+    prevDepth=norm.slice();return norm;
+  }
+  const out=new Float32Array(norm.length);
+  for(let i=0;i<norm.length;i++)out[i]=norm[i]*.3+prevDepth[i]*.7;
+  prevDepth=out.slice();
+  return out;
+}
+
+// ── SURFACE NORMAL CONFIDENCE (Gemini #2, simplified) ────────────────────────
+// Compute per-pixel facing ratio (dot product of surface normal with camera axis).
+// Grazing angle pixels (normal ⊥ camera) have high depth uncertainty → low weight.
+// Returns Float32Array same size as RES×RES, values 0..1 (1=facing camera directly).
+function computeFacingRatio(norm,dW,dH,dMin,dsx,dsy,RES){
+  const fr=new Float32Array(RES*RES);
+  for(let iy=1;iy<RES-1;iy++)for(let ix=1;ix<RES-1;ix++){
+    const nu=Math.floor(dsx+(ix/RES)*dMin),nv=Math.floor(dsy+(iy/RES)*dMin);
+    if(nu<1||nu>=dW-1||nv<1||nv>=dH-1){fr[iy*RES+ix]=0.5;continue}
+    const dx=norm[nv*dW+(nu+1)]-norm[nv*dW+(nu-1)];
+    const dy=norm[(nv+1)*dW+nu]-norm[(nv-1)*dW+nu];
+    // Surface normal from depth gradients: n = normalize(-dx, -dy, 2/RES)
+    const nz=2/RES;
+    const len=Math.sqrt(dx*dx+dy*dy+nz*nz)||1;
+    // Facing ratio = |n·camera_axis| = |nz/len|
+    fr[iy*RES+ix]=Math.min(1,Math.abs(nz/len)*2); // ×2 to spread range
+  }
+  return fr;
+}
+
+async function captureFrame(){
+  if(!depthPipe||!vid.videoWidth)return;
+
+  // P0: Frame rejection — don't waste TSDF on blurry/dark/featureless frames
+  // Skip if quality too low, but always allow first frame to establish reference
+  if(fc>0&&lastQuality.score<50){
+    info(`⚠ Quality ${lastQuality.score}% too low — ${lastQuality.label||'improve conditions'}`);
+    // Flash red to signal rejection
+    flash.style.background='rgba(255,0,64,.3)';flash.style.opacity='.5';
+    setTimeout(()=>{flash.style.opacity=0;flash.style.background='#fff'},200);
+    return;
+  }
+
+  // Animate UI
+  $('bCapture').disabled=true;$('bCapture').textContent='[ PROCESSING... ]';
+  pb.style.transition='none';pb.style.width='0%';
+  requestAnimationFrame(()=>{pb.style.transition='width .7s ease-out';pb.style.width='82%'});
+  flash.style.opacity='.35';setTimeout(()=>flash.style.opacity=0,80);
+  navigator.vibrate?.([50]);
+
+  // Snapshot ORB keypoints for HUD frozen markers
+  stitchKP=hudKP.slice();
+  // Reset alignment delta arrows (we just captured, start fresh tracking)
+  stitchDelta={x:0,y:0,frames:0};
+  // Record which orbital direction was covered
+  recordCoverage();
+
+  try{
+    const w=vid.videoWidth,h=vid.videoHeight;
+    iCvs.width=512;iCvs.height=Math.round(512*h/w);
+    iCtx.drawImage(vid,0,0,iCvs.width,iCvs.height);
+    const result=await depthPipe(iCvs);
+    if(!result.predicted_depth)throw new Error('No depth output');
+    const t=result.predicted_depth;
+    const dd=t.data instanceof Float32Array?t.data:new Float32Array(t.data);
+    let mn=Infinity,mx=-Infinity;
+    for(let i=0;i<dd.length;i++){if(dd[i]<mn)mn=dd[i];if(dd[i]>mx)mx=dd[i]}
+    const rng=(mx-mn)||1;let norm=new Float32Array(dd.length);
+    for(let i=0;i<dd.length;i++)norm[i]=(dd[i]-mn)/rng;
+
+    // P1: Depth scale/shift alignment (Gemini #1)
+    // Use ORB matches from the last capture to align this frame's depth scale
+    // to the previous frame's — keeps all frames in consistent metric space.
+    if(prevNormDepth&&prevMatchKP&&prevMatchKP.length>=4){
+      // Re-run matching using saved kp/desc from last capture moment
+      const currKP=fastCorners(tGray,128,128);
+      const currDesc=currKP.map(p=>brief(tGray,128,128,p.x,p.y));
+      const alignMatches=[];
+      for(let i=0;i<prevMatchKP.length;i++){
+        let best=52,bi=-1;
+        for(let j=0;j<currKP.length;j++){const h2=hamming(prevMatchDesc[i],currDesc[j]);if(h2<best){best=h2;bi=j}}
+        if(bi>=0)alignMatches.push({ax:prevMatchKP[i].x,ay:prevMatchKP[i].y,bx:currKP[bi].x,by:currKP[bi].y});
+      }
+      const {s,t}=alignDepthScale(prevNormDepth,norm,alignMatches,dW,dH);
+      if(s!==1||t!==0){
+        norm=applyDepthAlignment(norm,s,t);
+        info(`Depth aligned: scale=${s.toFixed(2)} shift=${t.toFixed(3)}`);
+      }
+    }
+    // Save ORB state and norm for next frame's alignment
+    prevNormDepth=norm.slice();
+    prevMatchKP=hudKP.slice();prevMatchDesc=hudKP.map(p=>brief(tGray,128,128,p.x,p.y));
+
+    // P0: Temporal depth stabilization (ChatGPT #3)
+    // EMA smooths DA2's frame-to-frame flicker before TSDF integration.
+    // Must run AFTER scale alignment so the EMA is in a consistent scale.
+    norm=temporalSmooth(norm);
+
+    // ── Build point cloud in THREE.JS UNITS (meters) ─────────────────────────
+    // DA2: norm[i]=1 means near, 0 means far
+    // We want z=near→small (object in front), z=far→large (background)
+    // Use dv = 1 - norm[i] so near→0, far→1
+    // Then scale: max depth ≈ 2m (reasonable for close scanning)
+    // x,y from pinhole model with FOV≈60°
+    const RES=80; // 80×80 sample grid
+    const dW=iCvs.width,dH=iCvs.height,dMin=Math.min(dW,dH);
+    const dsx=(dW-dMin)/2,dsy=(dH-dMin)/2;
+    const maxD=2.0; // 2 meters depth range
+    const fovR=60*Math.PI/180;
+    const tanH=Math.tan(fovR/2);
+
+    // Adaptive cull: use 5th-95th percentile depth
+    const sorted=Array.from(norm).sort((a,b)=>a-b);
+    const p05=sorted[Math.floor(sorted.length*.05)];
+    const p95=sorted[Math.floor(sorted.length*.95)];
+
+    const pos=[];const colors=[];const pts=[];const weights=[];
+    const spacing=2.5/RES;
+
+    // P2: Compute surface normal facing ratios (Gemini #2)
+    // Points at grazing angles (|normal·camera| near 0) have high depth uncertainty.
+    const facingRatio=computeFacingRatio(norm,dW,dH,dMin,dsx,dsy,RES);
+
+    // P1: Frame quality weight for TSDF (ChatGPT #5)
+    // High-quality frames contribute more to each voxel than blurry/dark ones.
+    const frameWeight=Math.max(0.2,lastQuality.score/100);
+
+    // Color from camera
+    const cCvs=document.createElement('canvas');cCvs.width=cCvs.height=RES;
+    const cCtx2=cCvs.getContext('2d',{willReadFrequently:true});
+    const minV=Math.min(w,h);
+    cCtx2.drawImage(vid,(w-minV)/2,(h-minV)/2,minV,minV,0,0,RES,RES);
+    const cd=cCtx2.getImageData(0,0,RES,RES).data;
+
+    for(let iy=0;iy<RES;iy++)for(let ix=0;ix<RES;ix++){
+      const nu=Math.floor(dsx+(ix/RES)*dMin),nv=Math.floor(dsy+(iy/RES)*dMin);
+      const n=norm[nv*dW+nu];
+      if(n<p05||n>p95)continue;
+      const dv=1-n; // 0=near, 1=far
+      const z=dv*maxD; // meters, 0..2
+
+      // Display position (Three.js units, ≈ meters for a 2.5m wide cloud)
+      const px=-1.25+ix*spacing;
+      const py= 1.25-iy*spacing;
+      pos.push(px,py,z);
+      // Color
+      const ci=(iy*RES+ix)*4;
+      colors.push(cd[ci]/255,cd[ci+1]/255,cd[ci+2]/255);
+      // TSDF position — same as display, no scaling!
+      // Apply gyro rotation if available
+      let tx=px,ty=py,tz=z;
+      if(hasGyro&&dQ.length()>.1){
+        const v3=new THREE.Vector3(px,py,z).applyQuaternion(dQ);
+        tx=v3.x;ty=v3.y;tz=v3.z;
+      }
+      pts.push(tx,ty,tz);
+      // Combined weight: frame quality × surface facing ratio
+      // Grazing-angle pts and blurry-frame pts contribute less to TSDF
+      weights.push(frameWeight*facingRatio[iy*RES+ix]);
+      // Bbox from TSDF pts
+      if(tx<bbox.minX)bbox.minX=tx;if(tx>bbox.maxX)bbox.maxX=tx;
+      if(ty<bbox.minY)bbox.minY=ty;if(ty>bbox.maxY)bbox.maxY=ty;
+      if(tz<bbox.minZ)bbox.minZ=tz;if(tz>bbox.maxZ)bbox.maxZ=tz;
+    }
+
+    // Add point cloud to scene
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+    geo.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));
+    const ptsMat=new THREE.PointsMaterial({size:parseFloat($('slps').value),vertexColors:true,sizeAttenuation:true,transparent:true,opacity:.85});
+    const cloud=new THREE.Points(geo,ptsMat);
+    // Apply gyro rotation to display group too
+    if(hasGyro&&dQ.length()>.1){
+      const pivot=new THREE.Group();pivot.quaternion.copy(dQ);
+      pivot.add(cloud);ptGroup.add(pivot);
+    }else{ptGroup.add(cloud)}
+    capturedFrames.push({pts:new Float32Array(pts),cloud});
+
+    // Send to TSDF — include per-point weights for quality+normal weighting
+    const ptsF32=new Float32Array(pts);
+    const wtsF32=new Float32Array(weights);
+    if(worker&&!integBusy&&!bakeQ){
+      integBusy=true;worker.postMessage({type:'integrate',data:{pts:ptsF32,wts:wtsF32}});
+      pc+=pts.length/3;
+    }else if(worker){queuedPts=ptsF32;pc+=pts.length/3}
+
+    fc++;
+
+    // Update frame dots
+    const dots=$('fdots');
+    const dot=document.createElement('div');dot.className='fdot done';
+    const prev=dots.querySelector('.fdot.active');if(prev)prev.className='fdot done';
+    const nd=document.createElement('div');nd.className='fdot active';
+    dots.appendChild(dot);
+    // Update arc
+    const target=10; // 10 frames for full arc
+    const pct=Math.min(fc/target,1);
+    $('arcFill').setAttribute('stroke-dasharray',`${pct*145} 145`);
+    $('arcTxt').textContent=fc;
+    $('bDone').disabled=fc<3;
+
+    // Adapt grid at frame 4
+    if(fc===4&&!adapted){
+      adapted=true;
+      const vSz=0.025,pad=vSz*12;
+      const dx=Math.max(.2,bbox.maxX-bbox.minX),dy=Math.max(.2,bbox.maxY-bbox.minY),dz=Math.max(.2,bbox.maxZ-bbox.minZ);
+      const nx=Math.min(80,Math.max(20,Math.ceil((dx+pad*2)/vSz)));
+      const ny=Math.min(80,Math.max(20,Math.ceil((dy+pad*2)/vSz)));
+      const nz=Math.min(80,Math.max(20,Math.ceil((dz+pad*2)/vSz)));
+      const replay=capturedFrames.map(f=>f.pts);
+      mkWorker(vSz,{x:bbox.minX-pad,y:bbox.minY-pad,z:bbox.minZ-pad},[nx,ny,nz],replay);
+      info(`Grid adapted ${nx}×${ny}×${nz}`);
+    }
+
+    sts(`SCANNING — ${fc} frames`);
+    info(`${(pc/1000).toFixed(1)}k pts · move around object`);
+
+    // Ghost overlay removed — was causing confusion
+    // Alignment is now shown via the arrow indicator in the HUD
+    ghost.style.opacity='0';
+    pKP=null;pDesc=null; // reset ORB tracking from new position
+
+  }catch(e){sts('ERROR: '+e.message.slice(0,50))}
+
+  // Complete progress bar
+  pb.style.transition='width .15s';pb.style.width='100%';
+  setTimeout(()=>{pb.style.width='0%'},350);
+  $('bCapture').textContent='[ ⬤ CAPTURE FRAME ]';$('bCapture').disabled=false;
+}
+
+// ── ORB TRACKING LOOP ─────────────────────────────────────────────────────────
+let lastTrack=0;
+function trackLoop(t){
+  if(phase!==2)return;
+  if(t-lastTrack>50){
+    lastTrack=t;
+    const w=vid.videoWidth,h=vid.videoHeight;
+    if(w<10)return requestAnimationFrame(trackLoop);
+    const minD=Math.min(w,h),sx=(w-minD)/2,sy=(h-minD)/2;
+    tCtx.drawImage(vid,sx,sy,minD,minD,0,0,128,128);
+    const td=tCtx.getImageData(0,0,128,128).data;
+    for(let i=0;i<td.length;i+=4)tGray[i>>2]=(td[i]*.299+td[i+1]*.587+td[i+2]*.114)|0;
+
+    // Compute Sobel edge map for wire mesh overlay
+    // This replaces the flickering magenta dots — edges are geometrically stable
+    edgeMap=sobelEdges(tGray,128,128);
+
+    // ORB for alignment tracking (used internally — no longer shown as dots)
+    const kp=fastCorners(tGray,128,128);
+    const desc=kp.map(p=>brief(tGray,128,128,p.x,p.y));
+
+    // Track camera movement since last stitch for alignment arrows
+    if(pKP&&pKP.length>3&&desc.length>3){
+      const matches=[];
+      for(let i=0;i<pKP.length;i++){
+        let b=52,bi=-1;
+        for(let j=0;j<kp.length;j++){const h2=hamming(pDesc[i],desc[j]);if(h2<b){b=h2;bi=j}}
+        if(bi>=0)matches.push({ax:pKP[i].x,ay:pKP[i].y,bx:kp[bi].x,by:kp[bi].y});
+      }
+      if(matches.length>=4){
+        let mtx=0,mty=0,mn=0;
+        matches.forEach(m=>{mtx+=m.bx-m.ax;mty+=m.by-m.ay;mn++});
+        mtx/=mn;mty/=mn;
+        // Accumulate movement for alignment arrows
+        stitchDelta.x+=mtx*(innerWidth/128)*.3;
+        stitchDelta.y+=mty*(innerHeight/128)*.3;
+        stitchDelta.frames++;
+        chip('cOR','ok',`ORB ${matches.length}✓`);
+      }
+    }
+    hudKP=kp;hudAge=0;
+    pKP=kp;pDesc=desc;
+    if(!kp.length)chip('cOR','warn','ORB —');
+  }
+  requestAnimationFrame(trackLoop);
+}
+
+// ── PHASE TRANSITIONS ─────────────────────────────────────────────────────────
+async function goPhase2(){
+  phase=2;
+  $('p1').style.display='none';$('p2').style.display='block';
+  $('instr').style.display='block';
+  sts('SCANNING');info('Move camera around object · tap CAPTURE');
+  initWorker();
+  requestAnimationFrame(trackLoop);
+}
+
+function goPhase3(){
+  phase=3;ghost.style.opacity='0';
+  $('p2').style.display='none';$('p3').style.display='block';
+  $('rev').style.display='block';$('instr').style.display='none';
+  glc.style.pointerEvents='auto';oc.enabled=true;
+  // Center camera on point cloud
+  let cx=0,cy=0,cz=0,cn=0;
+  capturedFrames.forEach(f=>{
+    for(let i=0;i<f.pts.length;i+=3){cx+=f.pts[i];cy+=f.pts[i+1];cz+=f.pts[i+2];cn++}
+  });
+  if(cn>0){
+    const tc=new THREE.Vector3(cx/cn,cy/cn,cz/cn);
+    oc.target.copy(tc);cam3.position.set(tc.x,tc.y,tc.z+2);
+    cam3.lookAt(tc);oc.update();
+  }
+  sts('3D REVIEW');info(`${fc} frames · ${(pc/1000).toFixed(1)}k pts`);
+}
+
+function goPhase1Reset(){
+  phase=1;adapted=false;fc=0;pc=0;integBusy=false;bakeQ=false;replayBusy=false;queuedPts=null;
+  capturedFrames.forEach(f=>{if(f.cloud.parent)f.cloud.parent.remove(f.cloud)});
+  capturedFrames=[];
+  while(ptGroup.children.length)ptGroup.remove(ptGroup.children[0]);
+  if(reviewMesh){meshGroup.remove(reviewMesh);reviewMesh.geometry.dispose();reviewMesh=null}
+  bbox={minX:1e9,maxX:-1e9,minY:1e9,maxY:-1e9,minZ:1e9,maxZ:-1e9};
+  $('fdots').innerHTML='';$('arcFill').setAttribute('stroke-dasharray','0 145');$('arcTxt').textContent='0';
+  hudKP=[];stitchKP=[];pKP=null;ghost.style.opacity='0';
+  snapTx=0;snapTy=0;coveredAngles=[];lastQuality={blur:0,corners:0,exposure:0,score:0};
+  prevDepth=null;prevNormDepth=null;prevMatchKP=null;prevMatchDesc=null;
+  edgeMap=null;lastLiveDepth=null;stitchDelta={x:0,y:0,frames:0};
+  glc.style.pointerEvents='none';oc.enabled=false;
+  $('p3').style.display='none';$('p1').style.display='block';$('rev').style.display='none';
+  sts('READY TO SCAN');info('Frame your object and tap START');
+}
+
+// ── BAKE ──────────────────────────────────────────────────────────────────────
+$('bBake').onclick=()=>{
+  if(!worker||fc<2)return;
+  if(replayBusy){info('Replaying frames... wait for TSDF ✔');setTimeout(()=>$('bBake').click(),1000);return}
+  if(integBusy){
+    bakeRetries++;
+    if(bakeRetries>6){integBusy=false;bakeQ=false;bakeRetries=0;setTimeout(()=>$('bBake').click(),200);return}
+    info(`Finishing integration... (${bakeRetries}/6)`);setTimeout(()=>$('bBake').click(),700);return;
+  }
+  bakeRetries=0;
+  sts('MARCHING CUBES...');info('building mesh...');
+  $('bBake').disabled=true;bakeQ=true;integBusy=true;
+  worker.postMessage({type:'march',data:{iso:parseInt($('sliso').value),minW:1}});
+};
+
+// ── TAUBIN SMOOTHING (ChatGPT #8) ────────────────────────────────────────────
+// Standard Laplacian shrinks the mesh. Taubin λ/μ two-pass preserves volume.
+// λ=0.5 shrinks, μ=-0.53 expands back — net effect: smooth without shrinkage.
+// Same fast typed-array accumulator, just two passes with different signs.
+function smoothMesh(v,n){
+  const cnt=v.length/3|0;
+  const p=new Float32Array(v);
+  const acc=new Float32Array(cnt*3),cnt2=new Uint32Array(cnt);
+  const lambda=0.5,mu=-0.53;
+  // Helper: one Laplacian displacement pass with given factor
+  function lapPass(factor){
+    acc.fill(0);cnt2.fill(0);
+    for(let i=0;i<cnt-2;i+=3){
+      for(const[vi2,n1,n2]of[[i,i+1,i+2],[i+1,i,i+2],[i+2,i,i+1]]){
+        acc[vi2*3]+=p[n1*3]+p[n2*3];acc[vi2*3+1]+=p[n1*3+1]+p[n2*3+1];acc[vi2*3+2]+=p[n1*3+2]+p[n2*3+2];cnt2[vi2]+=2;
+      }
+    }
+    for(let i=0;i<cnt;i++){
+      if(!cnt2[i])continue;
+      const f=factor/cnt2[i];
+      p[i*3]+=acc[i*3]*f;p[i*3+1]+=acc[i*3+1]*f;p[i*3+2]+=acc[i*3+2]*f;
+    }
+  }
+  for(let k=0;k<n;k++){
+    lapPass(lambda); // shrink step
+    lapPass(mu);     // expand step (negative — restores volume)
+  }
+  return p;
+}
+
+// ── STL EXPORT ────────────────────────────────────────────────────────────────
+function dlSTL(v){
+  const n=v.length/9|0,buf=new ArrayBuffer(84+n*50),dv2=new DataView(buf);
+  const h=new TextEncoder().encode('P3dK Scanner v2');
+  for(let i=0;i<Math.min(80,h.length);i++)dv2.setUint8(i,h[i]);
+  dv2.setUint32(80,n,true);let o=84;
+  for(let i=0;i<n;i++){
+    const b=i*9,ax=v[b],ay=v[b+1],az=v[b+2],bx=v[b+3],by=v[b+4],bz=v[b+5],cx=v[b+6],cy=v[b+7],cz=v[b+8];
+    const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz2=cz-az;
+    const qx=uy*vz2-uz*vy,qy=uz*vx-ux*vz2,qz=ux*vy-uy*vx,ql=Math.hypot(qx,qy,qz)||1;
+    dv2.setFloat32(o,qx/ql,true);dv2.setFloat32(o+4,qy/ql,true);dv2.setFloat32(o+8,qz/ql,true);o+=12;
+    dv2.setFloat32(o,ax,true);dv2.setFloat32(o+4,ay,true);dv2.setFloat32(o+8,az,true);o+=12;
+    dv2.setFloat32(o,bx,true);dv2.setFloat32(o+4,by,true);dv2.setFloat32(o+8,bz,true);o+=12;
+    dv2.setFloat32(o,cx,true);dv2.setFloat32(o+4,cy,true);dv2.setFloat32(o+8,cz,true);o+=12;
+    dv2.setUint16(o,0,true);o+=2;
+  }
+  const ts=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'').slice(0,12);
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([buf],{type:'application/octet-stream'}));
+  a.download='p3dk-'+ts+'.stl';a.click();
+}
+
+// ── BUTTON WIRING ─────────────────────────────────────────────────────────────
+$('bStart').onclick=()=>goPhase2();
+$('bCapture').onclick=()=>captureFrame();
+$('bDone').onclick=()=>goPhase3();
+$('bStop').onclick=()=>{ghost.style.opacity='0';goPhase1Reset()};
+$('bMore').onclick=async()=>{
+  phase=2;glc.style.pointerEvents='none';oc.enabled=false;
+  $('p3').style.display='none';$('p1').style.display='none';$('p2').style.display='block';
+  $('instr').style.display='block';
+  try{await startCamera()}catch(e){}
+  requestAnimationFrame(trackLoop);
+  sts('SCANNING');info('Add more frames · tap CAPTURE');
+};
+$('bDiscard').onclick=()=>goPhase1Reset();
+$('cbWire').addEventListener('change',()=>{
+  if(reviewMesh){reviewMesh.material.wireframe=$('cbWire').checked;reviewMesh.material.needsUpdate=true}
+});
+window.resizePts=()=>capturedFrames.forEach(f=>f.cloud.material.size=parseFloat($('slps').value));
+
+// ── SENSOR INIT ───────────────────────────────────────────────────────────────
+async function startCamera(){
+  if(vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null;await new Promise(r=>setTimeout(r,200))}
+  const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1080}}});
+  vid.srcObject=stream;vTrack=stream.getVideoTracks()[0];
+  await new Promise((res,rej)=>{vid.onloadedmetadata=()=>vid.play().then(res).catch(rej);vid.onerror=rej});
+  chip('cCA','ok','CAM ✔');
+}
+
+// ── BOOT ─────────────────────────────────────────────────────────────────────
+async function boot(){
+  sts('LOADING NEURAL DEPTH...');info('Depth Anything V2 — first load ~26MB');
+  pb.style.transition='none';pb.style.width='5%';
+  // Start camera immediately
+  try{
+    await startCamera();
+  }catch(e){chip('cCA','warn','CAM ✗');info('Camera failed: '+e.message.slice(0,40))}
+  // Gyro
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function')
+      await DeviceOrientationEvent.requestPermission().catch(()=>{});
+    window.addEventListener('deviceorientation',e=>{
+      if(!e.alpha&&!e.beta&&!e.gamma)return;
+      hasGyro=true;chip('cGY','ok','Gyro ✔');
+      const a=e.alpha?THREE.MathUtils.degToRad(e.alpha):0;
+      const b=e.beta?THREE.MathUtils.degToRad(e.beta):0;
+      const g2=e.gamma?THREE.MathUtils.degToRad(e.gamma):0;
+      const ori=window.orientation?THREE.MathUtils.degToRad(window.orientation):0;
+      dQ.setFromEuler(new THREE.Euler(b,a,-g2,'YXZ'));
+      dQ.multiply(new THREE.Quaternion(-Math.sqrt(.5),0,0,Math.sqrt(.5)));
+      dQ.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1),-ori));
+    });
+  }catch(e){chip('cGY','off','Gyro ✗')}
+  // Load model
+  try{
+    depthPipe=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{
+      progress_callback:p=>{
+        if(p.status==='downloading'||p.status==='loading'){
+          const pct=p.progress??(p.loaded&&p.total?p.loaded/p.total*100:50);
+          pb.style.transition='width .3s';pb.style.width=(5+pct*.9)+'%';
+        }
+      }
+    });
+    pb.style.width='100%';setTimeout(()=>pb.style.width='0%',600);
+    sts('READY TO SCAN');info('Frame your object and tap START');
+    $('bStart').disabled=false;
+  }catch(e){sts('MODEL FAILED — reload');info(e.message.slice(0,50));console.error(e)}
+  // Resize handler
+  window.addEventListener('resize',()=>{
+    cam3.aspect=innerWidth/innerHeight;cam3.updateProjectionMatrix();
+    rend.setSize(innerWidth,innerHeight);hud.width=innerWidth;hud.height=innerHeight;
+  });
+}
+boot();
+</script>
+</body>
+</html>
