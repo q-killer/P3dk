@@ -1,0 +1,3010 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
+    <title>CyberBike HUD v12</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap');
+
+        :root {
+            /* Default: dark theme — best contrast on any background */
+            --primary: #f8fafc; --secondary: #94a3b8; --danger: #ef4444;
+            --wind: #38bdf8; --nav: #34d399; --squad: #00ffff;
+            --bg: rgba(15, 23, 42, 0.90);
+            --text-outline: 0 0 4px #000, 0 0 8px #000, 0 0 12px rgba(0,0,0,0.8);
+            --halo: rgba(14, 165, 233, 0.8);
+            --modal-bg: rgba(15, 23, 42, 0.97);
+            --font-main: 'Share Tech Mono', monospace;
+            --radar-ring: rgba(148,163,184,0.25);
+            --sky-top: rgba(14, 165, 233, 0.25);
+            --ground-top: rgba(15, 118, 110, 0.7);
+            --ground-bot: rgba(2, 6, 23, 0.95);
+        }
+
+        /* day-mode replaces night-mode — explicit opt-in only */
+        body.day-mode {
+            --primary: #1e293b; --secondary: #475569; --danger: #dc2626;
+            --wind: #0284c7; --nav: #059669; --squad: #0891b2;
+            --bg: rgba(248, 250, 252, 0.85);
+            /* Multi-direction white halo so dark text reads on ANY sky/ground color */
+            --text-outline:
+                0 0 3px rgba(255,255,255,0.95), 0 0 7px rgba(255,255,255,0.85),
+                0 2px 0 rgba(255,255,255,0.9),  0 -2px 0 rgba(255,255,255,0.9),
+                2px 0 0 rgba(255,255,255,0.9),  -2px 0 0 rgba(255,255,255,0.9);
+            --halo: rgba(2, 132, 199, 0.7);
+            --modal-bg: rgba(255, 255, 255, 0.97);
+            --radar-ring: rgba(100,116,139,0.2);
+            --sky-top: rgba(56, 189, 248, 0.4);
+            --ground-top: rgba(52, 211, 153, 0.4);
+            --ground-bot: rgba(15, 118, 110, 0.8);
+        }
+
+        body.ufo-mode {
+            --primary: #39ff14; --secondary: #b026ff; --danger: #ff003c;
+            --wind: #00ffff; --nav: #ff00ff;
+            --bg: rgba(5, 10, 5, 0.95);
+            --text-outline: 0 0 4px #000, 0 0 8px #000;
+            --halo: rgba(255, 20, 147, 0.9);
+            --modal-bg: rgba(5, 10, 5, 0.97);
+            --font-main: 'Orbitron', sans-serif;
+            --radar-ring: rgba(57,255,20,0.12);
+            --sky-top: rgba(57, 255, 20, 0.1);
+            --ground-top: rgba(57, 255, 20, 0.25);
+            --ground-bot: rgba(0, 0, 0, 0.95);
+        }
+        body {
+            margin: 0; padding: 0; background: transparent;
+            font-family: var(--font-main); color: var(--primary);
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden; user-select: none;
+            transition: color 1s, background 1s, font-family 0.3s;
+        }
+
+        #hud-wrapper { position: absolute; transform-origin: center center; transition: transform 0.2s; cursor: grab; }
+        #hud-wrapper:active { cursor: grabbing; }
+        #hud-wrapper.fullscreen-mode {
+            position: fixed; top: 0 !important; left: 0 !important; width: 100vw; height: 100vh;
+            background: #000; display: flex; justify-content: center; align-items: center;
+            z-index: 9999; transform: none !important;
+        }
+        #hud-pod {
+            position: relative; width: 320px; height: 320px;
+            background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, var(--bg) 90%);
+            border: 2px solid rgba(148,163,184,0.4); border-radius: 50%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4), inset 0 0 30px rgba(0,0,0,0.6);
+            overflow: hidden; transition: all 1s, transform 0.3s; backface-visibility: hidden;
+        }
+        /* Dark is default — day-mode lightens the pod */
+        body.day-mode #hud-pod { border-color: rgba(148,163,184,0.3); box-shadow: 0 10px 30px rgba(0,0,0,0.15), inset 0 0 20px rgba(255,255,255,0.4); }
+        body.ufo-mode #hud-pod { border-color: var(--secondary); }
+
+        #vector-canvas { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 1; pointer-events: none; }
+        .overlay { position: absolute; z-index: 2; pointer-events: none; }
+
+        .top-hdg { top: 32px; left: 50%; transform: translateX(-50%); font-size: 26px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); white-space: nowrap; }
+        .left-avionics { top: 50%; left: 38px; transform: translateY(-50%); text-align: left; white-space: nowrap; }
+        .right-stats { top: 50%; right: 38px; transform: translateY(-50%); text-align: right; white-space: nowrap; }
+
+        /* Speed: largest element — maximum contrast */
+        .speed-value { font-size: 46px; font-weight: 900; line-height: 1; margin-bottom: -2px; text-shadow: 0 0 10px var(--halo), 0 0 20px var(--halo), var(--text-outline); }
+        .speed-unit { font-size: 12px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 0 8px var(--halo), var(--text-outline); }
+
+        /* Labels: secondary color with strong outline so they read on sky AND ground */
+        .lbl { font-size: 12px; letter-spacing: 1px; margin-top: 6px; font-weight: 900;
+               color: var(--secondary);
+               text-shadow: var(--text-outline), 0 0 8px var(--halo); }
+        /* Values: primary color, doubled glow */
+        .val { font-size: 18px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
+        /* Sub-values: slightly smaller but same contrast treatment */
+        .sub-val { font-size: 11px; color: var(--primary); font-weight: 900; text-shadow: 0 0 6px var(--halo), var(--text-outline); }
+        .unit { font-size: 10px; font-weight: 900; margin-left: 2px; }
+
+        #svg-bezel { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 10; pointer-events: none; }
+
+        .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; }
+
+        #ptt-btn {
+            position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
+            background: transparent; border: 1px solid var(--secondary); color: var(--secondary);
+            padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
+            cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15;
+            pointer-events: auto; text-shadow: var(--text-outline);
+        }
+        #ptt-btn.recording { color: var(--bg); background: var(--danger); border-color: var(--danger); text-shadow: none; box-shadow: 0 0 15px var(--danger); }
+        #trip-btn {
+            position: absolute; top: calc(50% + 52px); left: 50%; transform: translateX(-50%);
+            background: var(--bg); color: var(--primary); border: 2px solid var(--primary);
+            padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
+            cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px;
+            z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: auto;
+        }
+        #trip-btn:active { background: var(--primary); color: #fff; }
+        .clickable { cursor: pointer; pointer-events: auto; }
+        .nav-color { color: var(--nav); }
+        .squad-color { color: var(--squad); }
+        .up-green { color: var(--nav); }
+        .down-red { color: var(--danger); }
+
+        #ctrl-bar {
+            position: absolute; bottom: -52px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 10px; align-items: center; z-index: 25;
+        }
+        .ctrl-btn {
+            background: var(--modal-bg); border: 1.5px solid var(--secondary); color: var(--primary);
+            font-family: var(--font-main); font-size: 11px; font-weight: 900;
+            padding: 8px 14px; border-radius: 20px; cursor: pointer; transition: 0.2s;
+            white-space: nowrap; box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            min-width: 48px; text-align: center;
+        }
+        .ctrl-btn:active { transform: scale(0.93); }
+        .ctrl-btn.ctrl-fs    { border-color: var(--wind); color: var(--wind); }
+        .ctrl-btn.ctrl-craft { border-color: var(--nav); color: var(--nav); font-size: 18px; padding: 6px 12px; }
+        .ctrl-btn.ctrl-theme { font-size: 16px; padding: 6px 12px; }
+
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
+        .modal-content { background: var(--modal-bg); border: 2px solid var(--primary); border-radius: 15px; padding: 20px; width: 85%; max-height: 85%; overflow-y: auto; text-align: left; box-shadow: 0 10px 40px rgba(0,0,0,0.4); pointer-events: auto; }
+        .modal-content h3 { text-align: center; margin-top: 0; letter-spacing: 2px; color: var(--secondary); font-weight: 900; }
+        .dest-item { padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .dest-item:hover { background: rgba(128,128,128,0.1); }
+        .dest-name { font-weight: 900; font-size: 14px; color: var(--primary); }
+        .dest-dist { font-size: 12px; color: var(--secondary); font-weight: 900; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 12px; color: var(--primary); font-weight: 900; margin-bottom: 5px; }
+        .input-group input, .input-group textarea { width: 100%; padding: 10px; background: rgba(0,0,0,0.05); border: 1px solid var(--secondary); color: var(--primary); font-family: inherit; font-size: 12px; font-weight: 900; border-radius: 5px; box-sizing: border-box; }
+        .input-group textarea { height: 60px; resize: none; word-break: break-all; }
+        .radio-controls { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; }
+        .radio-controls button { flex: 1 1 45%; background: transparent; border: 2px solid var(--primary); color: var(--primary); padding: 8px; font-weight: 900; font-size: 10px; font-family: inherit; cursor: pointer; border-radius: 8px; transition: 0.2s; white-space: nowrap; }
+        .radio-controls button.active { background: var(--squad); border-color: var(--squad); color: #000; }
+        .modal-close { display: block; margin: 10px auto 0 auto; background: transparent; border: 2px solid var(--danger); color: var(--danger); padding: 10px 20px; font-weight: 900; cursor: pointer; border-radius: 8px; font-family: inherit; width: 100%; }
+        .modal-btn-nav { border-color: var(--nav) !important; color: var(--nav) !important; }
+        .modal-btn-wind { border-color: var(--wind) !important; color: var(--wind) !important; }
+
+        .emoji-pick {
+            font-size: 28px; background: var(--modal-bg); border: 2px solid; border-radius: 10px;
+            padding: 6px; color: var(--primary); font-family: inherit; cursor: pointer;
+            width: 64px; text-align: center;
+        }
+        .mesh-btn {
+            flex: 1; background: transparent; border: 2px solid; font-family: inherit;
+            font-size: 11px; font-weight: 900; padding: 12px; border-radius: 8px; cursor: pointer;
+        }
+
+        /* ══════════════════════════════════════════════════════
+           AR WINDSHIELD MODE
+           Camera fills 100% of viewport — this is the view.
+           HUD elements become transparent glass overlays.
+           Canvas background cleared — real world shows through.
+           ══════════════════════════════════════════════════════ */
+        #ar-video {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            object-fit: cover; z-index: 0; opacity: 0;
+            transition: opacity 0.5s; pointer-events: none;
+        }
+        #ar-video.active { opacity: 1; }
+
+        /* In windshield mode the whole page background is camera */
+        body.ar-mode {
+            background: transparent !important;
+        }
+
+        /* Wrapper goes fullscreen automatically in AR */
+        body.ar-mode #hud-wrapper {
+            position: fixed !important;
+            top: 0 !important; left: 0 !important;
+            width: 100vw !important; height: 100vh !important;
+            background: transparent !important;
+            display: flex; justify-content: center; align-items: center;
+            z-index: 10; transform: none !important;
+        }
+
+        /* Pod becomes a ghost glass — camera shows through completely */
+        body.ar-mode #hud-pod {
+            width: 100vw !important; height: 100vh !important;
+            border-radius: 0 !important; border-width: 0 !important;
+            background: transparent !important;
+            box-shadow: none !important;
+            overflow: visible !important;
+        }
+        body.ar-mode #vector-canvas {
+            width: 100vw !important; height: 100vh !important;
+        }
+
+        /* In AR: text needs hard dark outlines to read on any background */
+        body.ar-mode .top-hdg,
+        body.ar-mode .val,
+        body.ar-mode .lbl,
+        body.ar-mode .sub-val,
+        body.ar-mode .speed-value,
+        body.ar-mode .speed-unit {
+            text-shadow: 0 0 3px #000, 0 0 6px #000, 0 0 12px #000,
+                         0 2px 0 #000, 0 -2px 0 #000, 2px 0 0 #000, -2px 0 0 #000 !important;
+            color: #00ffcc !important;
+        }
+
+        /* Speed value extra large in windshield mode — glanceable */
+        body.ar-mode .speed-value { font-size: 72px !important; opacity: 0.92; }
+        body.ar-mode .speed-unit  { font-size: 18px !important; letter-spacing: 3px; }
+
+        /* SVG bezel labels — brighter in AR */
+        body.ar-mode #svg-bezel text { opacity: 0.7; }
+
+        /* Horizon line — thicker in AR for attitude reference */
+        body.ar-mode canvas { z-index: 2; }
+
+        /* AR button — bottom center, large, safe to tap at speed */
+        #ar-btn {
+            position: absolute; bottom: -88px; left: 50%; transform: translateX(-50%);
+            background: transparent; border: 1.5px solid var(--wind); color: var(--wind);
+            font-family: var(--font-main); font-size: 11px; font-weight: 900;
+            padding: 7px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25); z-index: 25;
+        }
+        #ar-btn.active {
+            background: var(--wind); color: #000;
+            box-shadow: 0 0 14px var(--wind);
+        }
+        /* In AR mode the AR button is inside the fullscreen pod */
+        body.ar-mode #ar-btn {
+            position: fixed; bottom: 24px; left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px; padding: 12px 28px;
+            background: rgba(0,0,0,0.5);
+            border-color: #00ffcc; color: #00ffcc;
+            z-index: 30;
+        }
+        body.ar-mode #ctrl-bar {
+            position: fixed; bottom: 80px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 30;
+        }
+        body.ar-mode #ctrl-bar .ctrl-btn {
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(4px);
+        }
+
+        /* Night vision filter — boost brightness/contrast in low light */
+        body.ar-mode.ar-night #ar-video {
+            filter: brightness(2.2) contrast(1.4) saturate(0.3) hue-rotate(100deg);
+        }
+
+        body.ar-mode #ar-nv-btn {
+            display: block !important;
+            position: fixed; bottom: 24px; left: calc(50% + 120px);
+            transform: translateX(-50%);
+            font-family: var(--font-main); font-size: 14px; font-weight: 900;
+            padding: 12px 20px; border-radius: 20px; cursor: pointer;
+            background: rgba(0,0,0,0.5); border: 1.5px solid #94a3b8; color: #94a3b8;
+            z-index: 30;
+        }
+        body.ar-mode.ar-night #ar-nv-btn {
+            border-color: #39ff14; color: #39ff14;
+            box-shadow: 0 0 10px rgba(57,255,20,0.4);
+        }
+        body.ar-mode .speed-value.ar-warn { color: #ff3030 !important; animation: arSpeedWarn 0.4s infinite; }
+        @keyframes arSpeedWarn { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        body.fullscreen .left-avionics {
+            left: max(28px, 3vw) !important;
+        }
+        body.fullscreen .right-stats {
+            right: max(28px, 3vw) !important;
+        }
+        body.fullscreen .top-hdg {
+            font-size: clamp(28px, 5vw, 52px) !important;
+            top: max(24px, 3vh) !important;
+        }
+        body.fullscreen .speed-value {
+            font-size: clamp(56px, 9vw, 110px) !important;
+        }
+        body.fullscreen .speed-unit {
+            font-size: clamp(14px, 2vw, 22px) !important;
+        }
+        body.fullscreen .val {
+            font-size: clamp(18px, 2.5vw, 32px) !important;
+        }
+        body.fullscreen .lbl {
+            font-size: clamp(11px, 1.4vw, 16px) !important;
+        }
+        body.fullscreen .sub-val {
+            font-size: clamp(10px, 1.2vw, 14px) !important;
+        }
+        /* In fullscreen hide the circular clip — content should use the whole rectangle */
+        body.fullscreen #hud-pod {
+            border-radius: 0 !important;
+            overflow: visible !important;
+        }
+        body.fullscreen #svg-bezel {
+            opacity: 0.5;  /* de-emphasise bezel labels — content fills the screen now */
+        }
+        /* Trip and PTT buttons reposition in fullscreen */
+        body.fullscreen #trip-btn {
+            top: auto !important;
+            bottom: max(24px, 3vh) !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            font-size: 13px !important;
+            padding: 10px 22px !important;
+        }
+        body.fullscreen #ptt-btn {
+            bottom: max(80px, 10vh) !important;
+        }
+
+        #music-strip {
+            position: absolute; bottom: 68px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; align-items: center; z-index: 15;
+            pointer-events: auto; background: rgba(0,0,0,0.35); border-radius: 16px; padding: 5px 8px;
+        }
+        body.fullscreen #music-strip {
+            position: fixed; top: 12px; bottom: auto; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.55); border-radius: 20px; padding: 6px 12px;
+            backdrop-filter: blur(4px); z-index: 30;
+        }
+        .music-dot {
+            width: 8px; height: 8px; border-radius: 50%;
+            background: var(--secondary); cursor: pointer; transition: 0.15s;
+            border: 1.5px solid transparent;
+        }
+        .music-dot.active { background: var(--squad); border-color: var(--squad); box-shadow: 0 0 6px var(--squad); }
+        #music-playpause {
+            background: transparent; border: 1px solid var(--secondary); color: var(--secondary);
+            font-size: 10px; padding: 2px 7px; border-radius: 8px; cursor: pointer;
+            font-family: inherit; font-weight: 900; transition: 0.15s;
+        }
+        #music-playpause.playing { border-color: var(--squad); color: var(--squad); }
+
+        #station-picker {
+            position: absolute; bottom: 110px; left: 50%; transform: translateX(-50%);
+            background: var(--modal-bg); border: 1.5px solid var(--secondary);
+            border-radius: 14px; padding: 10px; z-index: 50; display: none;
+            pointer-events: auto; min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        }
+        #station-picker button {
+            display: block; width: 100%; background: transparent; border: none;
+            color: var(--primary); font-family: var(--font-main); font-size: 11px;
+            font-weight: 900; padding: 8px 12px; text-align: left; cursor: pointer;
+            border-radius: 6px; transition: 0.15s;
+        }
+        #station-picker button:hover, #station-picker button.active-station {
+            background: var(--squad); color: #000;
+        }
+        body.fullscreen #station-picker { position: fixed; top: 55px; bottom: auto; }
+        #rec-indicator {
+            position: fixed; top: 12px; right: 12px;
+            background: rgba(0,0,0,0.6); border: 1.5px solid var(--danger);
+            color: var(--danger); font-family: var(--font-main); font-size: 10px; font-weight: 900;
+            padding: 4px 10px; border-radius: 10px; z-index: 300;
+            display: none; letter-spacing: 1px;
+        }
+        #rec-indicator.active { display: block; animation: recPulse 1s infinite; }
+        @keyframes recPulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+        #pip-video {
+            position: fixed; bottom: 20px; right: 20px;
+            width: 120px; height: 90px; border-radius: 8px;
+            object-fit: cover; z-index: 50;
+            border: 2px solid var(--secondary);
+            display: none; pointer-events: none;
+        }
+        body.recording #pip-video { display: block; }
+        .station-btn {
+            background: transparent; border: 1.5px solid var(--secondary); color: var(--primary);
+            font-family: var(--font-main); font-size: 11px; font-weight: 900;
+            padding: 10px 8px; border-radius: 8px; cursor: pointer; transition: 0.15s;
+            text-align: center;
+        }
+        .station-btn:active, .station-btn.playing { background: var(--squad); border-color: var(--squad); color: #000; }
+
+        #gpx-drop { border: 2px dashed var(--secondary); border-radius: 10px; padding: 20px; text-align: center; font-size: 12px; color: var(--secondary); cursor: pointer; transition: 0.2s; margin-bottom: 15px; }
+        #gpx-drop.drag-over { border-color: var(--nav); color: var(--nav); background: rgba(16,185,129,0.05); }
+        #gpx-drop input[type=file] { display: none; }
+
+        .report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 12px 0; }
+        .report-cell { background: rgba(128,128,128,0.08); border-radius: 6px; padding: 8px; }
+        .report-cell .r-lbl { font-size: 9px; color: var(--secondary); letter-spacing: 1px; }
+        .report-cell .r-val { font-size: 15px; font-weight: 900; color: var(--primary); margin-top: 2px; }
+
+        .alert-flash { animation: flashWarning 0.5s infinite; font-weight: 900; }
+        @keyframes flashWarning { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .scan-anim { text-align: center; color: var(--squad); font-weight: 900; font-size: 14px; animation: pulse 1s infinite; margin: 20px 0; }
+        @keyframes pulse { 0% { opacity: 0.3; } 50% { opacity: 1; } 100% { opacity: 0.3; } }
+
+        #hazard-toast {
+            position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
+            background: rgba(227,38,54,0.9); color: #fff; padding: 8px 18px;
+            border-radius: 20px; font-family: var(--font-main); font-size: 12px; font-weight: 900;
+            letter-spacing: 1px; z-index: 200; display: none; pointer-events: none;
+            box-shadow: 0 0 20px rgba(227,38,54,0.6);
+            animation: toastPop 0.2s ease-out;
+        }
+        @keyframes toastPop { from { transform: translateX(-50%) scale(0.8); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
+    </style>
+</head>
+<body>
+
+<audio id="squad-music" preload="none"></audio>
+<audio id="squad-voice" autoplay></audio>
+<video id="ar-video" autoplay playsinline muted></video>
+<div id="hazard-toast"></div>
+
+<div id="hud-wrapper">
+    <div id="hud-pod">
+        <canvas id="vector-canvas"></canvas>
+
+        <div class="overlay top-hdg" id="heading">000° N</div>
+
+        <div class="overlay left-avionics">
+            <!-- ALT block: tappable — future: tap to set QNH or show details -->
+            <div class="lbl" style="margin-top:0;">⛰️ ALT</div>
+            <div class="val"><span id="altitude">0</span><span class="unit">FT</span></div>
+            <div class="sub-val" id="vsi">-- MPG</div>
+
+            <!-- FUEL block: tappable → open fuel calibration -->
+            <div class="lbl clickable" onclick="Avionics.openFuel()" style="margin-top:6px;cursor:pointer;">⛽ FUEL</div>
+            <div class="val clickable" onclick="Avionics.openFuel()" style="cursor:pointer;"><span id="fuel-rem">5.0</span><span class="unit">G</span></div>
+            <div class="sub-val clickable" onclick="Avionics.openFuel()" id="time-rem" style="cursor:pointer;">TTE: 2:30</div>
+
+            <!-- Cyclist power metrics — shown when craft=bike -->
+            <div id="power-block" style="display:none;">
+                <div class="lbl">⚡ WATTS</div>
+                <div class="val"><span id="watts-now">0</span><span class="unit">W</span></div>
+                <div class="sub-val" id="vo2-display">VO₂: --</div>
+            </div>
+        </div>
+
+        <div class="overlay right-stats">
+            <div class="speed-value" id="speed">0.0</div>
+            <div class="speed-unit" id="speed-unit-label">MPH</div>
+
+            <div class="lbl">📏 DIST</div>
+            <div class="val"><span id="distance">0.0</span><span class="unit" id="dist-unit-label">MI</span></div>
+
+            <div class="lbl">⏱️ TIME</div>
+            <div class="val" id="trip-time">00:00</div>
+
+            <!-- WPT: tappable → open waypoint picker -->
+            <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="margin-top:6px;cursor:pointer;">🎯 WPT</div>
+            <div class="val clickable nav-color" onclick="Avionics.openDest()" style="cursor:pointer;"><span id="dest-id">NONE</span></div>
+            <div class="sub-val nav-color" id="dest-eta" style="line-height:1.0;">-- MI | ETA --:--</div>
+        </div>
+
+        <!-- Dual-concentric bezel -->
+        <svg id="svg-bezel">
+            <defs>
+                <path id="outer-top-curve"/>
+                <path id="outer-bot-curve"/>
+                <path id="inner-top-curve"/>
+                <path id="inner-bot-curve"/>
+                <filter id="svg-halo">
+                    <feDropShadow dx="0" dy="0" stdDeviation="3" flood-color="var(--halo)"/>
+                    <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="var(--halo)"/>
+                </filter>
+            </defs>
+            <text font-family="var(--font-main)" font-size="10" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
+                <textPath href="#outer-top-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📜 LOGS ]</textPath>
+                <textPath href="#outer-bot-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📻 COMMS ]</textPath>
+                <textPath href="#outer-bot-curve" startOffset="78%" text-anchor="middle" fill="var(--secondary)">[ 📡 MESH ]</textPath>
+            </text>
+            <text font-family="var(--font-main)" font-size="12" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
+                <textPath href="#inner-top-curve" startOffset="50%" text-anchor="middle" id="svg-ats" fill="var(--secondary)">● ATS</textPath>
+                <textPath href="#inner-bot-curve" startOffset="26%" text-anchor="middle" id="svg-gps"   fill="var(--secondary)">🛰️ SRCH</textPath>
+                <textPath href="#inner-bot-curve" startOffset="74%" text-anchor="middle" id="svg-wx"    fill="var(--secondary)">☁️ WX</textPath>
+            </text>
+        </svg>
+
+        <!-- Hit zones: outer orbit -->
+        <div class="hit-zone" id="hit-logs"  onclick="TripLogger.openModal()"  title="Logs"></div>
+        <div class="hit-zone" id="hit-comms" onclick="Radio.openModal()"        title="Comms"></div>
+        <div class="hit-zone" id="hit-mesh"  onclick="Mesh.openModal()"         title="Mesh"></div>
+        <!-- Hit zones: inner orbit -->
+        <div class="hit-zone" id="hit-ats"   onclick="Avionics.openDest()"      title="Waypoint"></div>
+        <div class="hit-zone" id="hit-gps"   title="GPS Status"></div>
+        <div class="hit-zone" id="hit-wx"    onclick="Avionics.cycleTheme()"    title="Theme"></div>
+        <!-- Center craft tap zone: cycles plane→UFO→bike→plane -->
+        <div id="hit-craft-center" onclick="Avionics.toggleCraft()" title="Cycle craft"
+             style="position:absolute;width:70px;height:70px;border-radius:50%;
+                    top:50%;left:50%;transform:translate(-50%,-68%);
+                    background:transparent;cursor:pointer;z-index:20;pointer-events:auto;"></div>
+
+        <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
+        <button id="ptt-btn"
+            onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
+            ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
+
+        <!-- Mini music strip — tap to cycle station, long-press for picker, ▶ to play/pause -->
+        <div id="music-strip">
+            <button class="music-dot" id="mdot-0" title="Nightride FM"></button>
+            <button class="music-dot" id="mdot-1" title="Chillsynth"></button>
+            <button class="music-dot" id="mdot-2" title="Lofi Jpop"></button>
+            <button class="music-dot" id="mdot-3" title="Vaporwave"></button>
+            <button id="music-playpause" onclick="Radio.togglePlayPause()">▶</button>
+        </div>
+
+        <div id="station-picker">
+            <button onclick="Radio.playStation('https://streams.di.fm/di_vocalchillout','VOCAL TRANCE');Radio.closePicker()">🎤 VOCAL TRANCE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE STATION');Radio.closePicker()">🚀 SOMA SPACE STN</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_drumnbass','DRUM & BASS');Radio.closePicker()">🥁 DRUM &amp; BASS</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_goatrance','GOA TRANCE');Radio.closePicker()">🌀 GOA TRANCE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/deepspaceone-128-mp3','DEEP SPACE ONE');Radio.closePicker()">🌌 DEEP SPACE ONE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_soulfulhouse','SOULFUL HOUSE');Radio.closePicker()">🏠 SOULFUL HOUSE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_progressive','PROGRESSIVE');Radio.closePicker()">⚡ PROGRESSIVE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD');Radio.closePicker()">🥗 GROOVE SALAD</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_psytrance','PSY TRANCE');Radio.closePicker()">🌈 PSY TRANCE</button>
+            <button onclick="Radio.playStation('https://streams.di.fm/di_liquiddnb','LIQUID DnB');Radio.closePicker()">💧 LIQUID DnB</button>
+            <button style="color:var(--danger);border-top:1px solid rgba(128,128,128,0.2);margin-top:4px;padding-top:10px;" onclick="Radio.closePicker()">✕ CLOSE</button>
+        </div>
+    </div>
+
+    <!-- External control bar: craft, fullscreen, theme, record -->
+    <div id="ctrl-bar">
+        <button class="ctrl-btn ctrl-craft" id="ctrl-craft-btn" onclick="Avionics.toggleCraft()" title="Cycle craft">🛩️</button>
+        <button class="ctrl-btn ctrl-fs"    onclick="UX.toggleFullscreen()"    title="Fullscreen">⛶ FULL</button>
+        <button class="ctrl-btn ctrl-theme" id="ctrl-theme-btn" onclick="Avionics.cycleTheme()" title="Day/Night/Auto">☀️</button>
+        <button class="ctrl-btn" id="ctrl-rec-btn" onclick="Recorder.toggle()" title="Record montage" style="border-color:var(--danger);color:var(--danger);">⏺ REC</button>
+    </div><!-- /ctrl-bar -->
+    <button id="ar-btn" onclick="AR.toggle()" title="Augmented Reality windshield mode">📷 AR</button>
+    <button id="ar-nv-btn" onclick="AR.toggleNightVision()" title="Night vision boost" style="display:none;">🌙 NV</button>
+</div><!-- /hud-wrapper -->
+
+<!-- PiP front camera (shown during recording) -->
+<video id="pip-video" autoplay playsinline muted></video>
+<!-- Record indicator -->
+<div id="rec-indicator">⏺ REC</div>
+
+<!-- ════════════ MODALS ════════════ -->
+
+<div id="dest-modal" class="modal">
+    <div class="modal-content">
+        <h3>🎯 WAYPOINT</h3>
+        <div id="dest-list">Scanning airspace...</div>
+        <button class="modal-close" onclick="closeModal('dest-modal')">CANCEL</button>
+    </div>
+</div>
+
+<div id="fuel-modal" class="modal">
+    <div class="modal-content">
+        <h3>⛽ FUEL / RIDER CALIBRATION</h3>
+        <div class="input-group"><label>TANK CAPACITY (GAL)</label><input type="number" id="input-fuel-cap" step="0.5" value="5.0"></div>
+        <div class="input-group"><label>EST. BURN RATE (GPH)</label><input type="number" id="input-burn-rate" step="0.1" value="2.0"></div>
+        <div class="input-group"><label>RIDER WEIGHT (LBS) — for power calc</label><input type="number" id="input-weight" step="1" value="165"></div>
+        <button class="modal-close modal-btn-nav" onclick="Avionics.saveFuel()">SAVE</button>
+        <button class="modal-close" onclick="closeModal('fuel-modal')">CANCEL</button>
+    </div>
+</div>
+
+<div id="radio-modal" class="modal">
+    <div class="modal-content">
+        <h3 class="squad-color">📻 COMMS ARRAY</h3>
+
+        <!-- Station grid — tap = play immediately -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_vocalchillout','VOCAL TRANCE')">🎤 VOCAL TRANCE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE STATION')">🚀 SOMA SPACE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_drumnbass','DRUM & BASS')">🥁 DRUM &amp; BASS</button>
+            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_goatrance','GOA TRANCE')">🌀 GOA TRANCE</button>
+        </div>
+
+        <!-- Now playing bar -->
+        <div style="background:rgba(0,0,0,0.08);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
+            <span id="radio-now-playing" style="flex:1;font-size:11px;color:var(--secondary);font-weight:900;">— NO STATION —</span>
+            <button id="radio-playpause" onclick="Radio.togglePlayPause()" style="background:var(--nav);border:none;color:#000;font-family:inherit;font-size:13px;font-weight:900;padding:6px 14px;border-radius:10px;cursor:pointer;min-width:60px;">▶ PLAY</button>
+        </div>
+
+        <!-- Custom URL -->
+        <div class="input-group" style="margin-bottom:10px;">
+            <label>CUSTOM STREAM URL</label>
+            <div style="display:flex;gap:6px;">
+                <input type="text" id="input-radio-url" value="https://stream.nightride.fm/nightride.m4a" style="flex:1;">
+                <button onclick="Radio.playStation(document.getElementById('input-radio-url').value,'CUSTOM')" style="background:transparent;border:1.5px solid var(--wind);color:var(--wind);font-family:inherit;font-size:10px;font-weight:900;padding:6px 10px;border-radius:6px;cursor:pointer;white-space:nowrap;">▶ GO</button>
+            </div>
+        </div>
+
+        <!-- Broadcast toggle — stays active until stopped -->
+        <button id="btn-broadcast" onclick="Radio.toggleBroadcast()" style="width:100%;background:transparent;border:2px solid var(--squad);color:var(--squad);font-family:inherit;font-size:11px;font-weight:900;padding:10px;border-radius:8px;cursor:pointer;margin-bottom:4px;transition:0.2s;">📡 BROADCAST TO SQUAD</button>
+        <p style="font-size:9px;color:var(--secondary);text-align:center;margin:0 0 10px 0;">Syncs playback position to all linked squad members</p>
+
+        <button class="modal-close" onclick="closeModal('radio-modal')">CLOSE</button>
+    </div>
+</div>
+
+<div id="mesh-modal" class="modal">
+    <div class="modal-content">
+        <h3 class="squad-color">📡 SQUAD LINK</h3>
+
+        <div id="mesh-step-1">
+            <p style="font-size:11px;color:var(--secondary);text-align:center;margin:0 0 14px 0;">
+                Pick two emojis to make your squad code.<br>Anyone who enters the same code links with you.
+            </p>
+            <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:16px;">
+                <select id="emoji-a" class="emoji-pick" style="border-color:var(--squad);"></select>
+                <span style="font-size:22px;color:var(--secondary);font-weight:900;">+</span>
+                <select id="emoji-b" class="emoji-pick" style="border-color:var(--squad);"></select>
+            </div>
+            <div style="display:flex;gap:8px;">
+                <button onclick="Mesh.hostRoom()" class="mesh-btn" style="border-color:var(--squad);color:var(--squad);">📡 HOST</button>
+                <button onclick="Mesh.joinRoom()" class="mesh-btn" style="border-color:var(--nav);color:var(--nav);">🔗 JOIN</button>
+            </div>
+            <p style="font-size:9px;color:var(--secondary);text-align:center;margin:10px 0 0 0;">Tell your squad buddy your emoji code verbally or by text</p>
+        </div>
+
+        <div id="mesh-step-waiting" style="display:none;text-align:center;padding:10px 0;">
+            <p id="mesh-room-display" style="font-size:36px;margin:0 0 8px 0;"></p>
+            <p id="mesh-status-detail" style="font-size:11px;color:var(--secondary);font-weight:900;margin:0 0 16px 0;"></p>
+            <div class="scan-anim">WAITING FOR SQUAD...</div>
+            <details style="margin-top:16px;text-align:left;">
+                <summary style="font-size:10px;color:var(--secondary);cursor:pointer;font-weight:900;">▶ MANUAL FALLBACK (no internet)</summary>
+                <div style="margin-top:10px;">
+                    <div class="input-group"><label>YOUR TOKEN (share this)</label><textarea id="mesh-host-token" readonly></textarea></div>
+                    <div class="input-group"><label>PASTE PARTNER'S TOKEN</label><textarea id="mesh-host-answer" placeholder="Paste here..."></textarea></div>
+                    <button class="modal-close modal-btn-nav" style="margin-bottom:8px;" onclick="Mesh.manualAccept()">CONNECT MANUALLY</button>
+                </div>
+            </details>
+        </div>
+
+        <div id="mesh-step-join" style="display:none;">
+            <p style="font-size:11px;color:var(--secondary);text-align:center;margin:0 0 12px 0;">Select the same emojis your host chose:</p>
+            <div style="display:flex;justify-content:center;align-items:center;gap:12px;margin-bottom:16px;">
+                <select id="join-emoji-a" class="emoji-pick" style="border-color:var(--nav);"></select>
+                <span style="font-size:22px;color:var(--secondary);font-weight:900;">+</span>
+                <select id="join-emoji-b" class="emoji-pick" style="border-color:var(--nav);"></select>
+            </div>
+            <button onclick="Mesh.joinWithCode()" class="mesh-btn" style="width:100%;border-color:var(--nav);color:var(--nav);">🔗 CONNECT TO SQUAD</button>
+            <div id="mesh-join-manual" style="display:none;margin-top:12px;">
+                <div class="input-group"><label>PASTE HOST TOKEN</label><textarea id="mesh-client-offer" placeholder="Paste host token here..."></textarea></div>
+                <button class="modal-close modal-btn-nav" style="margin-bottom:8px;" onclick="Mesh.clientJoin()">GENERATE ANSWER</button>
+                <div id="mesh-client-reply-box" style="display:none;">
+                    <div class="input-group"><label>YOUR ANSWER TOKEN</label><textarea id="mesh-client-answer" readonly></textarea></div>
+                    <button class="modal-close modal-btn-wind" style="margin-bottom:8px;" onclick="Mesh.shareToken('client')">SHARE ANSWER</button>
+                </div>
+            </div>
+        </div>
+
+        <p id="mesh-status" style="text-align:center;font-size:12px;font-weight:bold;color:var(--danger);margin:8px 0 0 0;"></p>
+        <button class="modal-close" onclick="Mesh.cancelAndClose()">CLOSE</button>
+    </div>
+</div>
+
+<div id="log-modal" class="modal">
+    <div class="modal-content">
+        <h3>📜 CAPTAIN'S LOG</h3>
+        <div id="log-list"></div>
+        <!-- GPX drop zone -->
+        <div id="gpx-drop" onclick="document.getElementById('gpx-file').click()">
+            📂 DROP GPX ROUTE FILE HERE<br><span style="font-size:10px;opacity:0.6;">or tap to browse</span>
+            <input type="file" id="gpx-file" accept=".gpx" onchange="GPX.loadFile(event)">
+        </div>
+        <p id="gpx-status" style="text-align:center;font-size:11px;color:var(--nav);margin:4px 0 0 0;"></p>
+        <button class="modal-close" onclick="closeModal('log-modal')">CLOSE</button>
+    </div>
+</div>
+
+<div id="report-modal" class="modal">
+    <div class="modal-content">
+        <h3>📋 TRIP DEBRIEF</h3>
+        <div id="report-content"></div>
+        <button class="modal-close modal-btn-nav" onclick="TripLogger.copyReport()" style="margin-bottom:8px;">COPY REPORT</button>
+        <button class="modal-close" onclick="closeModal('report-modal')">CLOSE</button>
+    </div>
+</div>
+
+<!-- ════════════ SCRIPT ════════════ -->
+<script>
+/* CYBERBIKE HUD v3 — browser-native telemetry overlay */
+
+/* ═══════════════════════════════════════════════════════ CONSTANTS ══ */
+const CFG = {
+    RADAR_RANGE_MILES: 15,
+    AUTO_START_MPH: 5.0,
+    EARTH_RADIUS: 3958.8,
+    TO_RAD: Math.PI / 180,
+    MAX_G: 2.0,
+    HAZARD_CONE_DEG: 25,       // half-angle of forward threat cone
+    HAZARD_CONE_MILES: 0.6,    // depth of threat cone
+    TCAS_CRITICAL_MILES: 0.25, // inside this = spoken alert
+    BREADCRUMB_DIST_M: 100,    // meters between breadcrumb samples
+    BREADCRUMB_MAX: 500,
+    DR_MAX_SECONDS: 120,       // dead reckoning cutoff
+    RIDER_WEIGHT_LBS: 165,
+    BIKE_WEIGHT_LBS: 20,
+};
+
+/* ═══════════════════════════════════════════════════════ STATE ══ */
+const STATE = {
+    active: false, craftMode: 0, baseTheme: '', themeOverride: 'auto',
+    lat: null, lon: null, hdg: 0, altFt: 0, spdMph: 0, maxSpd: 0,
+    lastLat: null, lastLon: null, lastAltFt: 0, lastTs: 0,
+    apiLat: null, apiLon: null, apiTime: 0, lastTemp: null,
+    dist: 0, startTs: 0, tripElapsed: 0, fuelCap: 5.0, burnRate: 2.0, riderWeightLbs: 165,
+    airports: [], obstacles: [], activeDest: null,
+    windSpeed: 0, windDir: 0, wxCode: 0, wxIsDay: true,
+    _wxSpoken: false, _pendingWxSpeech: null,
+    gX: 0, gY: 0, gZ: 0, leanAngle: 0, pitchAngle: 0,
+    gridScroll: 0, tcasAudioPlayed: false,
+    isFullscreen: false, w: 320, h: 320, cx: 160, cy: 160, r: 155,
+    squadData: null, wakeLock: null,
+    gpsLost: false, drStartTs: 0, drLat: null, drLon: null,
+    crumbs: [],
+    gpxWaypoints: [], gpxActive: false, gpxWptIdx: 0,
+    wattsHistory: [], totalJoules: 0, powerTs: 0,
+    clrPrimary: '#f8fafc', clrSecondary: '#94a3b8', clrNav: '#34d399',
+    clrWind: '#38bdf8', clrSquad: '#00ffff', clrDanger: '#ef4444',
+    clrSkyTop: 'rgba(14,165,233,0.25)', clrGndTop: 'rgba(15,118,110,0.7)', clrGndBot: 'rgba(2,6,23,0.95)',
+    lastSpokenObstacle: null, lastSpokenTs: 0,
+    maxAltFt: 0, peakVsiFpm: 0, hazardCount: 0,
+    wxConditionStr: 'Unknown', altBuffer: [],
+};
+
+let watchId = null;
+let rafId = null;
+
+/* ═══════════════════════════════════════════════════════ HELPERS ══ */
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function vibrate(pattern) {
+    if (navigator.vibrate) try { navigator.vibrate(pattern); } catch(e) {}
+}
+
+const MathUtils = {
+    getDistAndBearing(lat1, lon1, lat2, lon2) {
+        const dLat = (lat2-lat1)*CFG.TO_RAD, dLon = (lon2-lon1)*CFG.TO_RAD;
+        const rLat1 = lat1*CFG.TO_RAD, rLat2 = lat2*CFG.TO_RAD;
+        const a = Math.sin(dLat/2)**2 + Math.cos(rLat1)*Math.cos(rLat2)*Math.sin(dLon/2)**2;
+        const dist = CFG.EARTH_RADIUS * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        const y = Math.sin(dLon)*Math.cos(rLat2);
+        const x = Math.cos(rLat1)*Math.sin(rLat2) - Math.sin(rLat1)*Math.cos(rLat2)*Math.cos(dLon);
+        const brg = (Math.atan2(y, x) * (180/Math.PI) + 360) % 360;
+        return { dist, brg };
+    },
+    getCardinal(angle) {
+        return ["N","NE","E","SE","S","SW","W","NW"][Math.round(angle/45)%8];
+    },
+    haverDist_m(lat1, lon1, lat2, lon2) {
+        return this.getDistAndBearing(lat1, lon1, lat2, lon2).dist * 1609.344;
+    },
+    say(text) {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.05;
+        window.speechSynthesis.speak(u);
+    },
+    sayQueue(text) {
+        // Queue after current speech without interrupting (for auto-announcements)
+        if (!('speechSynthesis' in window)) return;
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.05;
+        window.speechSynthesis.speak(u);
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ THEME CACHE ══ */
+const ThemeCache = {
+    update() {
+        const s = getComputedStyle(document.body);
+        STATE.clrPrimary   = s.getPropertyValue('--primary').trim();
+        STATE.clrSecondary = s.getPropertyValue('--secondary').trim();
+        STATE.clrNav       = s.getPropertyValue('--nav').trim();
+        STATE.clrWind      = s.getPropertyValue('--wind').trim();
+        STATE.clrSquad     = s.getPropertyValue('--squad').trim();
+        STATE.clrDanger    = s.getPropertyValue('--danger').trim();
+        STATE.clrSkyTop    = s.getPropertyValue('--sky-top').trim();
+        STATE.clrGndTop    = s.getPropertyValue('--ground-top').trim();
+        STATE.clrGndBot    = s.getPropertyValue('--ground-bot').trim();
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ TRIP LOGGER ══ */
+const TripLogger = {
+    getESN() {
+        let esn = localStorage.getItem('cyberbike_esn');
+        if (!esn) { esn = 'CB-' + Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem('cyberbike_esn', esn); }
+        return esn;
+    },
+
+    saveTrip() {
+        if (STATE.dist < 0.1) return;
+        const trips = JSON.parse(localStorage.getItem('cyberbike_trips') || '[]');
+        const avgWatts = STATE.wattsHistory.length ? Math.round(STATE.wattsHistory.reduce((a,b)=>a+b,0)/STATE.wattsHistory.length) : 0;
+        trips.unshift({
+            id: Date.now(), date: new Date().toLocaleDateString(),
+            distance: STATE.dist.toFixed(1),
+            duration: document.getElementById('trip-time').innerText,
+            maxSpeed: Math.round(STATE.maxSpd),
+            maxAlt: Math.round(STATE.maxAltFt),
+            avgWatts, hazards: STATE.hazardCount,
+        });
+        localStorage.setItem('cyberbike_trips', JSON.stringify(trips.slice(0,50)));
+    },
+
+    buildReport() {
+        const elapsed = STATE.tripElapsed || (STATE.startTs > 0 ? Date.now() - STATE.startTs : 0);
+        const hrs = elapsed / 3600000;
+        const h = Math.floor(elapsed/3600000);
+        const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
+        const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
+        const durationStr = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+        const fuelUsed = Math.min(STATE.fuelCap, hrs * STATE.burnRate);
+        const avgSpd = hrs > 0 ? (STATE.dist / hrs).toFixed(1) : '0.0';
+        const avgW = STATE.wattsHistory.length ? Math.round(STATE.wattsHistory.reduce((a,b)=>a+b,0)/STATE.wattsHistory.length) : 0;
+        const totalKJ = (STATE.totalJoules / 1000).toFixed(1);
+
+        const hwComp = Math.round(STATE.windSpeed * Math.cos((STATE.hdg - STATE.windDir) * CFG.TO_RAD));
+
+        return `
+        <div class="report-grid">
+            <div class="report-cell"><div class="r-lbl">DATE</div><div class="r-val">${new Date().toLocaleDateString()}</div></div>
+            <div class="report-cell"><div class="r-lbl">DURATION</div><div class="r-val">${durationStr}</div></div>
+            <div class="report-cell"><div class="r-lbl">DISTANCE</div><div class="r-val">${STATE.dist.toFixed(1)} mi</div></div>
+            <div class="report-cell"><div class="r-lbl">AVG SPEED</div><div class="r-val">${avgSpd} mph</div></div>
+            <div class="report-cell"><div class="r-lbl">MAX SPEED</div><div class="r-val">${Math.round(STATE.maxSpd)} mph</div></div>
+            <div class="report-cell"><div class="r-lbl">MAX ALT</div><div class="r-val">${Math.round(STATE.maxAltFt)} ft</div></div>
+            <div class="report-cell"><div class="r-lbl">AVG WATTS</div><div class="r-val">${avgW} W</div></div>
+            <div class="report-cell"><div class="r-lbl">TOTAL ENERGY</div><div class="r-val">${totalKJ} kJ</div></div>
+            <div class="report-cell"><div class="r-lbl">FUEL USED</div><div class="r-val">${fuelUsed.toFixed(1)} gal</div></div>
+            <div class="report-cell"><div class="r-lbl">CONDITIONS</div><div class="r-val">${STATE.wxConditionStr}</div></div>
+            <div class="report-cell"><div class="r-lbl">WIND</div><div class="r-val">${hwComp >= 0 ? 'HW' : 'TW'} ${Math.abs(hwComp)} mph</div></div>
+            <div class="report-cell"><div class="r-lbl">HAZARDS</div><div class="r-val">${STATE.hazardCount} logged</div></div>
+        </div>
+        <p style="font-size:10px;color:var(--secondary);text-align:center;margin-top:8px;">ESN: ${this.getESN()}</p>`;
+    },
+
+    showReport() {
+        document.getElementById('report-content').innerHTML = this.buildReport();
+        document.getElementById('report-modal').style.display = 'flex';
+    },
+
+    copyReport() {
+        const text = document.getElementById('report-content').innerText;
+        if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => MathUtils.say("Report copied"));
+    },
+
+    openModal() {
+        const list = document.getElementById('log-list');
+        const trips = JSON.parse(localStorage.getItem('cyberbike_trips') || '[]');
+        let html = `<p style="text-align:center;color:var(--secondary);font-size:10px;">ESN: ${this.getESN()}</p>`;
+        if (!trips.length) html += "<p style='text-align:center;'>No flights logged.</p>";
+        trips.forEach(t => {
+            html += `<div class="dest-item">
+                <span class="dest-name">${t.date} · ${t.duration}</span>
+                <span class="dest-dist">${t.distance} mi · ${t.maxSpeed} mph · ${t.avgWatts || '--'}W</span>
+            </div>`;
+        });
+        list.innerHTML = html;
+        document.getElementById('log-modal').style.display = 'flex';
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ GPX IMPORT ══ */
+const GPX = {
+    loadFile(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => this.parse(e.target.result, file.name);
+        reader.readAsText(file);
+    },
+
+    parse(text, name) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(text, 'text/xml');
+        const pts = doc.querySelectorAll('trkpt, wpt, rtept');
+        if (!pts.length) { document.getElementById('gpx-status').innerText = '⚠ No trackpoints found'; return; }
+
+        STATE.gpxWaypoints = Array.from(pts).map(pt => ({
+            lat: parseFloat(pt.getAttribute('lat')),
+            lon: parseFloat(pt.getAttribute('lon')),
+            ele: parseFloat(pt.querySelector('ele')?.textContent || '0'),
+        })).filter(p => !isNaN(p.lat) && !isNaN(p.lon));
+
+        STATE.gpxActive = true;
+        STATE.gpxWptIdx = 0;
+
+        if (STATE.gpxWaypoints.length > 0) {
+            const last = STATE.gpxWaypoints[STATE.gpxWaypoints.length - 1];
+            STATE.activeDest = { lat: last.lat, lon: last.lon, name: 'GPX END' };
+            document.getElementById('dest-id').innerText = 'GPX END';
+        }
+
+        document.getElementById('gpx-status').innerText = `✓ ${STATE.gpxWaypoints.length} pts loaded: ${name}`;
+        vibrate([100, 50, 100]);
+        closeModal('log-modal');
+    },
+
+    getRibbonPoints(pitchOffset, FOV, CAM_H) {
+        if (!STATE.gpxActive || !STATE.gpxWaypoints.length || !STATE.lat) return [];
+        const pts = [];
+        const ahead = STATE.gpxWaypoints.slice(STATE.gpxWptIdx, STATE.gpxWptIdx + 30);
+        for (const wp of ahead) {
+            const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, wp.lat, wp.lon);
+            if (dist > 2.0 || dist < 0.02) continue;
+            let relAngle = (brg - STATE.hdg) * CFG.TO_RAD;
+            while (relAngle > Math.PI) relAngle -= 2*Math.PI;
+            while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+            if (Math.abs(relAngle) > Math.PI/2) continue;
+            const scale = FOV / (Math.cos(relAngle) * dist);
+            const sx = Math.sin(relAngle) * dist * scale;
+            const sy = pitchOffset + CAM_H * scale;
+            if (sy > pitchOffset) pts.push({ x: sx, y: sy });
+        }
+        return pts;
+    },
+
+    tick() {
+        if (!STATE.gpxActive || !STATE.lat || STATE.gpxWptIdx >= STATE.gpxWaypoints.length) return;
+        const wp = STATE.gpxWaypoints[STATE.gpxWptIdx];
+        const distM = MathUtils.haverDist_m(STATE.lat, STATE.lon, wp.lat, wp.lon);
+        if (distM < 50) {
+            STATE.gpxWptIdx++;
+            vibrate([100, 50, 100]);
+        }
+    }
+};
+
+document.getElementById('gpx-drop').addEventListener('dragover', (e) => {
+    e.preventDefault();
+    document.getElementById('gpx-drop').classList.add('drag-over');
+});
+document.getElementById('gpx-drop').addEventListener('dragleave', () => {
+    document.getElementById('gpx-drop').classList.remove('drag-over');
+});
+document.getElementById('gpx-drop').addEventListener('drop', (e) => {
+    e.preventDefault();
+    document.getElementById('gpx-drop').classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) { const ev = { target: { files: [file] } }; GPX.loadFile(ev); }
+});
+
+/* ═══════════════════════════════════════════════════════ POWER / VO₂ ══ */
+const PowerCalc = {
+    compute(spdMph, gradePct, hwMph) {
+        if (STATE.craftMode !== 2 || spdMph < 0.5) return 0;
+        const v = spdMph * 0.44704;                     // m/s
+        const vw = hwMph * 0.44704;                     // headwind m/s
+        const totalMass = (STATE.riderWeightLbs + CFG.BIKE_WEIGHT_LBS) * 0.453592; // kg
+        const g = 9.81;
+        const rho = 1.225, Cd = 0.88, A = 0.45, Crr = 0.005;
+
+        const vEff = Math.max(0, v + vw);
+        const pAero = 0.5 * rho * Cd * A * vEff ** 3;
+        const pRoll = Crr * totalMass * g * v;
+        const theta = Math.atan(gradePct / 100);
+        const pGrade = totalMass * g * Math.sin(theta) * v;
+        const watts = Math.max(0, Math.round(pAero + pRoll + pGrade));
+        return watts;
+    },
+
+    /**
+     * VO₂ max estimate (ml/kg/min) using 5-minute rolling average watts.
+     * Formula: VO₂max ≈ (avg_watts * 10.8 / body_mass_kg) + 7
+     * Valid range: 20–90 ml/kg/min
+     */
+    estimateVO2(avgWatts) {
+        if (avgWatts < 10) return null;
+        const kg = STATE.riderWeightLbs * 0.453592;
+        const vo2 = (avgWatts * 10.8 / kg) + 7;
+        return Math.max(20, Math.min(90, Math.round(vo2)));
+    },
+
+    /**
+     * Effective headwind component (mph) — positive = headwind, negative = tailwind
+     */
+    headwindMph() {
+        if (!STATE.windSpeed) return 0;
+        const delta = (STATE.hdg - STATE.windDir) * CFG.TO_RAD;
+        return Math.round(STATE.windSpeed * Math.cos(delta));
+    },
+
+    tick(spdMph) {
+        if (STATE.craftMode !== 2) return;
+        const now = Date.now();
+        if (STATE.powerTs === 0) { STATE.powerTs = now; return; }
+        const dt = (now - STATE.powerTs) / 1000; // seconds
+        STATE.powerTs = now;
+
+        STATE.altBuffer.push(STATE.altFt);
+        if (STATE.altBuffer.length > 10) STATE.altBuffer.shift();
+        let gradePct = 0;
+        if (STATE.altBuffer.length >= 2) {
+            const altDelta = STATE.altBuffer[STATE.altBuffer.length-1] - STATE.altBuffer[0];
+            const distFt = spdMph * (STATE.altBuffer.length / 10) * 5280 / 3600;
+            gradePct = distFt > 0 ? (altDelta / distFt) * 100 : 0;
+        }
+
+        const hw = this.headwindMph();
+        const watts = this.compute(spdMph, gradePct, hw);
+
+        if (watts > 0) {
+            STATE.totalJoules += watts * dt;
+            STATE.wattsHistory.push(watts);
+            if (STATE.wattsHistory.length > 300) STATE.wattsHistory.shift(); // 5-min rolling
+        }
+
+        const avgW = STATE.wattsHistory.length
+            ? Math.round(STATE.wattsHistory.reduce((a,b)=>a+b,0) / STATE.wattsHistory.length) : 0;
+        document.getElementById('watts-now').innerText = watts || '--';
+        const vo2 = this.estimateVO2(avgW);
+        document.getElementById('vo2-display').innerText = vo2 ? `VO₂≈${vo2} · HW:${hw>=0?'+':''}${hw}` : `HW:${hw>=0?'+':''}${hw}`;
+
+        document.getElementById('power-block').style.display = STATE.craftMode === 2 ? 'block' : 'none';
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ HARDWARE ══ */
+const Hardware = {
+    /**
+     * devicemotion → derive G-vector, lean angle, pitch angle.
+     * accelerationIncludingGravity: x=lateral, y=fore/aft, z=vertical
+     */
+    handleMotion(e) {
+        const ag = e.accelerationIncludingGravity;
+        if (!ag) return;
+        const ax = ag.x || 0, ay = ag.y || 0, az = ag.z || 0;
+        const k = 0.2;
+        STATE.gX = STATE.gX * (1-k) + (ax / 9.81) * k;
+        STATE.gY = STATE.gY * (1-k) + (ay / 9.81) * k;
+        STATE.gZ = STATE.gZ * (1-k) + (az / 9.81) * k;
+    },
+
+    handleOrientation(e) {
+        if (e.beta === null) return;
+        const k = 0.08;
+        // gamma * 0.5: halves raw tilt for natural-feeling horizon response
+        const rawLean = Math.max(-45, Math.min(45, (e.gamma || 0) * 0.5));
+        STATE.leanAngle  = STATE.leanAngle  * (1-k) + rawLean * k;
+        STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 90) * k;
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ DEAD RECKONING ══ */
+const DeadReckoning = {
+    reset() {
+        STATE.gpsLost = false;
+        STATE.drStartTs = 0;
+        STATE.drLat = STATE.lat;
+        STATE.drLon = STATE.lon;
+        const el = document.getElementById('svg-gps');
+        el.textContent = '🛰️ 3D';
+        el.setAttribute('fill', 'var(--primary)');
+    },
+
+    engage() {
+        if (STATE.gpsLost) return;
+        STATE.gpsLost = true;
+        STATE.drStartTs = Date.now();
+        STATE.drLat = STATE.lat;
+        STATE.drLon = STATE.lon;
+        const el = document.getElementById('svg-gps');
+        el.textContent = '⚠ DR';
+        el.setAttribute('fill', '#f59e0b');
+    },
+
+    tick() {
+        if (!STATE.gpsLost || !STATE.drLat || !STATE.drLon) return;
+        const age = (Date.now() - STATE.drStartTs) / 1000;
+        if (age > CFG.DR_MAX_SECONDS) return; // give up after 2 min drift
+
+        const dtHrs = 1 / 3600; // 1-second tick
+        const distMi = STATE.spdMph * dtHrs;
+        const hdgRad = STATE.hdg * CFG.TO_RAD;
+        const dLat = (distMi / CFG.EARTH_RADIUS) * (180 / Math.PI);
+        const dLon = dLat / Math.cos(STATE.drLat * CFG.TO_RAD);
+        STATE.drLat += dLat * Math.cos(hdgRad);
+        STATE.drLon += dLon * Math.sin(hdgRad);
+
+        STATE.lat = STATE.drLat;
+        STATE.lon = STATE.drLon;
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ HAZARD ENGINE ══ */
+const HazardEngine = {
+    tick() {
+        if (!STATE.active || !STATE.lat || !STATE.obstacles.length) return;
+        const now = Date.now();
+        let closest = null, closestDist = Infinity;
+
+        for (const obs of STATE.obstacles) {
+            const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
+            if (dist > CFG.HAZARD_CONE_MILES) continue;
+            let rel = brg - STATE.hdg;
+            while (rel > 180) rel -= 360;
+            while (rel < -180) rel += 360;
+            if (Math.abs(rel) > CFG.HAZARD_CONE_DEG) continue;
+            if (dist < closestDist) { closestDist = dist; closest = { obs, dist, rel }; }
+            if (dist < CFG.TCAS_CRITICAL_MILES && !STATE.tcasAudioPlayed) {
+                STATE.tcasAudioPlayed = true;
+                vibrate([50, 30, 50, 30, 50]);
+                this.showToast(`⚠ ${obs.type.toUpperCase()} ${(dist * 5280).toFixed(0)} FT`);
+                setTimeout(() => { STATE.tcasAudioPlayed = false; }, 15000);
+            }
+        }
+
+        // Speak closest — throttled 30s, count unique encounters only
+        if (closest && (now - STATE.lastSpokenTs > 30000 || STATE.lastSpokenObstacle !== closest.obs)) {
+            const clock = Math.round(closest.rel / 30 + 12) % 12 || 12;
+            const typeStr = closest.obs.type === 'aerodrome' ? 'airport' : closest.obs.type;
+            MathUtils.say(`${typeStr}, ${closest.dist.toFixed(1)} miles, ${clock} o'clock`);
+            STATE.lastSpokenTs = now;
+            STATE.lastSpokenObstacle = closest.obs;
+            STATE.hazardCount++; // count unique encounters, not per-frame
+        }
+    },
+
+    showToast(msg) {
+        const t = document.getElementById('hazard-toast');
+        t.innerText = msg;
+        t.style.display = 'block';
+        clearTimeout(HazardEngine._toastTimer);
+        HazardEngine._toastTimer = setTimeout(() => { t.style.display = 'none'; }, 4000);
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ MESH ══ */
+window.Mesh = {
+    pc: null, dc: null, localStream: null, connected: false,
+    _roomCode: null, _pollTimer: null, _role: null,
+
+    _iceConfig: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' }
+        ]
+    },
+
+    // Emoji pair → deterministic room key suffix
+    _roomKey(a, b) {
+        const encode = e => [...e].map(c => c.codePointAt(0).toString(16)).join('');
+        return `cbhud-${encode(a)}-${encode(b)}`;
+    },
+
+    _teardown() {
+        if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+        if (this.pc) { try { this.pc.close(); } catch(e){} this.pc = null; }
+        this.dc = null; this.connected = false; this._roomCode = null; this._role = null;
+    },
+
+    openModal() {
+        document.getElementById('mesh-modal').style.display = 'flex';
+        document.getElementById('mesh-step-1').style.display = 'block';
+        document.getElementById('mesh-step-waiting').style.display = 'none';
+        document.getElementById('mesh-step-join').style.display = 'none';
+        document.getElementById('mesh-status').innerText = '';
+    },
+
+    cancelAndClose() {
+        if (!this.connected) this._teardown();
+        closeModal('mesh-modal');
+    },
+
+    async hostRoom() {
+        const a = document.getElementById('emoji-a').value;
+        const b = document.getElementById('emoji-b').value;
+        this._roomCode = this._roomKey(a, b);
+        this._role = 'host';
+
+        document.getElementById('mesh-step-1').style.display = 'none';
+        document.getElementById('mesh-step-waiting').style.display = 'block';
+        document.getElementById('mesh-room-display').innerText = `${a}${b}`;
+        document.getElementById('mesh-status-detail').innerText = `ROOM CODE: ${a}${b} — tell your squad`;
+        document.getElementById('mesh-status').innerText = '';
+
+        await this._initRTC();
+        this.dc = this.pc.createDataChannel('squad');
+        this._setupDataChannel();
+
+        const offer = await this.pc.createOffer();
+        await this.pc.setLocalDescription(offer);
+
+        await this._waitForICE();
+        const offerB64 = btoa(JSON.stringify(this.pc.localDescription));
+
+        sessionStorage.setItem(this._roomCode + '-offer', offerB64);
+        sessionStorage.removeItem(this._roomCode + '-answer');
+
+        document.getElementById('mesh-host-token').value = offerB64;
+
+        this._pollTimer = setInterval(() => {
+            const ans = sessionStorage.getItem(this._roomCode + '-answer');
+            if (ans) {
+                clearInterval(this._pollTimer); this._pollTimer = null;
+                this.manualAcceptToken(ans);
+            }
+        }, 1000);
+    },
+
+    async joinRoom() {
+        document.getElementById('mesh-step-1').style.display = 'none';
+        document.getElementById('mesh-step-join').style.display = 'block';
+    },
+
+    async joinWithCode() {
+        const a = document.getElementById('join-emoji-a').value;
+        const b = document.getElementById('join-emoji-b').value;
+        this._roomCode = this._roomKey(a, b);
+        this._role = 'client';
+
+        const offerB64 = sessionStorage.getItem(this._roomCode + '-offer');
+        if (!offerB64) {
+            document.getElementById('mesh-join-manual').style.display = 'block';
+            document.getElementById('mesh-status').innerText = 'No local host found — use manual token below';
+            document.getElementById('mesh-status').style.color = 'var(--wind)';
+            return;
+        }
+
+        document.getElementById('mesh-status').innerText = 'FOUND HOST — CONNECTING...';
+        document.getElementById('mesh-status').style.color = 'var(--nav)';
+        await this._initRTC();
+        this.pc.ondatachannel = (e) => { this.dc = e.channel; this._setupDataChannel(); };
+        await this.pc.setRemoteDescription(JSON.parse(atob(offerB64)));
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        await this._waitForICE();
+        const answerB64 = btoa(JSON.stringify(this.pc.localDescription));
+        sessionStorage.setItem(this._roomCode + '-answer', answerB64);
+        document.getElementById('mesh-client-answer').value = answerB64;
+    },
+
+    async manualAccept() {
+        const b64 = document.getElementById('mesh-host-answer').value.trim();
+        if (!b64) return;
+        this.manualAcceptToken(b64);
+    },
+
+    async manualAcceptToken(b64) {
+        try {
+            await this.pc.setRemoteDescription(JSON.parse(atob(b64)));
+            document.getElementById('mesh-status').innerText = 'LINKING...';
+            document.getElementById('mesh-status').style.color = 'var(--nav)';
+        } catch(e) {
+            document.getElementById('mesh-status').innerText = 'BAD TOKEN — try manual fallback';
+            document.getElementById('mesh-status').style.color = 'var(--danger)';
+        }
+    },
+
+    shareToken(type) {
+        const token = type === 'client'
+            ? document.getElementById('mesh-client-answer').value
+            : document.getElementById('mesh-host-token').value;
+        if (navigator.share) navigator.share({ title: 'CyberBike Squad Token', text: token }).catch(()=>{});
+        else if (navigator.clipboard) navigator.clipboard.writeText(token).then(()=>{
+            document.getElementById('mesh-status').innerText = 'TOKEN COPIED';
+            document.getElementById('mesh-status').style.color = 'var(--nav)';
+        });
+    },
+
+    async clientJoin() {
+        const offerB64 = document.getElementById('mesh-client-offer').value.trim();
+        if (!offerB64) return;
+        document.getElementById('mesh-status').innerText = 'GENERATING ANSWER...';
+        document.getElementById('mesh-status').style.color = 'var(--secondary)';
+        await this._initRTC();
+        this.pc.ondatachannel = (e) => { this.dc = e.channel; this._setupDataChannel(); };
+        await this.pc.setRemoteDescription(JSON.parse(atob(offerB64)));
+        const answer = await this.pc.createAnswer();
+        await this.pc.setLocalDescription(answer);
+        await this._waitForICE();
+        const answerB64 = btoa(JSON.stringify(this.pc.localDescription));
+        document.getElementById('mesh-client-reply-box').style.display = 'block';
+        document.getElementById('mesh-client-answer').value = answerB64;
+        document.getElementById('mesh-status').innerText = 'SEND YOUR ANSWER TO HOST';
+        document.getElementById('mesh-status').style.color = 'var(--wind)';
+    },
+
+    _waitForICE() {
+        return new Promise(resolve => {
+            if (this.pc.iceGatheringState === 'complete') { resolve(); return; }
+            const check = () => { if (this.pc.iceGatheringState === 'complete') { resolve(); this.pc.removeEventListener('icegatheringstatechange', check); } };
+            this.pc.addEventListener('icegatheringstatechange', check);
+            setTimeout(resolve, 4000); // timeout fallback
+        });
+    },
+
+    async _initRTC() {
+        this._teardown();
+        this.pc = new RTCPeerConnection(this._iceConfig);
+        this.pc.ontrack = (e) => { document.getElementById('squad-voice').srcObject = e.streams[0]; };
+
+        try {
+            this.localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+            this.localStream.getAudioTracks()[0].enabled = false;
+            this.localStream.getTracks().forEach(t => this.pc.addTrack(t, this.localStream));
+        } catch(e) { console.warn('Mic denied for Mesh'); }
+
+        this.pc.oniceconnectionstatechange = () => {
+            const s = this.pc.iceConnectionState;
+            if (s === 'connected' || s === 'completed') {
+                this.connected = true;
+                document.getElementById('mesh-status').innerText = '✅ SQUAD LINKED!';
+                document.getElementById('mesh-status').style.color = 'var(--nav)';
+                document.getElementById('svg-ats').textContent = '● ATS';
+                document.getElementById('svg-ats').setAttribute('fill', 'var(--squad)');
+                document.getElementById('svg-ats').style.fontWeight = '900';
+                vibrate([100, 100, 300]);
+                setTimeout(() => closeModal('mesh-modal'), 1500);
+                if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+                setInterval(() => this.sendTelemetry(), 250);
+            } else if (s === 'disconnected' || s === 'failed') {
+                this.connected = false;
+                document.getElementById('svg-ats').textContent = '● ATS';
+                document.getElementById('svg-ats').setAttribute('fill', 'var(--secondary)');
+                document.getElementById('svg-ats').style.opacity = '0.4';
+                STATE.squadData = null;
+            }
+        };
+    },
+
+    _setupDataChannel() {
+        this.dc.onmessage = (e) => {
+            const msg = JSON.parse(e.data);
+            if (msg.type === 'telemetry') {
+                STATE.squadData = msg.data;
+                STATE.squadData.ts = Date.now();
+                if (STATE.lat && STATE.squadData.lat) {
+                    const { dist } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
+                    if (dist < 0.1 && STATE.spdMph > 5) {
+                        HazardEngine.showToast('⚠ CLOSE PROXIMITY — SQUAD');
+                        vibrate([50, 30, 50, 30, 50]);
+                    }
+                }
+            }
+            if (msg.type === 'music') {
+                const audio = document.getElementById('squad-music');
+                if (msg.isPlaying) {
+                    if (audio.src !== msg.url) audio.src = msg.url;
+                    audio.currentTime = Math.max(0, (Date.now() - msg.startTime) / 1000);
+                    audio.play().catch(()=>{});
+                } else {
+                    audio.pause();
+                }
+                Radio._refreshUI();
+            }
+        };
+    },
+
+    sendTelemetry() {
+        if (this.connected && this.dc?.readyState === 'open' && STATE.lat) {
+            this.dc.send(JSON.stringify({ type: 'telemetry', data: { lat: STATE.lat, lon: STATE.lon, altFt: STATE.altFt, hdg: STATE.hdg, spdMph: STATE.spdMph } }));
+        }
+    },
+
+    sendMusicSync(url, isPlaying, startTime) {
+        if (this.connected && this.dc?.readyState === 'open') {
+            this.dc.send(JSON.stringify({ type: 'music', url, isPlaying, startTime }));
+        }
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ COMMS ══ */
+window.Comms = {
+    startTx(e) {
+        if (e?.preventDefault) e.preventDefault();
+        document.getElementById('ptt-btn').classList.add('recording');
+        document.getElementById('ptt-btn').innerText = '🔴 TX';
+        if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true;
+    },
+    stopTx(e) {
+        if (e?.preventDefault) e.preventDefault();
+        document.getElementById('ptt-btn').classList.remove('recording');
+        document.getElementById('ptt-btn').innerText = '🎙️ PTT';
+        if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = false;
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ RADIO ══ */
+window.Radio = {
+    audioEl: document.getElementById('squad-music'),
+    currentStation: null, currentStationName: null,
+    isBroadcasting: false, broadcastStartTime: 0,
+    _longPressTimer: null,
+    PRESETS: [
+        ['https://streams.di.fm/di_vocalchillout','VOCAL TRANCE'],
+        ['https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE'],
+        ['https://streams.di.fm/di_drumnbass','DRUM & BASS'],
+        ['https://streams.di.fm/di_goatrance','GOA TRANCE'],
+    ],
+
+    initDots() {
+        this.PRESETS.forEach(([url, name], i) => {
+            const btn = document.getElementById('mdot-' + i);
+            if (!btn) return;
+            btn.addEventListener('click', () => this.playStation(url, name));
+            btn.addEventListener('touchstart', (e) => {
+                this._longPressTimer = setTimeout(() => { this.openPicker(); }, 600);
+            }, {passive: true});
+            btn.addEventListener('touchend', () => clearTimeout(this._longPressTimer));
+            btn.addEventListener('touchmove', () => clearTimeout(this._longPressTimer));
+            btn.addEventListener('mousedown', () => { this._longPressTimer = setTimeout(() => this.openPicker(), 600); });
+            btn.addEventListener('mouseup', () => clearTimeout(this._longPressTimer));
+        });
+    },
+
+    openPicker() {
+        vibrate([30]);
+        const p = document.getElementById('station-picker');
+        if (p) p.style.display = p.style.display === 'block' ? 'none' : 'block';
+        if (p) p.querySelectorAll('button').forEach(b => {
+            b.classList.toggle('active-station', this.currentStation && b.textContent.includes(this.currentStationName || ''));
+        });
+    },
+
+    closePicker() { const p = document.getElementById('station-picker'); if (p) p.style.display='none'; },
+
+    openModal() { document.getElementById('radio-modal').style.display = 'flex'; this._refreshUI(); },
+
+    playStation(url, name) {
+        this.currentStation = url;
+        this.currentStationName = name;
+        document.getElementById('input-radio-url').value = url;
+        this.audioEl.src = url;
+        this.audioEl.currentTime = 0;
+        this.audioEl.play().catch(()=>{});
+        this._refreshUI();
+        if (this.isBroadcasting) {
+            this.broadcastStartTime = Date.now();
+            Mesh.sendMusicSync(url, true, this.broadcastStartTime);
+        }
+    },
+
+    togglePlayPause() {
+        if (!this.currentStation) {
+            this.playStation('https://streams.di.fm/di_vocalchillout', 'VOCAL TRANCE');
+            return;
+        }
+        if (this.audioEl.paused) {
+            if (!this.audioEl.src || this.audioEl.src !== this.currentStation) {
+                this.audioEl.src = this.currentStation;
+            }
+            this.audioEl.play().catch(()=>{});
+        } else {
+            this.audioEl.pause();
+            if (this.isBroadcasting) Mesh.sendMusicSync(this.currentStation, false, 0);
+        }
+        this._refreshUI();
+    },
+
+    toggleBroadcast() {
+        this.isBroadcasting = !this.isBroadcasting;
+        if (this.isBroadcasting) {
+            if (this.audioEl.paused && this.currentStation) {
+                this.audioEl.play().catch(()=>{});
+            }
+            this.broadcastStartTime = Date.now();
+            Mesh.sendMusicSync(this.currentStation || '', true, this.broadcastStartTime);
+        } else {
+            Mesh.sendMusicSync(this.currentStation || '', false, 0);
+        }
+        this._refreshUI();
+    },
+
+    _refreshUI() {
+        const nowEl = document.getElementById('radio-now-playing');
+        const ppBtn = document.getElementById('radio-playpause');
+        const bcBtn = document.getElementById('btn-broadcast');
+        const hudPP = document.getElementById('music-playpause');
+        if (nowEl) nowEl.innerText = this.currentStationName ? `▶ ${this.currentStationName}` : '— NO STATION —';
+        if (ppBtn) { ppBtn.innerText = this.audioEl.paused ? '▶ PLAY' : '⏸ PAUSE'; ppBtn.style.background = this.audioEl.paused ? 'var(--nav)' : 'var(--danger)'; }
+        if (hudPP) { hudPP.innerText = this.audioEl.paused ? '▶' : '⏸'; hudPP.className = this.audioEl.paused ? '' : 'playing'; }
+
+        if (bcBtn) {
+            if (this.isBroadcasting) { bcBtn.style.background='var(--squad)'; bcBtn.style.color='#000'; bcBtn.innerText='📡 BROADCASTING — TAP TO STOP'; }
+            else { bcBtn.style.background='transparent'; bcBtn.style.color='var(--squad)'; bcBtn.innerText='📡 BROADCAST TO SQUAD'; }
+        }
+
+        const stationUrls = [
+            'https://stream.nightride.fm/nightride.m4a',
+            'https://stream.nightride.fm/chillsynth.m4a',
+            'https://listen.moe/stream',
+            'https://radio.plaza.one/mp3'
+        ];
+        stationUrls.forEach((url, i) => {
+            const dot = document.getElementById('mdot-' + i);
+            if (dot) dot.classList.toggle('active', this.currentStation === url && !this.audioEl.paused);
+        });
+
+        document.querySelectorAll('.station-btn').forEach(btn => btn.classList.remove('playing'));
+        document.querySelectorAll('.station-btn').forEach(btn => {
+            if (this.currentStation && btn.getAttribute('onclick')?.includes(this.currentStation)) btn.classList.add('playing');
+        });
+    },
+
+};
+
+/* ═══════════════════════════════════════════════════════ UX / DRAG + PINCH ══ */
+window.UX = {
+    wrapper: document.getElementById('hud-wrapper'),
+    isDragging: false, startX: 0, startY: 0, initialX: 0, initialY: 0,
+    scale: 1, pinchStartDist: 0, pinchStartScale: 1,
+    MIN_SCALE: 0.5, MAX_SCALE: 2.0,
+
+    initDrag() {
+        this.wrapper.addEventListener('mousedown',  this.dragStart.bind(this), {passive: false});
+        document.addEventListener('mousemove',      this.drag.bind(this),      {passive: false});
+        document.addEventListener('mouseup',        this.dragEnd.bind(this));
+        this.wrapper.addEventListener('touchstart', this.touchStart.bind(this), {passive: false});
+        document.addEventListener('touchmove',      this.touchMove.bind(this),  {passive: false});
+        document.addEventListener('touchend',       this.touchEnd.bind(this));
+    },
+
+    // ── Mouse drag ──
+    dragStart(e) {
+        const tag = e.target.tagName.toLowerCase();
+        if (tag === 'button' || tag === 'input' || tag === 'textarea' || e.target.classList.contains('clickable')) return;
+        this.isDragging = true;
+        this.startX = e.clientX - this.initialX;
+        this.startY = e.clientY - this.initialY;
+    },
+    drag(e) {
+        if (!this.isDragging || STATE.isFullscreen) return;
+        e.preventDefault();
+        this.initialX = e.clientX - this.startX;
+        this.initialY = e.clientY - this.startY;
+        this._applyTransform();
+    },
+    dragEnd() { this.isDragging = false; },
+
+    // ── Touch: single finger = drag, two fingers = pinch-zoom ──
+    touchStart(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            this.isDragging = false;
+            this.pinchStartDist = this._touchDist(e.touches);
+            this.pinchStartScale = this.scale;
+        } else if (e.touches.length === 1) {
+            const tag = e.target.tagName.toLowerCase();
+            if (tag === 'button' || tag === 'input' || tag === 'textarea' || e.target.classList.contains('clickable')) return;
+            this.isDragging = true;
+            this.startX = e.touches[0].clientX - this.initialX;
+            this.startY = e.touches[0].clientY - this.initialY;
+        }
+    },
+    touchMove(e) {
+        if (e.touches.length === 2) {
+            e.preventDefault();
+            const dist = this._touchDist(e.touches);
+            const raw  = this.pinchStartScale * (dist / this.pinchStartDist);
+
+            if (STATE.isFullscreen) {
+                if (raw < 0.85) {
+                    this.toggleFullscreen();
+                }
+                return;
+            }
+
+            this.scale = Math.max(this.MIN_SCALE, Math.min(this.MAX_SCALE, raw));
+            this._applyTransform();
+
+            const podPx = 320 * this.scale;
+            const screenMin = Math.min(window.innerWidth, window.innerHeight);
+            if (!STATE.isFullscreen && podPx >= screenMin * 0.95) {
+                this.scale = 1;
+                this.toggleFullscreen();
+            }
+        } else if (e.touches.length === 1 && this.isDragging && !STATE.isFullscreen) {
+            e.preventDefault();
+            this.initialX = e.touches[0].clientX - this.startX;
+            this.initialY = e.touches[0].clientY - this.startY;
+            this._applyTransform();
+        }
+    },
+    touchEnd() { this.isDragging = false; },
+
+    _touchDist(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+    },
+    _applyTransform() {
+        if (STATE.isFullscreen) return;
+        this.wrapper.style.transform = `translate(${this.initialX}px, ${this.initialY}px) scale(${this.scale})`;
+    },
+
+    toggleFullscreen() {
+        STATE.isFullscreen = !STATE.isFullscreen;
+        if (STATE.isFullscreen) {
+            try { document.documentElement.requestFullscreen().catch(()=>{}); } catch(e) {}
+        } else {
+            try { if (document.fullscreenElement) document.exitFullscreen().catch(()=>{}); } catch(e) {}
+        }
+        this.handleResize();
+    },
+
+    handleResize() {
+        const pod = document.getElementById('hud-pod');
+        const canvas = document.getElementById('vector-canvas');
+        const svg = document.getElementById('svg-bezel');
+        const dpr = window.devicePixelRatio || 1;
+
+        if (STATE.isFullscreen || document.fullscreenElement) {
+            STATE.w = window.innerWidth; STATE.h = window.innerHeight;
+            STATE.cx = STATE.w/2; STATE.cy = STATE.h/2;
+            STATE.r = Math.min(STATE.w, STATE.h)/2 - 10;
+            this.wrapper.classList.add('fullscreen-mode');
+            document.body.classList.add('fullscreen');
+            pod.style.cssText += ';width:'+STATE.w+'px;height:'+STATE.h+'px;border-radius:0%;border-width:0px;';
+        } else {
+            STATE.w = 320; STATE.h = 320; STATE.cx = 160; STATE.cy = 160; STATE.r = 155;
+            this.wrapper.classList.remove('fullscreen-mode');
+            document.body.classList.remove('fullscreen');
+            this.scale = 1;
+            this._applyTransform();
+            pod.style.cssText += ';width:320px;height:320px;border-radius:50%;border-width:2px;';
+        }
+
+        canvas.width = STATE.w * dpr; canvas.height = STATE.h * dpr;
+        canvas.style.width = STATE.w+'px'; canvas.style.height = STATE.h+'px';
+        Graphics.ctx.setTransform(1,0,0,1,0,0);
+        Graphics.ctx.scale(dpr, dpr);
+
+        svg.setAttribute('width', STATE.w); svg.setAttribute('height', STATE.h);
+
+        const arcR = Math.min(STATE.r, 148);
+        const rOuter = arcR - 7;
+        const rInner = arcR - 21;
+
+        const bezFontOuter = Math.min(13, Math.max(9, arcR * 0.068));
+        const bezFontInner = Math.min(14, Math.max(10, arcR * 0.082));
+        document.querySelector('#svg-bezel text:first-of-type').setAttribute('font-size', bezFontOuter);
+        document.querySelector('#svg-bezel text:last-of-type').setAttribute('font-size', bezFontInner);
+        const { cx, cy } = STATE;
+
+        document.getElementById('outer-top-curve').setAttribute('d', `M ${cx-rOuter} ${cy} A ${rOuter} ${rOuter} 0 0 1 ${cx+rOuter} ${cy}`);
+        document.getElementById('outer-bot-curve').setAttribute('d', `M ${cx-rOuter} ${cy} A ${rOuter} ${rOuter} 0 0 0 ${cx+rOuter} ${cy}`);
+        document.getElementById('inner-top-curve').setAttribute('d', `M ${cx-rInner} ${cy} A ${rInner} ${rInner} 0 0 1 ${cx+rInner} ${cy}`);
+        document.getElementById('inner-bot-curve').setAttribute('d', `M ${cx-rInner} ${cy} A ${rInner} ${rInner} 0 0 0 ${cx+rInner} ${cy}`);
+
+        // ── Corrected hit-zone positioning ──
+        // Bottom arc: same math, but Y is flipped (sin negated)
+        const posTop = (id, radius, offsetPct) => {
+            const angle = Math.PI * (1 - offsetPct); // 0% = left end (π), 100% = right end (0)
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.style.left = (cx + Math.cos(angle) * radius) + 'px';
+                btn.style.top  = (cy - Math.sin(angle) * radius) + 'px';
+            }
+        };
+        const posBot = (id, radius, offsetPct) => {
+            const angle = Math.PI * offsetPct; // 0% = left end (0), 100% = right end (π)
+            const btn = document.getElementById(id);
+            if (btn) {
+                btn.style.left = (cx - Math.cos(angle) * radius) + 'px'; // NOTE: x direction flips for bottom arc
+                btn.style.top  = (cy + Math.sin(angle) * radius) + 'px';
+            }
+        };
+
+        posTop('hit-logs',  rOuter, 0.22);
+        posBot('hit-comms', rOuter, 0.22);
+        posBot('hit-mesh',  rOuter, 0.78);
+        posTop('hit-ats',   rInner, 0.24);
+        posBot('hit-gps',   rInner, 0.26);
+        posBot('hit-wx',    rInner, 0.50);
+
+        ThemeCache.update();
+        if (!STATE.active) Graphics.renderHUD();
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ API ══ */
+const API = {
+    applyTheme() {
+        const wantDay = STATE.themeOverride === 'day' ||
+                        (STATE.themeOverride === 'auto' && STATE.baseTheme === 'day-mode');
+        const cls = [];
+        if (wantDay && STATE.craftMode !== 1) cls.push('day-mode');
+        if (STATE.craftMode === 1) cls.push('ufo-mode');
+        if (STATE.isFullscreen) cls.push('fullscreen');
+        if (document.body.classList.contains('ar-mode')) cls.push('ar-mode');
+        if (document.body.classList.contains('ar-night')) cls.push('ar-night');
+        if (document.body.classList.contains('recording')) cls.push('recording');
+        document.body.className = cls.join(' ');
+        ThemeCache.update();
+    },
+
+    async fetchEnvironment(lat, lon) {
+        try {
+            const q = `[out:json][timeout:10];((node|way|relation)["aeroway"="aerodrome"](around:5000,${lat},${lon});(node|way|relation)["natural"="peak"](around:5000,${lat},${lon});(node|way|relation)["man_made"~"tower|mast|communications_tower"](around:5000,${lat},${lon}););out center;`;
+            const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+            const data = await res.json();
+            STATE.obstacles = data.elements.map(el => {
+                const elLat = el.lat ?? el.center?.lat;
+                const elLon = el.lon ?? el.center?.lon;
+                if (elLat == null || elLon == null) return null;
+                let t = 'unknown';
+                if (el.tags?.aeroway) t = 'aerodrome';
+                else if (el.tags?.natural) t = 'peak';
+                else if (el.tags?.man_made) t = 'tower';
+                return { lat: elLat, lon: elLon, name: el.tags?.name, type: t };
+            }).filter(Boolean);
+            STATE.airports = STATE.obstacles.filter(o => o.type === 'aerodrome');
+        } catch(e) {}
+
+        try {
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=weathercode,windspeed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&windspeed_unit=mph&forecast_days=1`;
+            const res = await fetch(url);
+            const d = await res.json();
+            const cw = d.current_weather;
+            STATE.windSpeed = cw.windspeed;
+            STATE.windDir = cw.winddirection;
+            STATE.wxCode = cw.weathercode;
+            STATE.wxIsDay = cw.is_day === 1;
+
+            const icon = this._wxIcon(cw.weathercode, STATE.wxIsDay);
+            const isNight = !STATE.wxIsDay;
+            const temp = Math.round(cw.temperature);
+
+            STATE.wxConditionStr = `${icon} ${temp}°F ${STATE.windSpeed}mph wind`;
+
+            let score = 0;
+            if (cw.weathercode >= 95) score += 5;
+            else if (cw.weathercode >= 51) score += 3;
+            else if (cw.weathercode >= 45) score += 2;
+            if (STATE.windSpeed > 20) score += 2;
+            else if (STATE.windSpeed > 10) score += 1;
+            const nextCode = d.hourly?.weathercode?.[1] ?? cw.weathercode;
+            const nextSpd  = d.hourly?.windspeed_10m?.[1] ?? STATE.windSpeed;
+            let lookaheadWarning = '';
+            if (nextCode > cw.weathercode && nextCode >= 95) { score += 2; lookaheadWarning = 'Thunderstorms expected within the hour.'; }
+            else if (nextCode > cw.weathercode && nextCode >= 71) { score += 2; lookaheadWarning = 'Heavy snow expected within the hour.'; }
+            else if (nextCode > cw.weathercode && nextCode >= 51) { score += 2; lookaheadWarning = 'Rain expected within the hour.'; }
+            else if (nextSpd > STATE.windSpeed + 10 && nextSpd > 20) lookaheadWarning = 'Winds increasing within the hour.';
+
+            // ── Audible weather briefing — deferred until user gesture (browser TTS policy) ──
+            const conditionText = this._wxSpeechText(cw.weathercode, STATE.wxIsDay);
+            const windText = STATE.windSpeed > 5 ? `, wind speed ${Math.round(STATE.windSpeed)} miles per hour` : '';
+            const lookaheadText = lookaheadWarning ? ` ${lookaheadWarning}` : '';
+            const rideScore = score <= 2 ? 'Excellent riding conditions.' : score <= 4 ? 'Good riding conditions.' : score <= 6 ? 'Fair conditions, ride with care.' : 'Poor conditions, ride cautiously.';
+            const wxSpeech = `${conditionText}, ${temp} degrees${windText}. ${rideScore}${lookaheadText}`;
+            // Store for deferred playback — speak on next user interaction if not yet spoken
+            if (!STATE._wxSpoken) {
+                STATE._pendingWxSpeech = wxSpeech;
+                const speakOnce = () => {
+                    if (STATE._pendingWxSpeech) {
+                        MathUtils.sayQueue(STATE._pendingWxSpeech);
+                        STATE._pendingWxSpeech = null;
+                        STATE._wxSpoken = true;
+                    }
+                    document.removeEventListener('touchstart', speakOnce);
+                    document.removeEventListener('click', speakOnce);
+                };
+                document.addEventListener('touchstart', speakOnce, { once: true });
+                document.addEventListener('click',      speakOnce, { once: true });
+            } else {
+                MathUtils.sayQueue(wxSpeech);
+            }
+
+            const wxSvg = document.getElementById('svg-wx');
+            if (score >= 6) {
+                wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan fill="var(--danger)"> ⚡${score}/10</tspan>`;
+            } else if (score >= 3) {
+                wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan fill="var(--wind)"> ${score}/10</tspan>`;
+            } else {
+                const daily = d.daily;
+                const high = Math.round(daily?.temperature_2m_max?.[0] ?? temp);
+                const low  = Math.round(daily?.temperature_2m_min?.[0] ?? temp);
+                wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan> H:${high}° L:${low}°</tspan>`;
+            }
+
+            let baseTheme = (STATE.wxIsDay && cw.weathercode < 45) ? 'day-mode' : '';
+            STATE.baseTheme = baseTheme;
+            API.applyTheme();
+
+            let trendArrow = '▶', trendColor = 'var(--secondary)';
+            if (STATE.lastTemp !== null) {
+                const t = Math.round(cw.temperature);
+                if (t > STATE.lastTemp) { trendArrow = '▲'; trendColor = 'var(--danger)'; }
+                else if (t < STATE.lastTemp) { trendArrow = '▼'; trendColor = 'var(--wind)'; }
+                STATE.lastTemp = t;
+            } else {
+                STATE.lastTemp = Math.round(cw.temperature);
+            }
+        } catch(e) {
+            document.getElementById('svg-wx').textContent = '☁️ WX: ERR';
+        }
+    },
+
+    _wxIcon(code, isDay) {
+        if (code === 0) return isDay ? '☀️' : '🌙';
+        if (code <= 3) return isDay ? '⛅' : '☁️';
+        if (code <= 48) return '🌫️';
+        if (code <= 82) return '🌧️';
+        return '⛈️';
+    },
+
+    _wxSpeechText(code, isDay) {
+        if (code === 0)  return isDay ? 'Clear skies' : 'Clear night';
+        if (code === 1)  return 'Mainly clear';
+        if (code === 2)  return 'Partly cloudy';
+        if (code === 3)  return 'Overcast';
+        if (code <= 48) return 'Foggy conditions';
+        if (code <= 55) return 'Light drizzle';
+        if (code <= 67) return 'Rain';
+        if (code <= 77) return 'Snow';
+        if (code <= 82) return 'Rain showers';
+        if (code <= 84) return 'Snow showers';
+        if (code === 95) return 'Thunderstorm';
+        return 'Severe thunderstorm with hail';
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ AVIONICS ══ */
+window.Avionics = {
+    toggleCraft() {
+        STATE.craftMode = (STATE.craftMode + 1) % 3;
+        const svgEl = document.getElementById('svg-craft'); // may be null — element removed from bezel
+        const ctrlBtn = document.getElementById('ctrl-craft-btn');
+        const icons = ['🛩️','🛸','🚴'];
+        const names = ['avionics','alien technology','cyber bike'];
+        if (svgEl) svgEl.textContent = icons[STATE.craftMode];
+        if (ctrlBtn) ctrlBtn.innerText = icons[STATE.craftMode];
+        MathUtils.say(names[STATE.craftMode] + ' engaged');
+        document.getElementById('power-block').style.display = STATE.craftMode === 2 ? 'block' : 'none';
+        API.applyTheme();
+        if (!STATE.active) Graphics.renderHUD();
+    },
+
+    cycleTheme() {
+        const modes = ['auto','day','night'];
+        const labels = ['auto','day','dark'];
+        const icons = ['🌤️','☀️','🌙'];
+        STATE.themeOverride = modes[(modes.indexOf(STATE.themeOverride) + 1) % modes.length];
+        const idx = modes.indexOf(STATE.themeOverride);
+        const ctrlBtn = document.getElementById('ctrl-theme-btn');
+        if (ctrlBtn) ctrlBtn.innerText = icons[idx];
+        MathUtils.say(labels[idx] + ' mode');
+        API.applyTheme();
+    },
+
+    openFuel() {
+        document.getElementById('input-fuel-cap').value = STATE.fuelCap;
+        document.getElementById('input-burn-rate').value = STATE.burnRate;
+        document.getElementById('input-weight').value = STATE.riderWeightLbs;
+        document.getElementById('fuel-modal').style.display = 'flex';
+    },
+
+    saveFuel() {
+        STATE.fuelCap = parseFloat(document.getElementById('input-fuel-cap').value) || 5.0;
+        STATE.burnRate = parseFloat(document.getElementById('input-burn-rate').value) || 2.0;
+        STATE.riderWeightLbs = parseFloat(document.getElementById('input-weight').value) || 165;
+        CFG.RIDER_WEIGHT_LBS = STATE.riderWeightLbs;
+        document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
+        closeModal('fuel-modal');
+    },
+
+    openDest() {
+        const list = document.getElementById('dest-list');
+        document.getElementById('dest-modal').style.display = 'flex';
+        if (!STATE.airports.length) {
+            list.innerHTML = "<p style='text-align:center;font-weight:900;'>Radar acquiring local aerodromes...<br>Wait for GPS lock.</p>";
+            return;
+        }
+        list.innerHTML = `<div class="dest-item" onclick="Avionics.setDest(-1)"><span class="dest-name" style="color:var(--danger)">❌ CLEAR WAYPOINT</span></div>`;
+        const sorted = [...STATE.airports]
+            .map(ap => ({ ...ap, d: STATE.lat ? MathUtils.getDistAndBearing(STATE.lat, STATE.lon, ap.lat, ap.lon).dist : 999 }))
+            .sort((a,b) => a.d - b.d);
+        sorted.forEach(ap => {
+            const sel = STATE.activeDest?.lat === ap.lat;
+            const name = ap.name || 'AERODROME';
+            list.innerHTML += `<div class="dest-item" style="${sel?'background:rgba(16,185,129,0.15)':''}" onclick="Avionics.setDest(${ap.lat},${ap.lon},'${name.replace(/'/g,"\\'")}')">
+                <span class="dest-name">${name}</span><span class="dest-dist">${ap.d.toFixed(1)} MI</span>
+            </div>`;
+        });
+    },
+
+    setDest(lat, lon, name) {
+        if (lat === -1) {
+            STATE.activeDest = null;
+            document.getElementById('dest-id').innerText = 'NONE';
+            document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
+        } else {
+            STATE.activeDest = { lat, lon, name };
+            document.getElementById('dest-id').innerText = (name||'WPT').substring(0,8).toUpperCase();
+            MathUtils.say('Waypoint entered');
+            vibrate([100, 50, 100]);
+        }
+        closeModal('dest-modal');
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ GRAPHICS ══ */
+const Graphics = {
+    ctx: document.getElementById('vector-canvas').getContext('2d'),
+
+    drawCessna(x, y, roll, isDark) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1.2, 1.2);
+        ctx.rotate(roll * CFG.TO_RAD);
+
+        // Use fixed contrast colors — white fuselage is invisible on light pod background
+        const baseColor = isDark ? '#cc4444' : '#e2e8f0';
+        const shadeColor = isDark ? '#1a0000' : '#475569';
+        const highlightColor = isDark ? '#ff8888' : '#ffffff';
+        const glassColor = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
+
+        const invRoll = -roll * CFG.TO_RAD;
+        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 8*Math.cos(invRoll) - 15*Math.sin(invRoll);
+        ctx.shadowOffsetY = 8*Math.sin(invRoll) + 15*Math.cos(invRoll);
+
+        ctx.fillStyle = shadeColor;
+        ctx.beginPath(); this._rr(ctx, -12, 12, 24, 4, 2); ctx.fill();
+        ctx.fillStyle = baseColor;
+        ctx.beginPath(); this._rr(ctx, -12, 12, 24, 1.5, 0.75); ctx.fill();
+
+        ctx.fillStyle = shadeColor;
+        ctx.beginPath(); this._rr(ctx, -35, -4, 70, 8, 4); ctx.fill();
+        ctx.fillStyle = baseColor;
+        ctx.beginPath(); this._rr(ctx, -35, -4, 70, 2.5, 1.25); ctx.fill();
+
+        let fg = ctx.createLinearGradient(-5, 0, 5, 0);
+        fg.addColorStop(0, shadeColor); fg.addColorStop(0.3, highlightColor); fg.addColorStop(1, shadeColor);
+        ctx.fillStyle = fg; ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+        ctx.beginPath();
+        ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
+        ctx.fill();
+        ctx.strokeStyle = shadeColor; ctx.lineWidth = 0.75;
+        ctx.beginPath();
+        ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
+        ctx.stroke();
+
+        ctx.fillStyle = glassColor;
+        ctx.beginPath();
+        ctx.moveTo(0,-11); ctx.quadraticCurveTo(4,-8,3,-3); ctx.lineTo(-3,-3); ctx.quadraticCurveTo(-4,-8,0,-11);
+        ctx.fill();
+
+        let tg = ctx.createLinearGradient(-1,0,1,0);
+        tg.addColorStop(0, shadeColor); tg.addColorStop(1, highlightColor);
+        ctx.fillStyle = tg;
+        ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(1.5,16); ctx.lineTo(0,18); ctx.lineTo(-1.5,16); ctx.closePath(); ctx.fill();
+
+        ctx.save(); ctx.translate(0, -22);
+        const pA = STATE.active ? Date.now() / (20 - Math.min(STATE.spdMph/10, 15)) : Math.PI/4;
+        const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
+        const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
+        ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(-b1x,-b1y); ctx.lineTo(b1x,b1y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-b2x,-b2y); ctx.lineTo(b2x,b2y); ctx.stroke();
+        ctx.fillStyle = isDark ? '#ef4444' : '#94a3b8';
+        ctx.beginPath(); ctx.ellipse(0,0,2,1.5,0,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+
+        ctx.beginPath(); ctx.arc(0,15,1.5,0,Math.PI*2);
+        ctx.fillStyle = isDark ? '#ff0000' : '#ef4444';
+        ctx.shadowBlur = 6; ctx.shadowColor = ctx.fillStyle; ctx.fill();
+        ctx.restore();
+    },
+
+    drawUFO(x, y, roll) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1.1, 1.1);
+        ctx.rotate(roll * CFG.TO_RAD);
+
+        const isDark = !document.body.classList.contains('day-mode') || document.body.classList.contains('ufo-mode');
+        const hullMid = isDark ? '#222' : '#94a3b8';
+        const hullBase = isDark ? '#050505' : '#334155';
+        const hullLight = isDark ? '#555' : '#cbd5e1';
+        const hullDark = isDark ? '#0a0a0a' : '#475569';
+        const primColor = STATE.clrPrimary;
+        const secColor = STATE.clrSecondary;
+
+        const invRoll = -roll * CFG.TO_RAD;
+        ctx.shadowColor = 'rgba(57,255,20,0.25)'; ctx.shadowBlur = 15;
+        ctx.shadowOffsetX = 8*Math.cos(invRoll)-15*Math.sin(invRoll);
+        ctx.shadowOffsetY = 8*Math.sin(invRoll)+15*Math.cos(invRoll);
+
+        let lg = ctx.createRadialGradient(0,0,2,0,0,26);
+        lg.addColorStop(0, hullMid); lg.addColorStop(1, hullBase);
+        ctx.fillStyle = lg; ctx.beginPath(); ctx.ellipse(0,0,26,8,0,0,Math.PI*2); ctx.fill();
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+
+        const time = Date.now() / (150 - Math.min(STATE.spdMph, 120));
+        for (let i=0; i<8; i++) {
+            const a = time + i*Math.PI/4;
+            const lx = Math.cos(a)*25, ly = Math.sin(a)*7.5;
+            if (ly > -1) {
+                ctx.fillStyle = secColor;
+                ctx.beginPath(); ctx.ellipse(lx,ly,3,1.5,0,0,Math.PI*2);
+                ctx.shadowColor = secColor; ctx.shadowBlur = 8; ctx.fill();
+                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+            }
+        }
+
+        let ug = ctx.createLinearGradient(-10,-15,10,5);
+        ug.addColorStop(0, hullLight); ug.addColorStop(0.5, hullMid); ug.addColorStop(1, hullDark);
+        ctx.fillStyle = ug; ctx.beginPath(); ctx.ellipse(0,-2,16,6,0,0,Math.PI*2); ctx.fill();
+
+        let dg = ctx.createRadialGradient(0,-6,1,0,-4,10);
+        dg.addColorStop(0, '#ffffff'); dg.addColorStop(0.3, '#00eeff'); dg.addColorStop(1, '#003344');
+        ctx.fillStyle = dg; ctx.beginPath(); ctx.ellipse(0,-5,10,5,0,0,Math.PI*2); ctx.fill();
+
+        ctx.shadowColor = secColor; ctx.shadowBlur = 15;
+        ctx.fillStyle = '#fff';
+        [[0,7,8,2],[- 12,5,4,1],[12,5,4,1]].forEach(([ex,ey,rx,ry]) => {
+            ctx.beginPath(); ctx.ellipse(ex,ey,rx,ry,0,0,Math.PI*2); ctx.fill();
+        });
+        ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
+
+        ctx.beginPath(); ctx.ellipse(0,-7,4,1.5,0,0,Math.PI*2);
+        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1;
+        ctx.restore();
+    },
+
+    drawBike(x, y, roll, isDark) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1.2, 1.2);
+        ctx.rotate(roll * CFG.TO_RAD);
+
+        const invRoll = -roll * CFG.TO_RAD;
+        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
+        ctx.shadowOffsetX = 8*Math.cos(invRoll)-15*Math.sin(invRoll);
+        ctx.shadowOffsetY = 8*Math.sin(invRoll)+15*Math.cos(invRoll);
+
+        const shirtCol = STATE.clrWind;
+        const bikeCol = isDark ? '#475569' : '#94a3b8';
+
+        ctx.fillStyle = isDark ? '#64748b' : '#111';
+        ctx.beginPath(); this._rr(ctx, -1.5, -28, 3, 14, 1.5); ctx.fill();
+
+        ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(0,-22); ctx.stroke();
+
+        ctx.strokeStyle = bikeCol; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-13,-20); ctx.lineTo(13,-20); ctx.stroke();
+
+        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+
+        ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5;
+        ctx.beginPath(); ctx.moveTo(-9,-9); ctx.lineTo(-11,-20); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(9,-9); ctx.lineTo(11,-20); ctx.stroke();
+
+        ctx.fillStyle = shirtCol;
+        ctx.beginPath();
+        ctx.moveTo(-5.5,5); ctx.lineTo(-9,-9); ctx.quadraticCurveTo(0,-12,9,-9); ctx.lineTo(5.5,5);
+        ctx.fill();
+
+        let hg = ctx.createRadialGradient(0,-13,1,0,-10,6);
+        hg.addColorStop(0, '#cbd5e1'); hg.addColorStop(1, '#475569');
+        ctx.fillStyle = hg; ctx.beginPath(); ctx.ellipse(0,-12,5.5,6.5,0,0,Math.PI*2); ctx.fill();
+
+        const cycle = STATE.active ? Date.now() / (300 - Math.min(STATE.spdMph*2, 250)) : 0;
+        const lpY = 3 + Math.cos(cycle)*6;
+        const rpY = 3 + Math.cos(cycle+Math.PI)*6;
+        const lkY = 6 + Math.cos(cycle-0.5)*4;
+        const rkY = 6 + Math.cos(cycle+Math.PI-0.5)*4;
+
+        ctx.fillStyle = '#ddd';
+        ctx.fillRect(-6, lpY-2, 3, 4);
+        ctx.fillRect(3, rpY-2, 3, 4);
+
+        ctx.strokeStyle = isDark ? '#94a3b8' : '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
+        ctx.beginPath(); ctx.moveTo(-4,4); ctx.lineTo(-7,lkY); ctx.lineTo(-4.5,lpY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(4,4); ctx.lineTo(7,rkY); ctx.lineTo(4.5,rpY); ctx.stroke();
+
+        ctx.fillStyle = isDark ? '#334155' : '#0f172a';
+        ctx.beginPath(); this._rr(ctx, -4, 3, 8, 6, 2.5); ctx.fill();
+
+        ctx.fillStyle = isDark ? '#475569' : '#111';
+        ctx.beginPath(); this._rr(ctx, -2.5, 7, 5, 20, 2); ctx.fill();
+
+        ctx.restore();
+    },
+
+    /* roundRect polyfill helper */
+    _rr(ctx, x, y, w, h, r) {
+        if (ctx.roundRect) { ctx.roundRect(x,y,w,h,r); } else { ctx.rect(x,y,w,h); }
+    },
+
+    renderHUD() {
+        const ctx = Graphics.ctx;
+        ctx.clearRect(0, 0, STATE.w, STATE.h);
+
+        // ── AR: draw camera frame onto canvas FIRST so recorder captures it ──
+        if (AR.active) {
+            const vid = document.getElementById('ar-video');
+            if (vid && vid.readyState >= 2) {
+                ctx.save();
+                ctx.drawImage(vid, 0, 0, STATE.w, STATE.h);
+                ctx.restore();
+            }
+        }
+
+        const isDark = !document.body.classList.contains('day-mode') || STATE.craftMode === 1;
+        const isUFO  = STATE.craftMode === 1;
+        const FOV = 200, CAM_H = 0.05;
+
+        // ── Clip to HUD shape ──
+        ctx.save();
+        ctx.beginPath();
+        if (STATE.isFullscreen) ctx.rect(0,0,STATE.w,STATE.h);
+        else ctx.arc(STATE.cx, STATE.cy, STATE.r, 0, Math.PI*2);
+        ctx.clip();
+
+        // ── Roll/pitch canvas ──
+        // NOTE: negate leanAngle — when device tilts right (+gamma), horizon tilts LEFT
+        ctx.save();
+        ctx.translate(STATE.cx, STATE.cy);
+        ctx.rotate(-STATE.leanAngle * CFG.TO_RAD);
+        const pitchOffset = STATE.pitchAngle * 2;
+
+        // ── Sky + Ground — suppressed in AR mode (camera is the background) ──
+        if (!AR.active) {
+            const skyTop = STATE.clrSkyTop   || 'rgba(14,165,233,0.25)';
+            const gndTop = STATE.clrGndTop   || 'rgba(15,118,110,0.7)';
+            const gndBot = STATE.clrGndBot   || 'rgba(2,6,23,0.95)';
+
+            let skyGrad = ctx.createLinearGradient(0,-STATE.h,0,pitchOffset);
+            skyGrad.addColorStop(0, skyTop);
+            skyGrad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = skyGrad;
+            ctx.fillRect(-STATE.w, -STATE.h, STATE.w*2, STATE.h + pitchOffset);
+
+            let groundGrad = ctx.createLinearGradient(0, pitchOffset, 0, STATE.h);
+            groundGrad.addColorStop(0, gndTop);
+            groundGrad.addColorStop(1, gndBot);
+            ctx.fillStyle = groundGrad;
+            ctx.fillRect(-STATE.w, pitchOffset, STATE.w*2, STATE.h);
+        }
+
+        // ── Perspective grid — ghost-only in AR mode ──
+        ctx.strokeStyle = AR.active
+            ? 'rgba(0,255,204,0.08)'
+            : isUFO ? 'rgba(57,255,20,0.2)' : isDark ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 1;
+        STATE.gridScroll = (STATE.gridScroll + (STATE.spdMph / 3600) * 1.5) % 0.5;
+        ctx.beginPath();
+        for (let d=0; d<=3.5; d+=0.5) {
+            const depth = d - STATE.gridScroll;
+            if (depth < 0.05) continue;
+            const scale = FOV / depth, sy = pitchOffset + CAM_H * scale;
+            if (sy > pitchOffset && sy < STATE.h) { ctx.moveTo(-20*scale, sy); ctx.lineTo(20*scale, sy); }
+        }
+        for (let x=-20; x<=20; x+=0.5) {
+            const s1 = FOV/0.05, s2 = FOV/3.5;
+            ctx.moveTo(x*s1, pitchOffset + CAM_H*s1);
+            ctx.lineTo(x*s2, pitchOffset + CAM_H*s2);
+        }
+        ctx.stroke();
+
+        // ── GPX perspective ribbon ──
+        if (STATE.gpxActive && STATE.active) {
+            const pts = GPX.getRibbonPoints(pitchOffset, FOV, CAM_H);
+            if (pts.length >= 2) {
+                ctx.save();
+                ctx.strokeStyle = STATE.clrNav;
+                ctx.lineWidth = 3;
+                ctx.globalAlpha = 0.55;
+                ctx.setLineDash([8, 6]);
+                ctx.beginPath();
+                ctx.moveTo(pts[0].x, pts[0].y);
+                for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                ctx.restore();
+            }
+        }
+
+        // ── Breadcrumb trail ──
+        if (STATE.crumbs.length >= 2 && STATE.lat) {
+            ctx.save();
+            ctx.strokeStyle = STATE.clrSecondary;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.35;
+            ctx.setLineDash([3,5]);
+            ctx.beginPath();
+            let first = true;
+            for (const crumb of STATE.crumbs) {
+                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, crumb.lat, crumb.lon);
+                if (dist > CFG.RADAR_RANGE_MILES) continue;
+                let relAngle = (brg - STATE.hdg) * CFG.TO_RAD;
+                while (relAngle > Math.PI) relAngle -= 2*Math.PI;
+                while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+                const scale = FOV / Math.max(0.05, Math.cos(relAngle) * dist);
+                const sx = Math.sin(relAngle)*dist*scale;
+                const sy = pitchOffset + CAM_H*scale;
+                if (sy < pitchOffset) continue;
+                if (first) { ctx.moveTo(sx,sy); first=false; } else ctx.lineTo(sx,sy);
+            }
+            ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+        }
+
+        // ── 3D Obstacles ──
+        if (STATE.lat && STATE.active) {
+            const fontFamily = isUFO ? 'Orbitron' : 'monospace';
+            for (const obs of STATE.obstacles) {
+                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
+                if (dist > 3.0 || dist < 0.1) continue;
+                let relAngle = (brg - STATE.hdg) * CFG.TO_RAD;
+                while (relAngle > Math.PI) relAngle -= 2*Math.PI;
+                while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+                if (Math.abs(relAngle) > Math.PI/2.5) continue;
+                const scale = FOV / (Math.cos(relAngle)*dist);
+                const sx = Math.sin(relAngle)*dist*scale;
+                const baseSy = pitchOffset + CAM_H*scale;
+                if (baseSy < pitchOffset) continue;
+
+                let color = 'rgba(255,0,255,0.6)', objH = 0.03, tag = 'WPT';
+                if (obs.type === 'aerodrome') { color = isUFO ? 'rgba(57,255,20,0.8)' : 'rgba(16,185,129,0.8)'; objH = 0.01; tag = 'APT'; }
+                else if (obs.type === 'peak')     { color = isUFO ? 'rgba(176,38,255,0.7)' : 'rgba(234,179,8,0.7)';   objH = 0.04; tag = 'PEAK'; }
+                else if (obs.type === 'tower')    { color = 'rgba(239,68,68,0.8)';    objH = 0.06; tag = 'TWR'; }
+
+                const topSy = pitchOffset + (CAM_H - objH)*scale;
+                ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.ellipse(sx, baseSy, 2.5*scale, scale, 0,0,Math.PI*2); ctx.stroke();
+                ctx.beginPath(); ctx.ellipse(sx, topSy, 1.5*scale, 0.5*scale, 0,0,Math.PI*2); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sx-2.5*scale, baseSy); ctx.lineTo(sx-1.5*scale, topSy); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sx+2.5*scale, baseSy); ctx.lineTo(sx+1.5*scale, topSy); ctx.stroke();
+                ctx.fillStyle = color.replace(/[\d.]+\)$/, '0.15)');
+                ctx.beginPath(); ctx.moveTo(sx-2.5*scale,baseSy); ctx.lineTo(sx-1.5*scale,topSy); ctx.lineTo(sx+1.5*scale,topSy); ctx.lineTo(sx+2.5*scale,baseSy); ctx.fill();
+                ctx.fillStyle = color;
+                ctx.font = `bold ${Math.max(7, 8*scale)}px ${fontFamily}`;
+                ctx.textAlign = 'center';
+                ctx.fillText(tag, sx, topSy - 4*scale);
+            }
+        }
+
+        // ── Squad formation in SVS ──
+        if (STATE.squadData && STATE.lat) {
+            const now = Date.now();
+            if (now - STATE.squadData.ts < 10000) {
+                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
+                if (dist <= 3.0) {
+                    let relAngle = (brg - STATE.hdg) * CFG.TO_RAD;
+                    while (relAngle > Math.PI) relAngle -= 2*Math.PI;
+                    while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+                    if (Math.abs(relAngle) < Math.PI/4) {
+                        const scale = FOV / Math.max(0.1, Math.cos(relAngle)*dist);
+                        const sx = Math.sin(relAngle)*dist*scale;
+                        const baseSy = pitchOffset + CAM_H*scale;
+                        if (baseSy > pitchOffset) {
+                            const pulse = 5 + Math.sin(now/200)*3;
+                            ctx.fillStyle = '#00ffff';
+                            ctx.beginPath(); ctx.arc(sx, baseSy, pulse*scale, 0, Math.PI*2); ctx.fill();
+
+                            if (STATE.squadData.hdg != null && STATE.squadData.spdMph != null) {
+                                const futDist = STATE.squadData.spdMph * (10/3600); // mi in 10s
+                                const futAngle = (STATE.squadData.hdg - STATE.hdg) * CFG.TO_RAD;
+                                const vecX = sx + Math.sin(futAngle)*futDist*scale*100;
+                                const vecY = baseSy - Math.cos(futAngle)*futDist*scale*100;
+                                ctx.strokeStyle = 'rgba(0,255,255,0.4)'; ctx.lineWidth = 1;
+                                ctx.beginPath(); ctx.moveTo(sx, baseSy); ctx.lineTo(vecX, vecY); ctx.stroke();
+                            }
+
+                            ctx.fillStyle = '#00ffff'; ctx.font = `bold ${Math.max(8,10*scale)}px monospace`;
+                            ctx.textAlign = 'center';
+                            ctx.fillText('ALLY', sx, baseSy - 10*scale);
+                        }
+                    }
+                }
+            }
+        }
+
+        ctx.restore(); // un-roll pitch/lean
+        ctx.restore(); // un-clip
+
+        // ── Radar rings ──
+        ctx.strokeStyle = STATE.clrSecondary;
+        ctx.globalAlpha = 0.18; ctx.lineWidth = 1;
+        [0.33, 0.66, 0.98].forEach(f => {
+            ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, STATE.r*f, 0, Math.PI*2); ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+
+        // ── Fixed horizon reference line + slip ball (no rotation — SVS provides tilt) ──
+        // The sky/ground already shows attitude. This is just a fixed center crosshair.
+        ctx.save();
+        ctx.translate(STATE.cx, STATE.cy);
+        ctx.strokeStyle = STATE.clrSecondary; ctx.globalAlpha = 0.35; ctx.lineWidth = 1;
+        ctx.setLineDash([4, 8]);
+        ctx.beginPath(); ctx.moveTo(-STATE.r * 0.6, 0); ctx.lineTo(STATE.r * 0.6, 0); ctx.stroke();
+        ctx.setLineDash([]);
+        const slipX = Math.max(-STATE.r/2, Math.min(STATE.r/2, (STATE.gX / CFG.MAX_G) * (STATE.r*0.8)));
+        ctx.beginPath(); ctx.arc(slipX, 0, 4, 0, Math.PI*2);
+        ctx.fillStyle = STATE.clrSecondary; ctx.globalAlpha = 0.8; ctx.fill();
+        ctx.restore();
+
+        // ── Nav overlay (waypoint line + wind arrow + squad blip on radar) ──
+        if (STATE.lat && STATE.active) {
+            if (STATE.activeDest) {
+                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
+                const relAngle = (brg - STATE.hdg - 90) * CFG.TO_RAD;
+                ctx.save(); ctx.beginPath(); ctx.moveTo(STATE.cx, STATE.cy);
+                let pX, pY;
+                if (dist <= CFG.RADAR_RANGE_MILES) {
+                    pX = STATE.cx + Math.cos(relAngle) * (dist/CFG.RADAR_RANGE_MILES) * STATE.r;
+                    pY = STATE.cy + Math.sin(relAngle) * (dist/CFG.RADAR_RANGE_MILES) * STATE.r;
+                } else {
+                    pX = STATE.cx + Math.cos(relAngle) * STATE.r;
+                    pY = STATE.cy + Math.sin(relAngle) * STATE.r;
+                }
+                ctx.lineTo(pX, pY);
+                ctx.strokeStyle = STATE.clrNav; ctx.globalAlpha = 0.6; ctx.setLineDash([5,5]); ctx.lineWidth = 2; ctx.stroke();
+                if (dist <= CFG.RADAR_RANGE_MILES) {
+                    ctx.beginPath(); ctx.arc(pX,pY,8,0,Math.PI*2);
+                    ctx.strokeStyle = STATE.clrNav; ctx.globalAlpha = 1; ctx.setLineDash([]); ctx.stroke();
+                }
+                ctx.restore();
+            }
+        } // end if (STATE.lat && STATE.active) — nav overlay
+
+        // ── Windsock — shows always when wind data available, not just during trip ──
+        if (STATE.windSpeed > 0 && STATE.lat) {
+            const downwind = STATE.windDir + 180; // direction wind blows TO
+            const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
+            const sockX = STATE.cx + Math.cos(wRel) * (STATE.r - 14);
+            const sockY = STATE.cy + Math.sin(wRel) * (STATE.r - 14);
+            const fill = Math.min(1, STATE.windSpeed / 25);
+            ctx.save();
+            ctx.translate(sockX, sockY);
+            ctx.rotate(wRel + Math.PI / 2);
+            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 6); ctx.stroke();
+            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,6); ctx.lineTo(5,6); ctx.closePath(); ctx.stroke();
+            if (fill > 0) {
+                const fillH = 16 * fill;
+                ctx.fillStyle = `rgba(255,107,0,${0.35 + fill * 0.55})`;
+                ctx.beginPath();
+                ctx.moveTo(0, -10);
+                ctx.lineTo(-5 * fill, -10 + fillH);
+                ctx.lineTo( 5 * fill, -10 + fillH);
+                ctx.closePath(); ctx.fill();
+            }
+            ctx.fillStyle = '#ff6b00'; ctx.font = 'bold 8px monospace';
+            ctx.textAlign = 'center'; ctx.fillText(`${Math.round(STATE.windSpeed)}`, 0, 16);
+            ctx.restore();
+        }
+
+        if (STATE.lat && STATE.active) {
+            if (STATE.squadData && (Date.now()-STATE.squadData.ts < 10000)) {
+                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
+                if (dist <= CFG.RADAR_RANGE_MILES) {
+                    const rel = (brg - STATE.hdg - 90)*CFG.TO_RAD;
+                    const px = STATE.cx + Math.cos(rel)*(dist/CFG.RADAR_RANGE_MILES)*STATE.r;
+                    const py = STATE.cy + Math.sin(rel)*(dist/CFG.RADAR_RANGE_MILES)*STATE.r;
+                    ctx.fillStyle = '#00ffff'; ctx.beginPath(); ctx.arc(px,py,5,0,Math.PI*2); ctx.fill();
+                } else {
+                    let relA = brg - STATE.hdg;
+                    while (relA > 180) relA -= 360; while (relA < -180) relA += 360;
+                    const trigA = (relA - 90) * CFG.TO_RAD;
+                    const edgeR = STATE.isFullscreen ? Math.min(STATE.w,STATE.h)/2 - 20 : STATE.r - 10;
+                    ctx.save(); ctx.translate(STATE.cx + Math.cos(trigA)*edgeR, STATE.cy + Math.sin(trigA)*edgeR);
+                    ctx.rotate(trigA + Math.PI/2);
+                    ctx.fillStyle = 'rgba(0,255,255,0.8)';
+                    ctx.beginPath(); ctx.moveTo(0,-8); ctx.lineTo(6,6); ctx.lineTo(0,2); ctx.lineTo(-6,6); ctx.fill();
+                    ctx.restore();
+                }
+            }
+        }
+
+        // ── Craft sprite — always centered, always nose-forward ──
+        // craftBank = 0: world tilts around fixed sprite (correct attitude indicator behavior)
+        // Small G-force shift gives subtle physical feel without double-rotation
+        const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
+        const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
+        if (!AR.active) {
+            if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0);
+            else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
+            else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
+        }
+
+        // ── AR windshield overlays (horizon, speed tape, reticles) ──
+        AR.drawOverlays(ctx, pitchOffset, FOV, CAM_H);
+
+        // ── Trip clock, fuel, power tick ──
+        document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
+        if (STATE.active && STATE.startTs > 0) {
+            const elapsed = Date.now() - STATE.startTs;
+            const h = Math.floor(elapsed/3600000);
+            const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
+            const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
+            document.getElementById('trip-time').innerText = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+
+            const hrs = elapsed/3600000;
+            const fuel = Math.max(0, STATE.fuelCap - hrs*STATE.burnRate);
+            document.getElementById('fuel-rem').innerText = fuel.toFixed(1);
+            if (fuel > 0) {
+                const tte = fuel / STATE.burnRate;
+                document.getElementById('time-rem').innerText = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
+                document.getElementById('time-rem').className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
+            }
+
+            PowerCalc.tick(STATE.spdMph);
+            HazardEngine.tick();
+            GPX.tick();
+            if (STATE.gpsLost) DeadReckoning.tick();
+        }
+
+        rafId = requestAnimationFrame(Graphics.renderHUD);
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ ENGINE ══ */
+window.Engine = {
+    async toggleTrip() {
+        const btn = document.getElementById('trip-btn');
+        if (!STATE.active) {
+            STATE.dist = 0; STATE.maxSpd = 0; STATE.maxAltFt = 0; STATE.peakVsiFpm = 0;
+            STATE.hazardCount = 0; STATE.tcasAudioPlayed = false;
+            STATE.wattsHistory = []; STATE.totalJoules = 0; STATE.powerTs = 0;
+            STATE.crumbs = []; STATE._altBuf = []; STATE._spdBuf = []; STATE._vsiBuf = []; STATE.altBuffer = [];
+
+            STATE.active = true; STATE.startTs = Date.now();
+            btn.innerText = 'END TRIP';
+            btn.style.borderColor = 'var(--danger)';
+            btn.style.color = 'var(--danger)';
+            MathUtils.sayQueue('Flight log started');
+            vibrate([200]);
+
+            const sa = document.getElementById('squad-music');
+            if (sa.paused && !Radio.currentStation) {
+                sa.play().then(()=>sa.pause()).catch(()=>{});
+            }
+
+            try { if ('wakeLock' in navigator) STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+        } else {
+            STATE.active = false;
+            btn.innerText = 'START TRIP';
+            btn.style.borderColor = '';
+            btn.style.color = '';
+
+            TripLogger.saveTrip();
+            vibrate([100, 100, 300]);
+            if (Recorder.active) Recorder._stop();
+
+            STATE.tripElapsed = STATE.startTs > 0 ? Date.now() - STATE.startTs : 0;
+
+            STATE.activeDest = null;
+            document.getElementById('dest-id').innerText = 'NONE';
+            document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
+            document.getElementById('trip-time').innerText = '00:00';
+
+            API.applyTheme();
+            Graphics.renderHUD();
+
+            if (STATE.wakeLock) { STATE.wakeLock.release().catch(()=>{}); STATE.wakeLock = null; }
+
+            setTimeout(() => TripLogger.showReport(), 400);
+        }
+    },
+
+    processGPS(position) {
+        DeadReckoning.reset();
+
+        STATE.lat = position.coords.latitude;
+        STATE.lon = position.coords.longitude;
+        const ts = position.timestamp;
+
+        // ── Speed: 4-sample weighted moving average ──
+        if (position.coords.speed != null) {
+            const raw = position.coords.speed * 2.23694;
+            STATE._spdBuf = STATE._spdBuf || [];
+            STATE._spdBuf.push(raw);
+            if (STATE._spdBuf.length > 4) STATE._spdBuf.shift();
+            const w = [0.1, 0.2, 0.3, 0.4].slice(4 - STATE._spdBuf.length);
+            const wSum = w.reduce((a,b) => a+b, 0);
+            STATE.spdMph = STATE._spdBuf.reduce((s,v,i) => s + v*w[i], 0) / wSum;
+        }
+
+        // ── Altitude: median of last 6 readings (rejects GPS spikes) ──
+        if (position.coords.altitude != null) {
+            STATE._altBuf = STATE._altBuf || [];
+            STATE._altBuf.push(position.coords.altitude * 3.28084);
+            if (STATE._altBuf.length > 6) STATE._altBuf.shift();
+            const sorted = [...STATE._altBuf].sort((a,b) => a-b);
+            STATE.altFt = sorted[Math.floor(sorted.length / 2)];
+        }
+
+        if (position.coords.heading != null && !isNaN(position.coords.heading) && position.coords.speed > 0.5) {
+            STATE.hdg = position.coords.heading;
+        }
+
+        if (STATE.spdMph > STATE.maxSpd) STATE.maxSpd = STATE.spdMph;
+        if (STATE.altFt > STATE.maxAltFt) STATE.maxAltFt = STATE.altFt;
+
+        document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
+        document.getElementById('heading').innerText = `${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`;
+        document.getElementById('altitude').innerText = Math.round(STATE.altFt);
+
+        if (!STATE.active) {
+            if (STATE.spdMph > CFG.AUTO_START_MPH) { STATE._moveCount = (STATE._moveCount||0)+1; if (STATE._moveCount >= 3) Engine.toggleTrip(); }
+            else STATE._moveCount = 0;
+        }
+
+        if (STATE.active && STATE.lastTs > 0) {
+            const dtHrs = (ts - STATE.lastTs) / 3600000;
+            if (STATE.lastLat != null) {
+                const seg = MathUtils.getDistAndBearing(STATE.lastLat, STATE.lastLon, STATE.lat, STATE.lon);
+                STATE.dist += seg.dist;
+                document.getElementById('distance').innerText = STATE.dist.toFixed(1);
+            }
+
+            if (dtHrs > 0) {
+                // ── VSI: 8-sample rolling average + 30 FPM deadband ──
+                const rawVsi = (STATE.altFt - STATE.lastAltFt) / (dtHrs * 60);
+                STATE._vsiBuf = STATE._vsiBuf || [];
+                STATE._vsiBuf.push(rawVsi);
+                if (STATE._vsiBuf.length > 8) STATE._vsiBuf.shift();
+                const smoothVsi = STATE._vsiBuf.reduce((a,b) => a+b, 0) / STATE._vsiBuf.length;
+                const displayVsi = Math.abs(smoothVsi) < 30 ? 0 : smoothVsi;
+                if (Math.abs(smoothVsi) > Math.abs(STATE.peakVsiFpm)) STATE.peakVsiFpm = smoothVsi;
+
+                // ── MPG default, FPM on sustained rapid ascent/descent ──
+                STATE._rapidCount = STATE._rapidCount || 0;
+                if (Math.abs(smoothVsi) > 200) STATE._rapidCount = Math.min(5, STATE._rapidCount + 1);
+                else STATE._rapidCount = Math.max(0, STATE._rapidCount - 1);
+
+                const vsiEl = document.getElementById('vsi');
+                if (STATE._rapidCount >= 3) {
+                    vsiEl.innerText = `${displayVsi > 0 ? '+' : ''}${Math.round(displayVsi)} FPM`;
+                    vsiEl.className = displayVsi > 100 ? 'sub-val up-green' : displayVsi < -100 ? 'sub-val down-red' : 'sub-val';
+                } else {
+                    const tripHrs = (ts - STATE.startTs) / 3600000;
+                    const fuelUsed = tripHrs * STATE.burnRate;
+                    const mpg = (fuelUsed > 0.001 && STATE.dist > 0.05) ? Math.round(STATE.dist / fuelUsed) : '--';
+                    vsiEl.innerText = `${mpg} MPG`;
+                    vsiEl.className = 'sub-val';
+                }
+            }
+
+            if (STATE.lastLat != null) {
+                const crumbDist = MathUtils.haverDist_m(STATE.lastLat, STATE.lastLon, STATE.lat, STATE.lon);
+                if (crumbDist >= CFG.BREADCRUMB_DIST_M) {
+                    STATE.crumbs.push({ lat: STATE.lat, lon: STATE.lon });
+                    if (STATE.crumbs.length > CFG.BREADCRUMB_MAX) STATE.crumbs.shift();
+                }
+            }
+
+            if (STATE.activeDest) {
+                const { dist } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
+                let etaStr = '--:--';
+                if (STATE.spdMph > 5) {
+                    const etaDate = new Date(Date.now() + (dist/STATE.spdMph)*3600000);
+                    etaStr = `${etaDate.getHours().toString().padStart(2,'0')}:${etaDate.getMinutes().toString().padStart(2,'0')}`;
+                }
+                document.getElementById('dest-eta').innerText = `${dist.toFixed(1)} MI | ETA ${etaStr}`;
+            }
+        }
+
+        STATE.lastLat = STATE.lat; STATE.lastLon = STATE.lon;
+        STATE.lastAltFt = STATE.altFt; STATE.lastTs = ts;
+
+        if (Mesh.connected) Mesh.sendTelemetry();
+
+        // Throttled environment refresh: >1.5 miles or >15 min
+        const now = Date.now();
+        if (STATE.apiLat == null ||
+            MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.apiLat, STATE.apiLon).dist > 1.5 ||
+            now - STATE.apiTime > 900000) {
+            API.fetchEnvironment(STATE.lat, STATE.lon);
+            STATE.apiLat = STATE.lat; STATE.apiLon = STATE.lon; STATE.apiTime = now;
+            STATE._wxSpoken = false; // allow re-announcement after location change
+        }
+    },
+
+    gpsError() {
+        DeadReckoning.engage();
+    },
+
+    init() {
+        UX.initDrag();
+        UX.handleResize();
+        window.addEventListener('resize', () => UX.handleResize());
+        document.addEventListener('fullscreenchange', () => UX.handleResize());
+        window.addEventListener('devicemotion',      Hardware.handleMotion,      true);
+        window.addEventListener('deviceorientation', Hardware.handleOrientation, true);
+
+        // iOS 13+: DeviceOrientationEvent requires explicit permission grant.
+        const requestIOSMotion = async () => {
+            if (typeof DeviceOrientationEvent !== 'undefined' &&
+                typeof DeviceOrientationEvent.requestPermission === 'function') {
+                try {
+                    const r = await DeviceOrientationEvent.requestPermission();
+                    if (r === 'granted') {
+                        window.addEventListener('deviceorientation', Hardware.handleOrientation, true);
+                    }
+                } catch(e) {}
+            }
+            document.removeEventListener('touchstart', requestIOSMotion);
+            document.removeEventListener('click', requestIOSMotion);
+        };
+        document.addEventListener('touchstart', requestIOSMotion, { once: true });
+        document.addEventListener('click',      requestIOSMotion, { once: true });
+
+        document.addEventListener('visibilitychange', async () => {
+            if (document.visibilityState === 'visible' && STATE.active && 'wakeLock' in navigator) {
+                try { STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+            }
+        });
+
+        document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
+
+        const hr = new Date().getHours();
+        const isNight = hr >= 19 || hr < 7;
+        STATE.baseTheme = '';         // dark is default — no class needed
+        STATE.craftMode = isNight ? 1 : 0;
+
+        const icons = ['🛩️','🛸','🚴'];
+        const themeIcons = ['🌤️','☀️','🌙'];
+        const ctrlCraft = document.getElementById('ctrl-craft-btn');
+        const ctrlTheme = document.getElementById('ctrl-theme-btn');
+        if (ctrlCraft) ctrlCraft.innerText = icons[STATE.craftMode];
+        if (ctrlTheme) ctrlTheme.innerText = themeIcons[['auto','day','night'].indexOf(STATE.themeOverride)];
+        document.getElementById('power-block').style.display = 'none';
+
+        const atsEl = document.getElementById('svg-ats');
+        if (atsEl) { atsEl.textContent = '● ATS'; atsEl.setAttribute('fill', 'var(--secondary)'); atsEl.style.opacity = '0.4'; }
+
+        API.applyTheme();
+        ThemeCache.update();   // populate color cache before first paint
+        Graphics.renderHUD();
+
+        document.getElementById('squad-music').addEventListener('ended', () => Radio._refreshUI());
+        document.getElementById('squad-music').addEventListener('pause',  () => Radio._refreshUI());
+        document.getElementById('squad-music').addEventListener('play',   () => Radio._refreshUI());
+        Radio.initDots();
+        document.addEventListener('click', (e) => {
+            const p = document.getElementById('station-picker');
+            const strip = document.getElementById('music-strip');
+            if (p && p.style.display === 'block' && !p.contains(e.target) && !strip.contains(e.target)) {
+                p.style.display = 'none';
+            }
+        });
+
+        if ('geolocation' in navigator) {
+            watchId = navigator.geolocation.watchPosition(
+                Engine.processGPS,
+                Engine.gpsError,
+                { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+            );
+        }
+
+        setInterval(() => { if (STATE.gpsLost && STATE.active) DeadReckoning.tick(); }, 1000);
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ AR WINDSHIELD ══ */
+const AR = {
+    active: false,
+    nightVision: false,
+    stream: null,
+    speedWarnMph: 0,      // 0 = disabled; set via AR.setSpeedWarn()
+
+    async toggle() {
+        const btn = document.getElementById('ar-btn');
+        const vid = document.getElementById('ar-video');
+
+        if (!this.active) {
+            try {
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: { ideal: 'environment' },
+                        width:  { ideal: 3840 },   // 4K if available
+                        height: { ideal: 2160 },
+                        frameRate: { ideal: 60, min: 30 }
+                    }
+                });
+                vid.srcObject = this.stream;
+                await vid.play();
+                vid.classList.add('active');
+                document.body.classList.add('ar-mode');
+                btn.classList.add('active');
+                btn.innerText = '✕ EXIT AR';
+                this.active = true;
+
+                if (!document.fullscreenElement) {
+                    try { await document.documentElement.requestFullscreen(); } catch(e) {}
+                }
+                STATE.isFullscreen = true;
+                UX.handleResize();
+
+                // Log camera track info for debug
+                const track = this.stream.getVideoTracks()[0];
+                const settings = track.getSettings();
+                console.log(`AR camera: ${settings.width}×${settings.height} @ ${settings.frameRate}fps`);
+
+            } catch(e) {
+                HazardEngine.showToast('📷 Camera denied — Settings → Site permissions');
+            }
+        } else {
+            this._deactivate();
+        }
+    },
+
+    _deactivate() {
+        const btn = document.getElementById('ar-btn');
+        const vid = document.getElementById('ar-video');
+        if (this.stream) this.stream.getTracks().forEach(t => t.stop());
+        this.stream = null;
+        vid.srcObject = null;
+        vid.classList.remove('active');
+        document.body.classList.remove('ar-mode', 'ar-night');
+        btn.classList.remove('active');
+        btn.innerText = '📷 AR';
+        this.active = false;
+        this.nightVision = false;
+        STATE.isFullscreen = false;
+        UX.handleResize();
+        ThemeCache.update();
+    },
+
+    toggleNightVision() {
+        this.nightVision = !this.nightVision;
+        document.body.classList.toggle('ar-night', this.nightVision);
+        const nvBtn = document.getElementById('ar-nv-btn');
+        if (nvBtn) nvBtn.innerText = this.nightVision ? '🌙 NV ON' : '🌙 NV';
+        vibrate(this.nightVision ? [100] : [50, 50, 50]);
+    },
+
+    setSpeedWarn(mph) { this.speedWarnMph = mph; },
+
+    /**
+     * Called from renderHUD — draws AR-specific overlays on top of camera.
+     * In AR mode the SVS background is suppressed so camera shows through.
+     * We draw only:
+     *   • Semi-transparent horizon reference line (thicker, high contrast)
+     *   • Ghost perspective grid (very faint — orientation cue only)
+     *   • Colored obstacle markers (no 3D extrusion needed — 2D reticles)
+     *   • Speed tape on left edge
+     *   • Lean angle chevron
+     *   • Hazard cone highlight if threat detected
+     */
+    drawOverlays(ctx, pitchOffset, FOV, CAM_H) {
+        if (!this.active) return;
+        const { cx, cy, r, w, h, spdMph, hdg } = STATE;
+
+        // ── Horizon line — double-stroke for visibility on any background ──
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated: horizon tilts opposite to device lean
+        ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.moveTo(-w, pitchOffset); ctx.lineTo(w, pitchOffset); ctx.stroke();
+        ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-w, pitchOffset); ctx.lineTo(w, pitchOffset); ctx.stroke();
+        ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 1.5; ctx.globalAlpha = 0.8;
+        ctx.beginPath(); ctx.moveTo(-12, pitchOffset); ctx.lineTo(12, pitchOffset); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, pitchOffset-12); ctx.lineTo(0, pitchOffset+12); ctx.stroke();
+        ctx.restore();
+
+        // ── Lean angle chevron — shows bank direction, not inverted ──
+        if (Math.abs(STATE.leanAngle) > 3) {
+            ctx.save();
+            ctx.translate(cx, cy + pitchOffset);
+            const chevSize = 28;
+            ctx.strokeStyle = Math.abs(STATE.leanAngle) > 20 ? '#ff4444' : '#ffcc00';
+            ctx.lineWidth = 3; ctx.lineCap = 'round';
+            ctx.rotate(-STATE.leanAngle * CFG.TO_RAD); // negated: chevron tips into the bank
+            ctx.beginPath();
+            ctx.moveTo(-chevSize, -chevSize*0.5);
+            ctx.lineTo(0, 0);
+            ctx.lineTo(chevSize, -chevSize*0.5);
+            ctx.stroke();
+            ctx.restore();
+        }
+
+        // ── Speed tape — left edge vertical readout ──
+        const tapeX = 28, tapeH = Math.min(h * 0.55, 300);
+        const tapeTop = cy - tapeH/2, tapeBot = cy + tapeH/2;
+        const spdRange = 20; // mph visible above/below
+        ctx.save();
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillRect(tapeX - 24, tapeTop, 48, tapeH);
+        ctx.strokeStyle = 'rgba(0,255,204,0.3)'; ctx.lineWidth = 1;
+        ctx.strokeRect(tapeX - 24, tapeTop, 48, tapeH);
+        for (let t = Math.floor((spdMph - spdRange) / 5) * 5; t <= spdMph + spdRange; t += 5) {
+            const yFrac = 1 - (t - (spdMph - spdRange)) / (spdRange * 2);
+            const ty = tapeTop + yFrac * tapeH;
+            if (ty < tapeTop || ty > tapeBot) continue;
+            const major = t % 10 === 0;
+            ctx.strokeStyle = major ? '#00ffcc' : 'rgba(0,255,204,0.4)';
+            ctx.lineWidth = major ? 1.5 : 1;
+            ctx.beginPath();
+            ctx.moveTo(tapeX - (major ? 16 : 8), ty);
+            ctx.lineTo(tapeX, ty);
+            ctx.stroke();
+            if (major) {
+                ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 10px monospace';
+                ctx.textAlign = 'right'; ctx.fillText(t, tapeX - 18, ty + 4);
+            }
+        }
+        ctx.fillStyle = this.speedWarnMph > 0 && spdMph >= this.speedWarnMph ? '#ff3030' : '#00ffcc';
+        ctx.beginPath();
+        ctx.moveTo(tapeX + 4, cy - 8);
+        ctx.lineTo(tapeX + 20, cy);
+        ctx.lineTo(tapeX + 4, cy + 8);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+
+        // ── Obstacle AR reticles — 2D targeting circles on camera view ──
+        if (STATE.lat && STATE.active) {
+            for (const obs of STATE.obstacles) {
+                const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
+                if (dist > 2.0 || dist < 0.05) continue;
+                let relAngle = (brg - hdg) * CFG.TO_RAD;
+                while (relAngle > Math.PI) relAngle -= 2*Math.PI;
+                while (relAngle < -Math.PI) relAngle += 2*Math.PI;
+                if (Math.abs(relAngle) > Math.PI / 2) continue;
+
+                const scale = FOV / (Math.cos(relAngle) * dist);
+                const sx = cx + Math.sin(relAngle) * dist * scale;
+                const sy = cy + pitchOffset + CAM_H * scale;
+                if (sy < 0 || sy > h) continue;
+
+                const reticleR = Math.max(14, Math.min(50, 30 / dist));
+                let color = '#ff00ff', label = 'OBS';
+                if (obs.type === 'aerodrome') { color = '#00ff88'; label = 'APT'; }
+                else if (obs.type === 'peak') { color = '#ffcc00'; label = 'PEAK'; }
+                else if (obs.type === 'tower') { color = dist < CFG.TCAS_CRITICAL_MILES ? '#ff3030' : '#ff8800'; label = 'TWR'; }
+
+                ctx.save();
+                ctx.strokeStyle = color; ctx.lineWidth = 2;
+                ctx.globalAlpha = Math.min(1, 0.4 + (1 - dist/2));
+                ctx.beginPath();
+                ctx.moveTo(sx, sy - reticleR); ctx.lineTo(sx + reticleR, sy);
+                ctx.lineTo(sx, sy + reticleR); ctx.lineTo(sx - reticleR, sy);
+                ctx.closePath(); ctx.stroke();
+                [[-1,-1],[1,-1],[1,1],[-1,1]].forEach(([dx,dy]) => {
+                    ctx.beginPath();
+                    ctx.moveTo(sx + dx*reticleR*0.6, sy + dy*reticleR*0.6);
+                    ctx.lineTo(sx + dx*(reticleR+6), sy + dy*reticleR*0.6);
+                    ctx.stroke();
+                });
+                ctx.fillStyle = color; ctx.globalAlpha = 1;
+                ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center';
+                ctx.fillText(`${label} ${dist.toFixed(1)}mi`, sx, sy - reticleR - 6);
+                ctx.restore();
+            }
+        }
+
+        // ── Speed warning ──
+        if (this.speedWarnMph > 0 && spdMph >= this.speedWarnMph) {
+            document.getElementById('speed').classList.add('ar-warn');
+        } else {
+            document.getElementById('speed').classList.remove('ar-warn');
+        }
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ RECORDER ══ */
+const Recorder = {
+    recorder: null,
+    chunks: [],
+    active: false,
+    pipStream: null,
+    pipVid: null,
+    _rafId: null,
+    TIMELAPSE_FPS: 10,
+
+    async toggle() {
+        if (!this.active) {
+            await this._start();
+        } else {
+            this._stop();
+        }
+    },
+
+    async _start() {
+        const canvas = document.getElementById('vector-canvas');
+        const btn = document.getElementById('ctrl-rec-btn');
+        const ind = document.getElementById('rec-indicator');
+
+        try {
+            this.pipStream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
+            });
+            this.pipVid = document.getElementById('pip-video');
+            this.pipVid.srcObject = this.pipStream;
+            await this.pipVid.play();
+            document.body.classList.add('recording');
+        } catch(e) {
+            this.pipStream = null;
+        }
+
+        const stream = canvas.captureStream(this.TIMELAPSE_FPS);
+
+        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+            ? 'video/webm;codecs=vp9'
+            : MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+            ? 'video/webm;codecs=vp8'
+            : 'video/webm';
+
+        this.chunks = [];
+        this.recorder = new MediaRecorder(stream, {
+            mimeType,
+            videoBitsPerSecond: 1_500_000   // 1.5 Mbps — good quality, reasonable file size
+        });
+
+        this.recorder.ondataavailable = e => { if (e.data.size > 0) this.chunks.push(e.data); };
+        this.recorder.onstop = () => this._export();
+        this.recorder.start(1000); // collect chunks every second
+
+        this.active = true;
+        btn.innerText = '⏹ STOP';
+        btn.style.background = 'var(--danger)';
+        btn.style.color = '#fff';
+        ind.classList.add('active');
+        ind.innerText = `⏺ REC ${this.TIMELAPSE_FPS}fps`;
+        vibrate([200, 100, 200]);
+        MathUtils.say('Recording started');
+
+        if (this.pipStream) this._drawPip();
+    },
+
+    _drawPip() {
+        if (!this.active || !this.pipVid) return;
+        const canvas = document.getElementById('vector-canvas');
+        const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const pw = 120 * dpr, ph = 90 * dpr;
+        const px = canvas.width - pw - 10 * dpr;
+        const py = canvas.height - ph - 10 * dpr;
+
+        const drawFrame = () => {
+            if (!this.active) return;
+            if (this.pipVid.readyState >= 2) {
+                ctx.save();
+                ctx.drawImage(this.pipVid, px, py, pw, ph);
+                ctx.strokeStyle = '#00ffcc';
+                ctx.lineWidth = 2 * dpr;
+                ctx.strokeRect(px, py, pw, ph);
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(px, py, 60*dpr, 14*dpr);
+                ctx.fillStyle = '#00ffcc';
+                ctx.font = `bold ${9*dpr}px monospace`;
+                ctx.fillText('RIDER', px + 4*dpr, py + 10*dpr);
+                ctx.restore();
+            }
+            this._rafId = requestAnimationFrame(drawFrame);
+        };
+        drawFrame();
+    },
+
+    _stop() {
+        if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
+        if (this.pipStream) { this.pipStream.getTracks().forEach(t => t.stop()); this.pipStream = null; }
+        if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
+        document.body.classList.remove('recording');
+        this.active = false;
+        const btn = document.getElementById('ctrl-rec-btn');
+        const ind = document.getElementById('rec-indicator');
+        btn.innerText = '⏺ REC'; btn.style.background = ''; btn.style.color = 'var(--danger)';
+        ind.classList.remove('active');
+        vibrate([100, 100, 300]);
+        MathUtils.say('Recording stopped. Processing video.');
+    },
+
+    _export() {
+        if (!this.chunks.length) return;
+        const blob = new Blob(this.chunks, { type: 'video/webm' });
+        const url  = URL.createObjectURL(blob);
+        const date = new Date().toISOString().slice(0,10);
+        const a = document.createElement('a');
+        a.href = url; a.download = `CyberBike-${date}.webm`;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 5000);
+        MathUtils.say('Video saved. Ready to upload.');
+    }
+};
+(function initEmojiSelects() {
+    const EMOJIS = ['🔥','🦄','🐺','⚡','🦅','🚴','🛸','💀','🌊','🎯','🏔️','🌙','⭐','🦊','🐉','🎸'];
+    ['emoji-a','emoji-b','join-emoji-a','join-emoji-b'].forEach((id, i) => {
+        const sel = document.getElementById(id);
+        if (!sel) return;
+        EMOJIS.forEach((e, j) => {
+            const opt = document.createElement('option');
+            opt.textContent = e;
+            if (j === (i % 2 === 0 ? 0 : 1)) opt.selected = true;
+            sel.appendChild(opt);
+        });
+    });
+})();
+
+Engine.init();
+</script>
+</body>
+</html>
