@@ -180,7 +180,7 @@
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
-    <div id="imu-readout">IMU: OFFLINE</div>
+    <div id="imu-readout">GYRO: UNAUTHORISED</div>
   </div>
 </div>
 
@@ -741,7 +741,6 @@ async function densify(A, sfm){
     const w=A.w, h=A.h;
     const cnv=document.createElement('canvas'); cnv.width=w; cnv.height=h;
     cnv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(A.color), w, h), 0, 0);
-    
     const model=await getDepther();
     stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Inferring dense tensor array...'); 
     await new Promise(r=>setTimeout(r,30));
@@ -801,7 +800,6 @@ function projectHybridMesh() {
   
   if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
   
-  // Grazing Angle / Edge Tear Cull
   const index=[]; const tear=edge>0?edge:Infinity;
   const GRAZE=0.10;   
   const P=k=>[pos[3*k],pos[3*k+1],pos[3*k+2]];
