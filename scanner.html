@@ -1,10 +1,32 @@
 ```html
 <!doctype html>
+<!--
+  P3dK · DepthScan v11 Pro  —  Ultimate Dual WebXR & IMU-SfM Scanner
+  ========================================================================
+  HONEST PHYSICS & ARCHITECTURE NOTE (Unified Pipeline):
+  
+  This application automatically bridges two state-of-the-art pipelines:
+  
+  [MODE A: METRIC VOLUMETRIC XR] (Requires Android Chrome + ARCore Depth)
+  - Raw metric depth stream integrated into a 3D Voxel TSDF array.
+  - Surface extracted via Marching Cubes.
+  - 3D-printable watertight solid STL closed in metric millimetres.
+  
+  [MODE B: HYBRID SFM + NEURAL] (Fallback for iOS, Desktops, & Non-XR)
+  - Continuous multi-view SLAM keyframe accumulation.
+  - Hardware Gyroscope/IMU telemetry fused into the pose estimator.
+  - SVD rotation candidates matched to Gyro via Frobenius norm minimisation.
+  - Dense neural heightmap (Transformers.js Depth Anything V2) rescaled to
+    physical anchors via robust Theil-Sen alignment.
+  - Grazing-angle triangle culling to kill neural edge-smearing spikes.
+  - Generates watertight solid bas-relief STL meshes.
+  ========================================================================
+-->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V9.0 · Uncapped SLAM</title>
+<title>P3dK · DepthScan V11 Pro</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -25,6 +47,7 @@
     
   .hud { position:fixed; z-index:60; }
   
+  /* Top HUD HUD */
   #top { 
     top:0; left:0; right:0; padding:12px 16px; display:flex; justify-content:space-between; align-items:flex-start;
     background:linear-gradient(180deg,rgba(4,6,10,.95),rgba(4,6,10,0)); font-family:'Orbitron',sans-serif; letter-spacing:2px; 
@@ -38,13 +61,15 @@
   #sub-stat { font-size:10px; color:var(--cy); opacity:.9; margin-top:4px; text-shadow:0 0 4px rgba(0,240,255,.5); }
   #imu-readout { font-size:9px; color:var(--gd); opacity:0.8; margin-top:4px; text-shadow:0 0 4px var(--gd); display:none; }
   
+  /* Viewfinder camera */
   #cam { 
-    position:fixed; z-index:40; top:90px; right:16px; width:100px; border:2px solid var(--mg); border-radius:8px;
+    position:fixed; z-index:40; top:84px; right:16px; width:100px; border:2px solid var(--mg); border-radius:8px;
     box-shadow:0 0 16px rgba(255,43,214,.4); display:none; object-fit:cover; aspect-ratio:3/4; background:#000; 
   }
 
+  /* Parallax / SLAM HUD Meter */
   #meter-container {
-    position:fixed; z-index:60; top:110px; left:50%; transform:translateX(-50%); width: 80%; max-width: 400px;
+    position:fixed; z-index:60; top:100px; left:50%; transform:translateX(-50%); width: 80%; max-width: 400px;
     display:none; flex-direction:column; align-items:center; gap:8px;
   }
   #meter-label { font-family:'Orbitron', sans-serif; font-size:12px; font-weight:700; color:var(--gd); text-shadow:0 0 8px var(--gd); letter-spacing:2px; }
@@ -59,11 +84,12 @@
   }
   #meter .band { position:absolute; top:0; bottom:0; border-left:2px solid #fff; box-shadow: 0 0 4px #fff; z-index: 2;}
 
+  /* Floating Control Grid - Safely lifted to prevent overlapping the buttons */
   #panel { 
-    position:fixed; left:16px; right:16px; bottom:150px; z-index:60; 
+    position:fixed; left:16px; right:16px; bottom:160px; z-index:60; 
     display:flex; flex-direction:column; gap:8px; 
     margin-bottom:max(0px,env(safe-area-inset-bottom));
-    max-height: 45vh; overflow-y: auto; overscroll-behavior: contain;
+    max-height: 40vh; overflow-y: auto; overscroll-behavior: contain;
   }
   #panel::-webkit-scrollbar { display: none; }
   
@@ -83,38 +109,63 @@
   .chk input { accent-color:var(--mg); width:18px; height:18px; cursor:pointer;}
   .chk label { color:var(--mg); letter-spacing:1px; margin:0; line-height:1.2; cursor:pointer;}
 
+  /* Tab Navigation bar - Engine Selection */
+  #tabs {
+    display: flex; gap: 8px; margin-bottom: 4px;
+  }
+  .tab {
+    flex: 1; text-align: center; padding: 10px; border: 1px solid rgba(0,240,255,.2);
+    background: rgba(4,6,10,.6); border-radius: 8px; font-size: 11px; cursor: pointer;
+    font-family: 'Orbitron', sans-serif; letter-spacing: 1px; transition: all 0.2s;
+  }
+  .tab.active {
+    border-color: var(--cy); background: rgba(0,240,255,.12); color: #fff; text-shadow: 0 0 6px var(--cy);
+  }
+  .tab:disabled {
+    opacity: 0.25; cursor: not-allowed; border-style: dashed;
+  }
+
+  /* Bottom Controls Button Bar */
   #bar { 
-    position:fixed; bottom:0; left:0; right:0; padding:16px; display:grid; gap:10px; grid-template-columns:1fr 1fr 1fr;
+    position:fixed; bottom:0; left:0; right:0; padding:16px; display:grid; gap:8px; 
+    grid-template-columns: repeat(6, 1fr);
     background:linear-gradient(0deg,rgba(4,6,10,1) 10%, rgba(4,6,10,.8) 50%, rgba(4,6,10,0)); 
     padding-bottom:max(16px,env(safe-area-inset-bottom)); z-index: 60;
   }
-  
-  /* Make primary buttons span properly */
-  #bCam { grid-column: span 1; }
-  #bScan { grid-column: span 2; }
-  #bReset, #bExport, #bImu { grid-column: span 1; }
-  
   button { 
-    font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:1px; font-size:12px;
-    color:var(--cy); background:rgba(0,240,255,.08); border:1px solid var(--cy); border-radius:8px; padding:14px 8px;
+    font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:1px; font-size:11px;
+    color:var(--cy); background:rgba(0,240,255,.08); border:1px solid var(--cy); border-radius:8px; padding:14px 4px;
     cursor:pointer; text-shadow:0 0 6px rgba(0,240,255,.5); transition:all .15s; min-height:56px;
     backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); 
   }
   button:active:not(:disabled) { background:var(--cy); color:#000; text-shadow:none; transform:scale(.98); }
   button.mg { color:var(--mg); border-color:var(--mg); background:rgba(255,43,214,.08); text-shadow:0 0 6px rgba(255,43,214,.5); }
   button.mg:active:not(:disabled) { background:var(--mg); color:#000; }
+  
   button.gd { color:var(--gd); border-color:var(--gd); background:rgba(57,255,139,.08); text-shadow:0 0 6px rgba(57,255,139,.5); }
   button.gd.armed { background:rgba(255,43,214,.2); border-color: #fff; color:#fff; text-shadow:0 0 8px #fff; animation:pulse-mg 1s infinite alternate; }
   @keyframes pulse-mg { from { box-shadow: 0 0 4px var(--mg); } to { box-shadow: 0 0 16px var(--mg), inset 0 0 10px var(--mg); } }
   button:disabled { opacity:.25; border-style:dashed; cursor:not-allowed; }
-  
-  .spin { display:inline-block; width:10px; height:10px; border:2px solid var(--mg); border-top-color:transparent;
-    border-radius:50%; animation:s .8s linear infinite; vertical-align:middle; margin-right:6px; }
-  @keyframes s { to { transform:rotate(360deg); } }
 
-  @media (min-width:768px){ 
-    #panel { max-width:460px; left:50%; transform:translateX(-50%); } 
-    #bar { max-width:500px; left:50%; transform:translateX(-50%); border-radius:12px 12px 0 0; } 
+  /* Grid layouts for bottom bar controls */
+  #bCam { grid-column: span 2; }
+  #bScan { grid-column: span 4; }
+  #bReset { grid-column: span 2; }
+  #bImu { grid-column: span 2; color:var(--gd); border-color:var(--gd); background:rgba(57,255,139,.08); text-shadow:0 0 6px rgba(57,255,139,.5); }
+  #bExport { grid-column: span 1; }
+  #bSolid { grid-column: span 1; }
+
+  /* WebXR overlay */
+  #xrhud { display:none; position:fixed; inset:0; z-index:70; pointer-events:none; font-family:'Share Tech Mono',monospace; }
+  #xrtop { position:absolute; top:0; left:0; right:0; padding:14px; text-align:center; color:var(--gd); font-size:13px;
+    text-shadow:0 0 6px var(--gd); background:linear-gradient(180deg,rgba(4,6,10,.8),transparent)}
+  #xrbtn { position:absolute; bottom:30px; left:50%; transform:translateX(-50%); pointer-events:auto;
+    font-family:'Orbitron',sans-serif; font-weight:900; font-size:16px; letter-spacing:2px; color:#000; background:var(--gd);
+    border:none; border-radius:10px; padding:18px 36px; box-shadow:0 0 20px var(--gd)}
+
+  @media (min-width: 768px) {
+    #panel { max-width: 460px; left:50%; transform:translateX(-50%); }
+    #bar { max-width: 500px; left:50%; transform:translateX(-50%); border-radius: 12px 12px 0 0; }
   }
 </style>
 </head>
@@ -125,10 +176,10 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V9.0 UNCAPPED</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V11 PRO SYSTEM</s></div>
   <div id="stat-container">
-    <div id="stat"><span class="spin"></span>Booting engine...</div>
-    <div id="sub-stat">Loading AI & OpenCV</div>
+    <div id="stat">Booting Engine...</div>
+    <div id="sub-stat">Initialising Core Web API</div>
     <div id="imu-readout">IMU: OFFLINE</div>
   </div>
 </div>
@@ -143,8 +194,15 @@
   </div>
 </div>
 
+<!-- Unified control panel -->
 <div id="panel" class="hud">
-  <div class="dgrid">
+  <div id="tabs">
+    <div id="tabHybrid" class="tab active">SFM + NEURAL</div>
+    <div id="tabXr" class="tab" title="Requires WebXR & Depth Sensing support">METRIC XR</div>
+  </div>
+  
+  <!-- Hybrid monocular controls -->
+  <div class="dgrid" id="controlsHybrid">
     <div class="dial"><label>FOV° (calib)<span class="v" id="vfov">60</span></label>
       <input type="range" id="fov" min="30" max="100" step="1" value="60"></div>
     <div class="dial"><label>FAR CULL<span class="v" id="vfc">0.05</span></label>
@@ -155,24 +213,38 @@
       <input type="range" id="zs" min="0.05" max="3.0" step="0.05" value="1.0"></div>
     <label class="chk" style="grid-column: span 2;"><input type="checkbox" id="inv">INVERT Z / CONCAVE</label>
   </div>
+
+  <!-- WebXR Volumetric controls -->
+  <div class="dgrid" id="controlsXr" style="display:none;">
+    <div class="dial"><label>VOLUME SIZE m<span class="v" id="vvs">0.60</span></label>
+      <input type="range" id="vs" min="0.3" max="1.2" step="0.05" value="0.6"></div>
+    <div class="dial"><label>VOXEL RES<span class="v" id="vvr">96</span></label>
+      <input type="range" id="vr" min="64" max="128" step="32" value="96"></div>
+  </div>
 </div>
 
 <div id="bar" class="hud">
   <button id="bCam" disabled>◉ CAMERA</button>
   <button id="bScan" class="gd" disabled>⚡ AUTO SCAN</button>
   <button id="bReset" class="mg">↺ CLEAR</button>
-  <button id="bImu" class="cy">⊛ GYRO</button>
-  <button id="bExport" class="mg" disabled>⤓ PLY</button>
-  
-  <input type="hidden" id="orbn" value="1500">
-  <input type="hidden" id="px" value="8">
+  <button id="bImu">⊛ ENABLE GYRO</button>
+  <button id="bExport" class="mg" disabled>PLY</button>
+  <button id="bSolid" class="mg" disabled>STL</button>
+</div>
+
+<!-- WebXR Overlay View -->
+<div id="xrhud">
+  <div id="xrtop">placing volume…</div>
+  <button id="xrbtn">■ FINISH</button>
 </div>
 
 <script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-}}
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
 </script>
 
 <script async src="https://docs.opencv.org/4.x/opencv.js"></script>
@@ -180,6 +252,7 @@
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
 import { pipeline, env, RawImage } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
 env.allowLocalModels = false;
 
@@ -188,79 +261,175 @@ const stat = m => $('stat').innerHTML = m;
 const subStat = m => $('sub-stat').innerHTML = m;
 
 /* ---------- Three.js Scene Setup ---------- */
-const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
-renderer.setPixelRatio(Math.min(devicePixelRatio,2)); 
-renderer.setSize(innerWidth,innerHeight);
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2)); 
+renderer.setSize(innerWidth, innerHeight);
 $('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const cam = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.001, 5000);
-cam.position.set(0,0,4);
+cam.position.set(0, 0, 4);
 
 const ctrl = new OrbitControls(cam, renderer.domElement); 
-ctrl.enableDamping=true; ctrl.rotateSpeed=.7;
+ctrl.enableDamping = true; ctrl.rotateSpeed = 0.7;
 
-const grid = new THREE.GridHelper(10,20,0x00f0ff,0x0a2a33);
-grid.position.y=-2; grid.material.transparent=true; grid.material.opacity=.25; 
+const grid = new THREE.GridHelper(10, 20, 0x00f0ff, 0x0a2a33);
+grid.position.y = -2; grid.material.transparent = true; grid.material.opacity = 0.25; 
 scene.add(grid);
 
-let cloud=null, plyRows=null, cachedScan = null;
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+const dl = new THREE.DirectionalLight(0xffffff, 1.2); 
+dl.position.set(1, 2, 1.5); 
+scene.add(dl);
 
-addEventListener('resize', () => { 
-  cam.aspect=innerWidth/innerHeight; 
-  cam.updateProjectionMatrix(); 
-  renderer.setSize(innerWidth,innerHeight); 
+let cloud = null;          
+let plyRows = null;       
+let cachedScan = null;     
+
+addEventListener('resize', () => {
+  cam.aspect = innerWidth / innerHeight; 
+  cam.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
 });
 
-(function loop(){ 
+(function loop() { 
   requestAnimationFrame(loop); 
   ctrl.update(); 
-  renderer.render(scene,cam); 
+  renderer.render(scene, cam); 
 })();
 
-/* ---------- IMU / Gyroscope Integration ---------- */
-let imuActive = false;
-let currentGyro = { alpha: 0, beta: 0, gamma: 0 };
+/* ---------- Unified Mode Architecture ---------- */
+let activeMode = 'hybrid'; // 'hybrid' or 'xr'
+let xrSupported = false;
 
-$('bImu').onclick = () => {
-  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission()
-      .then(permissionState => {
-        if (permissionState === 'granted') enableIMU();
-        else { $('imu-readout').textContent = "IMU: DENIED"; $('imu-readout').style.display='block'; }
-      })
-      .catch(console.error);
+async function checkXrSupport() {
+  if (navigator.xr) {
+    try {
+      xrSupported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (xrSupported) {
+        $('tabXr').disabled = false;
+        stat('System Ready');
+        subStat('Metric WebXR & Monocular Hybrid Engines Loaded');
+      } else {
+        $('tabXr').disabled = true;
+        $('tabXr').style.opacity = '0.35';
+        $('tabXr').title = "WebXR immersive-ar depth unavailable on this browser/OS";
+      }
+    } catch(e) {
+      console.warn("WebXR feature check failed", e);
+    }
+  }
+}
+
+// Switch UI tabs
+$('tabHybrid').onclick = () => selectMode('hybrid');
+$('tabXr').onclick = () => { if(xrSupported) selectMode('xr'); };
+
+function selectMode(mode) {
+  if(accumulating) stopScan();
+  if(cloud) { scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud = null; }
+  activeMode = mode;
+  
+  if(mode === 'hybrid') {
+    $('tabHybrid').classList.add('active');
+    $('tabXr').classList.remove('active');
+    $('controlsHybrid').style.display = 'grid';
+    $('controlsXr').style.display = 'none';
+    $('bImu').style.display = 'block';
+    
+    // Readjust bottom bar geometry
+    $('bCam').style.display = 'block';
+    $('bScan').style.gridColumn = 'span 4';
+    $('bScan').textContent = '⚡ AUTO SCAN';
+    $('bReset').style.gridColumn = 'span 2';
+    $('bExport').style.display = 'block';
+    $('bSolid').style.display = 'block';
+    
+    if(stream) {
+      $('cam').style.display = 'block';
+      $('bScan').disabled = !cvReady;
+    } else {
+      $('bScan').disabled = true;
+    }
   } else {
-    enableIMU(); // Non-iOS 13+ devices
+    $('tabXr').classList.add('active');
+    $('tabHybrid').classList.remove('active');
+    $('controlsXr').style.display = 'grid';
+    $('controlsHybrid').style.display = 'none';
+    $('bImu').style.display = 'none';
+    
+    // Readjust bottom bar layout for Volumetric XR Mode
+    $('bCam').style.display = 'none';
+    $('bScan').style.gridColumn = 'span 6';
+    $('bScan').textContent = '◎ START XR SCAN';
+    $('bReset').style.gridColumn = 'span 4';
+    $('bExport').style.display = 'none';
+    $('bSolid').style.display = 'none';
+    
+    $('cam').style.display = 'none';
+    $('bScan').disabled = false;
+  }
+}
+
+/* ---------- IMU telemetry / Gyroscope Integration ---------- */
+let imuAvailable = false;
+let currentGyroState = { beta: 0, gamma: 0, alpha: 0 };
+
+$('bImu').onclick = async () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    try {
+      const state = await DeviceOrientationEvent.requestPermission();
+      if (state === 'granted') {
+        bindIMU();
+      } else {
+        $('imu-readout').textContent = "GYRO: DENIED";
+      }
+    } catch (e) {
+      console.error(e);
+      $('imu-readout').textContent = "GYRO: BLOCKED";
+    }
+  } else {
+    bindIMU();
   }
 };
 
-function enableIMU() {
-  window.addEventListener('deviceorientation', (event) => {
-    currentGyro = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
-    if(!imuActive) {
-      imuActive = true;
-      $('imu-readout').style.display='block';
-      $('bImu').style.background = 'rgba(57,255,139,.2)';
-      $('bImu').style.color = '#fff';
-    }
-    $('imu-readout').textContent = `IMU: P:${Math.round(event.beta)} R:${Math.round(event.gamma)} Y:${Math.round(event.alpha)}`;
+function bindIMU() {
+  window.addEventListener('deviceorientation', (e) => {
+    imuAvailable = true;
+    currentGyroState = { beta: e.beta || 0, gamma: e.gamma || 0, alpha: e.alpha || 0 };
+    $('imu-readout').style.display = 'block';
+    $('imu-readout').textContent = `GYRO: P:${Math.round(currentGyroState.beta)}° R:${Math.round(currentGyroState.gamma)}° Y:${Math.round(currentGyroState.alpha)}°`;
+    $('bImu').style.borderColor = 'var(--gd)';
+    $('bImu').style.background = 'rgba(57,255,139,.1)';
   });
 }
 
-/* ---------- OpenCV Ready Gate ---------- */
+/* ---------- OpenCV ready gate ---------- */
 let cvReady=false;
 function whenCv(){ 
   if(window.cv && cv.Mat){ 
-    cvReady=true; stat('System Online'); subStat('Core active · Open camera'); $('bCam').disabled = false;
+    cvReady=true; 
+    if(activeMode === 'hybrid') {
+      stat('System Online'); subStat('Hybrid Core active · Open camera'); $('bScan').disabled = !stream;
+    }
+    $('bCam').disabled = false;
+    checkXrSupport();
   }
   else if(window.cv && cv.onRuntimeInitialized !== undefined){ 
-    cv.onRuntimeInitialized=()=>{ cvReady=true; stat('System Online'); subStat('Core active · Open camera'); $('bCam').disabled = false; }; 
+    cv.onRuntimeInitialized=()=>{ 
+      cvReady=true; 
+      if(activeMode === 'hybrid') {
+        stat('System Online'); subStat('Hybrid Core active · Open camera'); $('bScan').disabled = !stream;
+      }
+      $('bCam').disabled = false;
+      checkXrSupport();
+    }; 
   }
   else { setTimeout(whenCv,200); }
 }
 whenCv();
 
+/* ---------- camera stream ---------- */
 let stream=null;
 $('bCam').onclick = async ()=>{
   if(stream){ 
@@ -308,8 +477,8 @@ function matchPairs(desA, desB) {
   return good;
 }
 
-/* ================= V9: Uncapped SLAM Accumulation ================= */
-const PAR_STEP = 0.08; // Increased baseline requirement
+/* ================= MODE B: Multi-Frame SLAM Pipeline ================= */
+const PAR_STEP = 0.08;
 let accumulating=false, refFrame=null, accTimer=null;
 let anchorMap=null, keyframes=0, lastKfPar=0, refScaleSet=false;
 
@@ -320,30 +489,27 @@ function stopScan() {
   anchorMap=null;
 }
 
-$('bScan').onclick = ()=>{
-  if(!cvReady || !stream) return;
-  if(accumulating){ finishAccum(); return; } // V9: User manually ends accumulation
-  
+function startHybridScan() {
   const g=grab(); if(!g){ subStat('No video frame yet'); return; }
-  const det=detect(g.gray, +$('orbn').value);
-  if(det.des.rows<30){ g.gray.delete(); det.kp.delete(); det.des.delete(); subStat('Reference too featureless — aim at texture'); return; }
+  const det=detect(g.gray, 1500);
+  if(det.des.rows<30){ g.gray.delete(); det.kp.delete(); det.des.delete(); subStat('Anchor too featureless — aim at texture'); return; }
   
-  refFrame={ ...g, ...det };
+  refFrame={ ...g, ...det, gyro: { ...currentGyroState } };
   anchorMap=new Map(); keyframes=0; lastKfPar=0; refScaleSet=false;
   accumulating=true; 
   $('bScan').classList.add('armed'); $('bScan').textContent='■ FINISH SCAN';
   $('meter-container').style.display='flex';
   
-  stat('Reference set'); subStat('Orbit the object — keep it centered');
+  stat('Reference Locked'); subStat('Orbit slowly. Keep target centred.');
   accStep();
-};
+}
 
 function accStep(){
   if(!accumulating) return;
   let g=null, det=null;
   try{
     g=grab(); if(!g){ accTimer=setTimeout(accStep,200); return; }
-    det=detect(g.gray, +$('orbn').value);
+    det=detect(g.gray, 1500);
     const good=(refFrame.des.rows && det.des.rows) ? matchPairs(refFrame.des, det.des) : [];
     
     if(good.length<15){ 
@@ -357,13 +523,14 @@ function accStep(){
     const disps=[]; for(const m of good){ const a=refFrame.kp.get(m.q).pt, b=det.kp.get(m.t).pt; disps.push(Math.hypot(a.x-b.x,a.y-b.y)); }
     disps.sort((x,y)=>x-y); const med=disps[disps.length>>1]/g.w;
     
-    const fire=+$('px').value/100, n=anchorMap.size;
+    const fire=0.08, n=anchorMap.size;
     $('meterFill').style.width=Math.min(100, n/200*100)+'%';
     $('meter-label').textContent=`KF: ${keyframes} | Anchors: ${n} | Parallax: ${(med*100).toFixed(0)}%`;
 
-    // V9: Uncapped keyframe promotion
+    // Uncapped keyframe promotion
     if(med>=fire && med>=lastKfPar+PAR_STEP){
-      const res=poseAndTriangulate(refFrame, det, good);
+      const currentProbeGyro = { ...currentGyroState };
+      const res=poseAndTriangulate(refFrame, det, good, currentProbeGyro);
       if(res){
         if(!refScaleSet){
           for(const p of res.pts) anchorMap.set(p.qi,{px:p.px,py:p.py,z:p.z,n:1});
@@ -385,7 +552,6 @@ function accStep(){
         }
       }
       det.kp.delete(); det.des.delete(); g.gray.delete();
-      // V9: No auto-finish. Continue until user presses FINISH.
       accTimer=setTimeout(accStep,120); return;
     }
     det.kp.delete(); det.des.delete(); g.gray.delete();
@@ -403,7 +569,7 @@ function finishAccum(){
   const A = refFrame ? { color:refFrame.color, w:refFrame.w, h:refFrame.h } : null;
   if(refFrame){ refFrame.gray.delete(); refFrame.kp.delete(); refFrame.des.delete(); refFrame=null; }
   
-  if(!A || !anchorMap || anchorMap.size<20){ 
+  if(!A || !anchorMap || anchorMap.size<30){ 
     stat('Not enough anchors'); subStat(`Only ${anchorMap?anchorMap.size:0} — orbit the object more`); 
     anchorMap=null; return; 
   }
@@ -415,7 +581,7 @@ function finishAccum(){
   setTimeout(() => densify(A, { pairs }), 50);
 }
 
-/* ================= Pure JS SfM Helpers ================= */
+/* ================= Pure JS SfM Helpers with Frobenius gyro priors ================= */
 const mul=(P,Q)=>{ const a=P.length,b=Q[0].length,c=Q.length,R=[]; for(let i=0;i<a;i++){R[i]=[];for(let j=0;j<b;j++){let s=0;for(let k=0;k<c;k++)s+=P[i][k]*Q[k][j];R[i][j]=s;}} return R; };
 const tT=M=>M[0].map((_,j)=>M.map(r=>r[j]));
 const mv3=(M,v)=>[M[0][0]*v[0]+M[0][1]*v[1]+M[0][2]*v[2], M[1][0]*v[0]+M[1][1]*v[1]+M[1][2]*v[2], M[2][0]*v[0]+M[2][1]*v[1]+M[2][2]*v[2]];
@@ -477,11 +643,12 @@ function triangulate(R,t,a,b){
   return { P, z1:P[2], z2 };
 }
 
-function poseAndTriangulate(A, B, good){
+/* ---------- Pose & Triangulate with Frobenius Rotation Matching ---------- */
+function poseAndTriangulate(A, B, good, probeGyro){
   try{
     const n=good.length, w=A.w; if(n<20) return null;
     const f=(0.5*w)/Math.tan(0.5*(+$('fov').value)*Math.PI/180), cx=w/2, cy=A.h/2;
-    const x1=[],y1=[],x2=[],y2=[];
+    const x1=[],y1=[],x2=[],y2[];
     for(const m of good){ const p=A.kp.get(m.q).pt, q=B.kp.get(m.t).pt;
       x1.push((p.x-cx)/f); y1.push((p.y-cy)/f); x2.push((q.x-cx)/f); y2.push((q.y-cy)/f); }
     const SAMP=2e-4; let bestE=null,bestIn=-1,bestMask=null;
@@ -495,10 +662,50 @@ function poseAndTriangulate(A, B, good){
     if(!bestE || bestIn<15) return null;
     const inl=[]; for(let i=0;i<n;i++) if(bestMask[i]) inl.push(i);
     const E=eightPoint(inl, x1,y1,x2,y2);
-    const cands=decomposeE(E); let best=null,bestFront=-1;
-    for(const c of cands){ let front=0;
+    
+    // Construct Gyroscopic reference rotation (pitch, yaw, roll delta mapping)
+    let Rgyro = null;
+    if(imuAvailable && A.gyro) {
+      const dp = (probeGyro.beta - A.gyro.beta) * Math.PI / 180;
+      const dy = (probeGyro.alpha - A.gyro.alpha) * Math.PI / 180;
+      const dr = (probeGyro.gamma - A.gyro.gamma) * Math.PI / 180;
+      
+      const cp = Math.cos(dp), sp = Math.sin(dp);
+      const cy = Math.cos(dy), sy = Math.sin(dy);
+      const cr = Math.cos(dr), sr = Math.sin(dr);
+
+      Rgyro = [
+        [cy*cr, -cy*sr, sy],
+        [sp*sy*cr + cp*sr, -sp*sy*sr + cp*cr, -sp*cy],
+        [-cp*sy*cr + sp*sr, cp*sy*sr + sp*cr, cp*cy]
+      ];
+    }
+
+    const cands=decomposeE(E); let best=null,bestFront=-1, bestMatchError = Infinity;
+    
+    for(const c of cands){ 
+      let front=0;
       for(const i of inl){ const r=triangulate(c.R,c.t,[x1[i],y1[i],1],[x2[i],y2[i],1]); if(r&&r.z1>0&&r.z2>0) front++; }
-      if(front>bestFront){ bestFront=front; best=c; } }
+      
+      if(Rgyro) {
+        // IMU-Assist: Minimise Frobenius norm distance to physical gyro sensor
+        let err = 0;
+        for(let r=0; r<3; r++) {
+          for(let cl=0; cl<3; cl++) {
+            err += Math.pow(c.R[r][cl] - Rgyro[r][cl], 2);
+          }
+        }
+        if(front >= 8 && err < bestMatchError) {
+          bestMatchError = err;
+          bestFront = front;
+          best = c;
+        }
+      } else {
+        // Fallback to traditional cheirality priority
+        if(front>bestFront){ bestFront=front; best=c; } 
+      }
+    }
+    
     if(!best || bestFront<10) return null;
     const pts=[];
     for(const i of inl){ const r=triangulate(best.R,best.t,[x1[i],y1[i],1],[x2[i],y2[i],1]);
@@ -510,18 +717,7 @@ function poseAndTriangulate(A, B, good){
   }catch(e){ console.error(e); return null; }
 }
 
-/* ---------- Neural Depth Model ---------- */
-let depther=null;
-async function getDepther(){
-  if(depther) return depther;
-  const dev=('gpu' in navigator)?'webgpu':'wasm';
-  stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat(`Loading DA2 via ${dev.toUpperCase()}`);
-  depther=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{ device:dev,
-    progress_callback:p=>{ if(p.status==='progress'&&p.total) subStat(`Downloading Model: ${(p.progress||0).toFixed(0)}%`); } });
-  return depther;
-}
-
-/* ---------- Robust Affine Fit ---------- */
+/* ---------- robust affine alignment ---------- */
 function robustAffine(xs, ys){
   const n=xs.length; if(n<12) return null;
   let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
@@ -535,12 +731,11 @@ function robustAffine(xs, ys){
   const b=xs.map((x,i)=>ys[i]-a*x).sort((p,q)=>p-q)[n>>1];          
   const mad=(1.4826*xs.map((x,i)=>Math.abs(ys[i]-(a*x+b))).sort((p,q)=>p-q)[n>>1])||1e-9;
   const signal=a*(xmax-xmin), invHi=a*xmax+b;
-  
   const reliable = a>0 && signal>4*mad && invHi>1e-4;
   return { a, b, reliable, anchors:n, snr:signal/mad };
 }
 
-/* ---------- Hybrid Densification + Caching ---------- */
+/* ---------- hybrid densification ---------- */
 async function densify(A, sfm){
   try {
     const w=A.w, h=A.h;
@@ -554,13 +749,13 @@ async function densify(A, sfm){
     const { predicted_depth } = await model(await RawImage.fromCanvas(cnv));
     
     cachedScan = { A: A, sfm: sfm, dims: predicted_depth.dims, D: predicted_depth.data };
-    projectCloud();
+    projectHybridMesh();
     
   } catch(e) { stat('Densify error'); subStat(e.message); console.error(e); }
 }
 
 /* ---------- Instant Reprojection Engine (Mesh Version) ---------- */
-function projectCloud() {
+function projectHybridMesh() {
   if (!cachedScan) return;
   const { A, sfm, dims, D } = cachedScan;
   const dh = dims[dims.length-2], dw = dims[dims.length-1], w = A.w, h = A.h;
@@ -606,19 +801,23 @@ function projectCloud() {
   
   if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
   
-  // V9: Grazing Angle / Edge Tear Cull
+  // Grazing Angle / Edge Tear Cull
   const index=[]; const tear=edge>0?edge:Infinity;
-  const ok3=(p,q,r)=>{
-    if(p<0||q<0||r<0) return false;
-    // Tear check
-    if(Math.abs(vdn[p]-vdn[q])>tear || Math.abs(vdn[q]-vdn[r])>tear || Math.abs(vdn[p]-vdn[r])>tear) return false;
-    // Grazing angle cull (kills the smeared spikes)
-    const z0 = pos[p*3+2], z1 = pos[q*3+2], z2 = pos[r*3+2];
-    const maxZDiff = Math.max(Math.abs(z0-z1), Math.abs(z1-z2), Math.abs(z0-z2));
-    const minZ = Math.min(Math.abs(z0), Math.abs(z1), Math.abs(z2));
-    if (maxZDiff > Math.abs(minZ) * 0.15) return false; // Drop if highly stretched relative to its depth
-    return true;
+  const GRAZE=0.10;   
+  const P=k=>[pos[3*k],pos[3*k+1],pos[3*k+2]];
+  
+  const grazeOk=(p,q,r)=>{
+    const Av=P(p), Bv=P(q), Cv=P(r);
+    const e1=[Bv[0]-Av[0],Bv[1]-Av[1],Bv[2]-Av[2]], e2=[Cv[0]-Av[0],Cv[1]-Av[1],Cv[2]-Av[2]];
+    const n=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
+    const c=[(Av[0]+Bv[0]+Cv[0])/3,(Av[1]+Bv[1]+Cv[1])/3,(Av[2]+Bv[2]+Cv[2])/3];   
+    const nl=Math.hypot(...n)||1e-9, cl=Math.hypot(...c)||1e-9;
+    return Math.abs(n[0]*c[0]+n[1]*c[1]+n[2]*c[2])/(nl*cl) > GRAZE;
   };
+  
+  const ok3=(p,q,r)=> p>=0&&q>=0&&r>=0 &&
+    Math.abs(vdn[p]-vdn[q])<=tear && Math.abs(vdn[q]-vdn[r])<=tear && Math.abs(vdn[p]-vdn[r])<=tear &&
+    grazeOk(p,q,r);
     
   for(let gy=0;gy<gh-1;gy++) for(let gx=0;gx<gw-1;gx++){
     const v00=vidx[gy*gw+gx], v10=vidx[gy*gw+gx+1], v01=vidx[(gy+1)*gw+gx], v11=vidx[(gy+1)*gw+gx+1];
@@ -642,6 +841,7 @@ function drawMesh(pos,col,index){
   g.computeBoundingSphere();
   
   const s=g.boundingSphere.radius||1; g.scale(2/s,2/s,2/s); g.center();
+  
   cloud=new THREE.Mesh(g, new THREE.MeshBasicMaterial({vertexColors:true, side:THREE.DoubleSide}));
   scene.add(cloud);
   applyTransforms(); 
@@ -652,7 +852,7 @@ function drawMesh(pos,col,index){
     const idx=g.index.array, faces=[]; for(let i=0;i<idx.length;i+=3) faces.push(`3 ${idx[i]} ${idx[i+1]} ${idx[i+2]}`);
     return { verts, faces };
   };
-  $('bExport').disabled=false;
+  $('bExport').disabled=false; $('bSolid').disabled=false;
 }
 
 /* ---------- Instant Visual Transforms ---------- */
@@ -663,38 +863,288 @@ function applyTransforms() {
   cloud.scale.z = sz;
 }
 
+/* ---------- watertight solid exporter (Bas-Relief closure) ---------- */
+function solidify(pos, index, zs){
+  const N=pos.length/3;
+  const V=new Float64Array(N*3); let zmin=Infinity,zmax=-Infinity;
+  for(let i=0;i<N;i++){ V[3*i]=pos[3*i]; V[3*i+1]=pos[3*i+1]; const z=pos[3*i+2]*zs; V[3*i+2]=z;
+    if(z<zmin)zmin=z; if(z>zmax)zmax=z; }
+  const zback=zmin-0.05*Math.max(1e-6,(zmax-zmin));
+  const W=new Float64Array(N*6); W.set(V,0);
+  for(let i=0;i<N;i++){ W[3*(N+i)]=V[3*i]; W[3*(N+i)+1]=V[3*i+1]; W[3*(N+i)+2]=zback; }
+  const tris=[];
+  for(let t=0;t<index.length;t+=3){ const a=index[t],b=index[t+1],c=index[t+2];
+    tris.push(a,c,b);  tris.push(a+N,b+N,c+N); }                     
+  const cnt=new Map(); const key=(a,b)=>a<b?a*4e9+b:b*4e9+a;
+  for(let t=0;t<index.length;t+=3){ const e=[[index[t],index[t+1]],[index[t+1],index[t+2]],[index[t+2],index[t]]];
+    for(const [a,b] of e){ const k=key(a,b); cnt.set(k,(cnt.get(k)||0)+1); } }
+  for(let t=0;t<index.length;t+=3){ const e=[[index[t],index[t+1]],[index[t+1],index[t+2]],[index[t+2],index[t]]];
+    for(const [a,b] of e){ if(cnt.get(key(a,b))===1){ tris.push(a,b,a+N); tris.push(b,b+N,a+N); } } }  
+  return { verts:W, tris };
+}
+
+function writeSTL(W, tris){                       
+  const F=tris.length/3, buf=new ArrayBuffer(84+50*F), dv=new DataView(buf);
+  dv.setUint32(80, F, true);
+  let o=84;
+  for(let t=0;t<tris.length;t+=3){
+    const a=tris[t]*3,b=tris[t+1]*3,c=tris[t+2]*3;
+    const ux=W[b]-W[a],uy=W[b+1]-W[a+1],uz=W[b+2]-W[a+2], vx=W[c]-W[a],vy=W[c+1]-W[a+1],vz=W[c+2]-W[a+2];
+    let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx; const nl=Math.hypot(nx,ny,nz)||1; nx/=nl;ny/=nl;nz/=nl;
+    dv.setFloat32(o,nx,true); dv.setFloat32(o+4,ny,true); dv.setFloat32(o+8,nz,true); o+=12;
+    for(const k of [a,b,c]){ dv.setFloat32(o,W[k],true); dv.setFloat32(o+4,W[k+1],true); dv.setFloat32(o+8,W[k+2],true); o+=12; }
+    dv.setUint16(o,0,true); o+=2;
+  }
+  return buf;
+}
+
+$('bSolid').onclick=()=>{
+  if(!cloud) return;
+  stat('⟳ Sealing solid…'); subStat('closing mesh into watertight STL');
+  setTimeout(()=>{ try{
+    const g=cloud.geometry;
+    const { verts, tris }=solidify(g.attributes.position.array, g.index.array, cloud.scale.z);
+    const buf=writeSTL(verts, tris);
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf],{type:'model/stl'}));
+    a.download=`p3dk_solid_${Date.now()}.stl`; a.click();
+    stat('Solid Exported'); subStat(`${(tris.length/3).toLocaleString()} faces · watertight STL bas-relief`);
+  }catch(e){ stat('Solid error'); subStat(e.message); console.error(e); } }, 30);
+};
+
+/* ================= MODE A: WebXR Volumetric TSDF marching cubes ================= */
+let vol=null, kf=0;
+let stlData=null;
+
+function makeVol(res,size,ox,oy,oz){
+  return {res,size,vox:size/res,ox,oy,oz,tsdf:new Float32Array(res**3).fill(1),w:new Uint8Array(res**3)};
+}
+
+function integrate(vol,dep,W2V,P){
+  const {res,vox,ox,oy,oz,tsdf,w}=vol,{dw,dh,data}=dep,tau=3*vox,r2=res*res;
+  for(let z=0;z<res;z++){ const wz=oz+(z+0.5)*vox;
+    for(let y=0;y<res;y++){ const wy=oy+(y+0.5)*vox,base=y*res+z*r2;
+      for(let x=0;x<res;x++){ const wx=ox+(x+0.5)*vox;
+        const cz=W2V[2]*wx+W2V[6]*wy+W2V[10]*wz+W2V[14]; if(cz>-0.05) continue;
+        const cx=W2V[0]*wx+W2V[4]*wy+W2V[8]*wz+W2V[12];
+        const cy=W2V[1]*wx+W2V[5]*wy+W2V[9]*wz+W2V[13];
+        const pw=P[3]*cx+P[7]*cy+P[11]*cz+P[15]; if(pw<=0) continue;
+        const u=((P[0]*cx+P[4]*cy+P[8]*cz+P[12])/pw+1)/2;
+        const v=(1-(P[1]*cx+P[5]*cy+P[9]*cz+P[13])/pw)/2;
+        if(u<0||u>=1||v<0||v>=1) continue;
+        const d=data[(v*dh|0)*dw+(u*dw|0)]; if(!(d>0)) continue;
+        const sdf=d+cz; if(sdf<-tau) continue;
+        const t=Math.min(1,sdf/tau),i=base+x,wi=w[i];
+        tsdf[i]=(tsdf[i]*wi+t)/(wi+1); if(wi<250) w[i]=wi+1;
+      } } }
+}
+
+function toField(vol){    
+  const {res,tsdf,w}=vol,n=res**3,r2=res*res,f=new Float32Array(n);
+  const ext=new Uint8Array(n),stack=[];
+  const empty=i=>w[i]===0||tsdf[i]>0;
+  for(let z=0;z<res;z++)for(let y=0;y<res;y++)for(let x=0;x<res;x++)
+    if(x===0||y===0||z===0||x===res-1||y===res-1||z===res-1){const i=x+y*res+z*r2;if(empty(i)&&!ext[i]){ext[i]=1;stack.push(i);}}
+  while(stack.length){const i=stack.pop(),x=i%res,y=(i/res|0)%res,z=i/r2|0;
+    if(x>0&&!ext[i-1]&&empty(i-1)){ext[i-1]=1;stack.push(i-1);}
+    if(x<res-1&&!ext[i+1]&&empty(i+1)){ext[i+1]=1;stack.push(i+1);}
+    if(y>0&&!ext[i-res]&&empty(i-res)){ext[i-res]=1;stack.push(i-res);}
+    if(y<res-1&&!ext[i+res]&&empty(i+res)){ext[i+res]=1;stack.push(i+res);}
+    if(z>0&&!ext[i-r2]&&empty(i-r2)){ext[i-r2]=1;stack.push(i-r2);}
+    if(z<res-1&&!ext[i+r2]&&empty(i+r2)){ext[i+r2]=1;stack.push(i+r2);}}
+  for(let i=0;i<n;i++){ f[i]= w[i]>0 ? -tsdf[i] : (ext[i]?-1:1); }
+  for(let z=0;z<res;z++)for(let y=0;y<res;y++)for(let x=0;x<res;x++)
+    if(x===0||y===0||z===0||x===res-1||y===res-1||z===res-1) f[x+y*res+z*r2]=-1;
+  return f;
+}
+
+async function startXrScan() {
+  const S = +$('vs').value, RES = +$('vr').value;
+  let session;
+  try{
+    session = await navigator.xr.requestSession('immersive-ar',{
+      requiredFeatures:['depth-sensing','dom-overlay'],
+      depthSensing:{usagePreference:['cpu-optimized'],dataFormatPreference:['luminance-alpha','float32']},
+      domOverlay:{root:$('xrhud')}
+    });
+  } catch(e) {
+    stat('XR session failed');
+    subStat(e.message + ' — depth-sensing may be unsupported on this device');
+    return;
+  }
+  
+  $('xrhud').style.display='block'; $('xrtop').textContent='placing volume…';
+  const glc = document.createElement('canvas');
+  const gl = glc.getContext('webgl',{xrCompatible:true});
+  await gl.makeXRCompatible?.();
+  session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
+  const ref = await session.requestReferenceSpace('local');
+  vol = null; kf = 0;
+  
+  const DW = 160, DH = 120, dep = {dw:DW, dh:DH, data:new Float32Array(DW*DH)};
+  let lastP = null, lastQ = null, lastT = 0, depthMiss = 0;
+  const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3();
+
+  const onFrame = (t, frame) => {
+    session.requestAnimationFrame(onFrame);
+    const pose = frame.getViewerPose(ref); if(!pose) return;
+    const view = pose.views[0];
+    M.fromArray(view.transform.matrix);
+    Pv.setFromMatrixPosition(M); Q.setFromRotationMatrix(M);
+    if(!vol){  
+      const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(Q);
+      const c = Pv.clone().add(fwd.multiplyScalar(0.25+S/2));
+      vol = makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2);
+      $('xrtop').textContent='volume placed — orbit the object';
+      lastP = Pv.clone(); lastQ = Q.clone(); lastT = t; return;
+    }
+    const moved = Pv.distanceTo(lastP)>0.03 || lastQ.angleTo(Q)>0.05;
+    if(!moved || t-lastT<150) return;
+    let di=null; try{ di=frame.getDepthInformation(view); }catch(e){}
+    if(!di){ if(++depthMiss===30){ $('xrtop').textContent='no depth data — device may lack ARCore depth'; } return; }
+    for(let py=0;py<DH;py++)for(let px=0;px<DW;px++)
+      dep.data[py*DW+px]=di.getDepthInMeters((px+0.5)/DW,(py+0.5)/DH);
+    const t0=performance.now();
+    integrate(vol, dep, M.clone().invert().elements, view.projectionMatrix);
+    kf++; lastP.copy(Pv); lastQ.copy(Q); lastT=t;
+    $('xrtop').textContent=`KF ${kf} · ${(performance.now()-t0)|0}ms/integrate · orbit fully, then FINISH`;
+  };
+  session.requestAnimationFrame(onFrame);
+  $('xrbtn').onclick = () => session.end();
+  session.addEventListener('end', () => { $('xrhud').style.display='none'; buildXrMesh(S,RES); });
+}
+
+function buildXrMesh(S, RES){
+  if(!vol||kf<3){ stat('Scan too short'); subStat(`${kf} keyframes — orbit the object`); return; }
+  stat('⟳ Extracting'); subStat('marching cubes…');
+  setTimeout(()=>{ try{
+    const mc = new MarchingCubes(RES,new THREE.MeshNormalMaterial({side:THREE.DoubleSide}),false,false, RES>=128?900000:500000);
+    mc.isolation = 0; mc.field.set(toField(vol)); mc.update();
+    const pa = mc.geometry.getAttribute('position'), nv = mc.geometry.drawRange.count;
+    if(!nv){ stat('Empty volume'); subStat('Nothing fused inside the scan volume — re-place and rescan'); return; }
+    
+    // Weld
+    const q=1e-4,map=new Map(),tri=[],pts=[];
+    for(let i=0;i<nv;i++){ const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),k=`${Math.round(x/q)},${Math.round(y/q)},${Math.round(z/q)}`;
+      if(!map.has(k)){map.set(k,map.size);pts.push([x,y,z]);} tri.push(map.get(k)); }
+    const cnt=new Map(),ek=(a,b)=>a<b?a*4e9+b:b*4e9+a;
+    for(let t=0;t<tri.length;t+=3){const a=tri[t],b=tri[t+1],c=tri[t+2];if(a===b||b===c||a===c)continue;
+      for(const [p2,q2] of [[a,b],[b,c],[c,a]]) cnt.set(ek(p2,q2),(cnt.get(ek(p2,q2))||0)+1);}
+    let bad=0; for(const v of cnt.values()) if(v!==2) bad++;
+    
+    // Metric measurements bounding box mapping (m -> mm)
+    const toW = p => [vol.ox+(p[0]+1)/2*S, vol.oy+(p[1]+1)/2*S, vol.oz+(p[2]+1)/2*S];
+    let mn=[1e9,1e9,1e9], mx=[-1e9,-1e9,-1e9];
+    for(const p of pts){const w=toW(p);for(let k=0;k<3;k++){if(w[k]<mn[k])mn[k]=w[k];if(w[k]>mx[k])mx[k]=w[k];}}
+    const dims = mx.map((v,k)=>((v-mn[k])*1000).toFixed(0)).join('×');
+    
+    if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); }
+    const g=new THREE.BufferGeometry();
+    const arr=new Float32Array(nv*3); for(let i=0;i<nv;i++){arr[3*i]=pa.getX(i);arr[3*i+1]=pa.getY(i);arr[3*i+2]=pa.getZ(i);}
+    g.setAttribute('position',new THREE.BufferAttribute(arr,3)); g.computeVertexNormals();
+    cloud = new THREE.Mesh(g,new THREE.MeshNormalMaterial({side:THREE.DoubleSide})); scene.add(cloud);
+    
+    stlData = {pa:arr, nv, S, vol:{ox:vol.ox, oy:vol.oy, oz:vol.oz}};
+    $('bSolid').disabled = false;
+    stat(bad===0?'WATERTIGHT · METRIC':'Mesh · METRIC');
+    subStat(`${(nv/3).toLocaleString()} faces · ${dims}mm · ${kf} keyframes · non-manifold edges: ${bad}`);
+  }catch(e){ stat('Extract error'); subStat(e.message); console.error(e); } }, 30);
+}
+
+function exportMetricStl() {
+  if(!stlData) return;
+  const {pa,nv,S,vol:vo} = stlData;
+  const toW = i => [ (vo.ox+(pa[3*i]+1)/2*S)*1000, (vo.oy+(pa[3*i+1]+1)/2*S)*1000, (vo.oz+(pa[3*i+2]+1)/2*S)*1000 ];
+  
+  let sv=0;
+  for(let t=0;t<nv;t+=3){ const A=toW(t),B=toW(t+1),C=toW(t+2);
+    sv+=(A[0]*(B[1]*C[2]-B[2]*C[1])-A[1]*(B[0]*C[2]-B[2]*C[0])+A[2]*(B[0]*C[1]-B[1]*C[0]))/6; }
+  const flip = sv < 0;
+  
+  const F=nv/3, buf=new ArrayBuffer(84+50*F), dv=new DataView(buf);
+  dv.setUint32(80,F,true); let o=84;
+  for(let t=0;t<nv;t+=3){
+    let A=toW(t),B=toW(t+1),C=toW(t+2); if(flip){const tmp=B;B=C;C=tmp;}
+    const ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2],vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const nl=Math.hypot(nx,ny,nz)||1;
+    dv.setFloat32(o,nx/nl,true);dv.setFloat32(o+4,ny/nl,true);dv.setFloat32(o+8,nz/nl,true);o+=12;
+    for(const Pt of [A,B,C]){dv.setFloat32(o,Pt[0],true);dv.setFloat32(o+4,Pt[1],true);dv.setFloat32(o+8,Pt[2],true);o+=12;}
+    dv.setUint16(o,0,true);o+=2;
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'model/stl'}));
+  a.download=`p3dk_metric_${Date.now()}.stl`; a.click();
+  stat('STL Exported'); subStat(`${F.toLocaleString()} faces · millimetres · METRIC`);
+}
+
+/* ---------- Global control buttons router ---------- */
+$('bScan').onclick = () => {
+  if (activeMode === 'hybrid') {
+    if(!cvReady || !stream) return;
+    if (accumulating) finishAccum();
+    else startHybridScan();
+  } else {
+    startXrScan();
+  }
+};
+
+$('bReset').onclick = () => {
+  stopScan(); 
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud=null; }
+  cachedScan = null; plyRows = null; stlData = null; vol = null;
+  $('bExport').disabled = true; $('bSolid').disabled = true;
+  stat('Cleared');
+  subStat(stream ? 'Tap AUTO SCAN' : 'Open camera');
+};
+
+$('bExport').onclick = () => {
+  if (activeMode === 'hybrid') {
+    if(!plyRows) return; const { verts, faces }=plyRows();
+    const head=`ply\nformat ascii 1.0\ncomment P3dK DepthScan v11 Pro - hybrid mesh\n`+
+      `element vertex ${verts.length}\nproperty float x\nproperty float y\nproperty float z\n`+
+      `property uchar red\nproperty uchar green\nproperty uchar blue\n`+
+      `element face ${faces.length}\nproperty list uchar int vertex_indices\nend_header\n`;
+    const body=verts.join('\n')+'\n'+faces.join('\n')+'\n';
+    const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([head+body],{type:'application/octet-stream'}));
+    a.download=`p3dk_mesh_${Date.now()}.ply`; a.click();
+    stat('Mesh Exported'); subStat(`${verts.length.toLocaleString()} verts · ${faces.length.toLocaleString()} faces → PLY`);
+  }
+};
+
+$('bSolid').onclick = () => {
+  if (activeMode === 'hybrid') {
+    if(!cloud) return;
+    stat('⟳ Sealing solid…'); subStat('closing mesh into watertight STL');
+    setTimeout(()=>{ try{
+      const g=cloud.geometry;
+      const { verts, tris }=solidify(g.attributes.position.array, g.index.array, cloud.scale.z);
+      const buf=writeSTL(verts, tris);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf],{type:'model/stl'}));
+      a.download=`p3dk_solid_${Date.now()}.stl`; a.click();
+      stat('Solid Exported'); subStat(`${(tris.length/3).toLocaleString()} faces · watertight STL bas-relief`);
+    }catch(e){ stat('Solid error'); subStat(e.message); console.error(e); } }, 30);
+  } else {
+    exportMetricStl();
+  }
+};
+
 /* ---------- Dials & Instant Re-Projection Hooks ---------- */
-$('zs').oninput=e=>{ $('vzs').textContent=Number(e.target.value).toFixed(2); applyTransforms(); };
-$('inv').onchange=()=>{ applyTransforms(); };
+$('zs').oninput=e=>{ $('vzs').textContent=Number(e.target.value).toFixed(2); if(cloud && activeMode === 'hybrid') applyTransforms(); };
+$('inv').onchange=()=>{ if(cloud && activeMode === 'hybrid') applyTransforms(); };
 
 $('fov').oninput=e=>$('vfov').textContent=e.target.value;
 $('fc').oninput=e=>$('vfc').textContent=(+e.target.value).toFixed(2);
 $('er').oninput=e=>$('ver').textContent=(+e.target.value).toFixed(2);
 
-['fov', 'fc', 'er'].forEach(id => { $(id).addEventListener('change', () => { if (cachedScan) projectCloud(); }); });
+// Volumetric dials
+$('vs').oninput=e=>$('vvs').textContent=(+e.target.value).toFixed(2);
+$('vr').oninput=e=>$('vvr').textContent=e.target.value;
 
-$('bReset').onclick=()=>{ 
-  stopScan(); 
-  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud=null; }
-  cachedScan=null; plyRows=null; $('bExport').disabled=true; $('bScan').textContent='⚡ AUTO SCAN'; stat('Cleared'); subStat(stream?'Tap AUTO SCAN':'Open camera'); 
-};
-
-$('bExport').onclick=()=>{
-  if(!plyRows) return; const { verts, faces }=plyRows();
-  const head=`ply\nformat ascii 1.0\ncomment P3dK DepthScan v9.0 - hybrid mesh (edge-culled), RELATIVE scale\n`+
-    `element vertex ${verts.length}\nproperty float x\nproperty float y\nproperty float z\n`+
-    `property uchar red\nproperty uchar green\nproperty uchar blue\n`+
-    `element face ${faces.length}\nproperty list uchar int vertex_indices\nend_header\n`;
-  const body=verts.join('\n')+'\n'+faces.join('\n')+'\n';
-  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([head+body],{type:'application/octet-stream'}));
-  a.download=`p3dk_mesh_${Date.now()}.ply`; a.click();
-  stat('Mesh Exported'); subStat(`${verts.length.toLocaleString()} verts · ${faces.length.toLocaleString()} faces → PLY`);
-};
+['fov', 'fc', 'er'].forEach(id => {
+  $(id).addEventListener('change', () => { if (cachedScan && activeMode === 'hybrid') projectHybridMesh(); });
+});
 
 </script>
 </body>
 </html>
 
-
 ```
-
