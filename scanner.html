@@ -4,7 +4,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V8.0 · Mesh Pro</title>
+<title>P3dK · DepthScan V9.0 · Uncapped SLAM</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -33,17 +33,18 @@
   #top .ttl b { color:var(--mg); text-shadow:0 0 8px var(--mg); }
   #top .ttl s { color:var(--gd); font-size:10px; text-decoration:none; display:block; letter-spacing:3px; text-shadow:0 0 4px var(--gd); }
   
-  #stat-container { text-align:right; max-width:55%; }
+  #stat-container { text-align:right; max-width:60%; }
   #stat { font-size:12px; color:var(--mg); line-height:1.4; text-shadow:0 0 4px rgba(255,43,214,.5); font-weight:bold; }
   #sub-stat { font-size:10px; color:var(--cy); opacity:.9; margin-top:4px; text-shadow:0 0 4px rgba(0,240,255,.5); }
+  #imu-readout { font-size:9px; color:var(--gd); opacity:0.8; margin-top:4px; text-shadow:0 0 4px var(--gd); display:none; }
   
   #cam { 
-    position:fixed; z-index:40; top:80px; right:16px; width:100px; border:2px solid var(--mg); border-radius:8px;
+    position:fixed; z-index:40; top:90px; right:16px; width:100px; border:2px solid var(--mg); border-radius:8px;
     box-shadow:0 0 16px rgba(255,43,214,.4); display:none; object-fit:cover; aspect-ratio:3/4; background:#000; 
   }
 
   #meter-container {
-    position:fixed; z-index:60; top:100px; left:50%; transform:translateX(-50%); width: 80%; max-width: 400px;
+    position:fixed; z-index:60; top:110px; left:50%; transform:translateX(-50%); width: 80%; max-width: 400px;
     display:none; flex-direction:column; align-items:center; gap:8px;
   }
   #meter-label { font-family:'Orbitron', sans-serif; font-size:12px; font-weight:700; color:var(--gd); text-shadow:0 0 8px var(--gd); letter-spacing:2px; }
@@ -83,25 +84,30 @@
   .chk label { color:var(--mg); letter-spacing:1px; margin:0; line-height:1.2; cursor:pointer;}
 
   #bar { 
-    position:fixed; bottom:0; left:0; right:0; padding:16px; display:grid; gap:10px; grid-template-columns:1fr 1fr;
+    position:fixed; bottom:0; left:0; right:0; padding:16px; display:grid; gap:10px; grid-template-columns:1fr 1fr 1fr;
     background:linear-gradient(0deg,rgba(4,6,10,1) 10%, rgba(4,6,10,.8) 50%, rgba(4,6,10,0)); 
     padding-bottom:max(16px,env(safe-area-inset-bottom)); z-index: 60;
   }
+  
+  /* Make primary buttons span properly */
+  #bCam { grid-column: span 1; }
+  #bScan { grid-column: span 2; }
+  #bReset, #bExport, #bImu { grid-column: span 1; }
+  
   button { 
-    font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:1px; font-size:13px;
-    color:var(--cy); background:rgba(0,240,255,.08); border:1px solid var(--cy); border-radius:8px; padding:14px 10px;
+    font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:1px; font-size:12px;
+    color:var(--cy); background:rgba(0,240,255,.08); border:1px solid var(--cy); border-radius:8px; padding:14px 8px;
     cursor:pointer; text-shadow:0 0 6px rgba(0,240,255,.5); transition:all .15s; min-height:56px;
     backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); 
   }
   button:active:not(:disabled) { background:var(--cy); color:#000; text-shadow:none; transform:scale(.98); }
   button.mg { color:var(--mg); border-color:var(--mg); background:rgba(255,43,214,.08); text-shadow:0 0 6px rgba(255,43,214,.5); }
   button.mg:active:not(:disabled) { background:var(--mg); color:#000; }
-  
   button.gd { color:var(--gd); border-color:var(--gd); background:rgba(57,255,139,.08); text-shadow:0 0 6px rgba(57,255,139,.5); }
   button.gd.armed { background:rgba(255,43,214,.2); border-color: #fff; color:#fff; text-shadow:0 0 8px #fff; animation:pulse-mg 1s infinite alternate; }
   @keyframes pulse-mg { from { box-shadow: 0 0 4px var(--mg); } to { box-shadow: 0 0 16px var(--mg), inset 0 0 10px var(--mg); } }
-  
   button:disabled { opacity:.25; border-style:dashed; cursor:not-allowed; }
+  
   .spin { display:inline-block; width:10px; height:10px; border:2px solid var(--mg); border-top-color:transparent;
     border-radius:50%; animation:s .8s linear infinite; vertical-align:middle; margin-right:6px; }
   @keyframes s { to { transform:rotate(360deg); } }
@@ -119,10 +125,11 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V8.0 MESH PRO</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V9.0 UNCAPPED</s></div>
   <div id="stat-container">
     <div id="stat"><span class="spin"></span>Booting engine...</div>
     <div id="sub-stat">Loading AI & OpenCV</div>
+    <div id="imu-readout">IMU: OFFLINE</div>
   </div>
 </div>
 
@@ -154,7 +161,8 @@
   <button id="bCam" disabled>◉ CAMERA</button>
   <button id="bScan" class="gd" disabled>⚡ AUTO SCAN</button>
   <button id="bReset" class="mg">↺ CLEAR</button>
-  <button id="bExport" class="mg" disabled>⤓ EXPORT PLY</button>
+  <button id="bImu" class="cy">⊛ GYRO</button>
+  <button id="bExport" class="mg" disabled>⤓ PLY</button>
   
   <input type="hidden" id="orbn" value="1500">
   <input type="hidden" id="px" value="8">
@@ -186,7 +194,6 @@ renderer.setSize(innerWidth,innerHeight);
 $('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-// Camera set to Z=4 to prevent near-clipping
 const cam = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.001, 5000);
 cam.position.set(0,0,4);
 
@@ -197,8 +204,7 @@ const grid = new THREE.GridHelper(10,20,0x00f0ff,0x0a2a33);
 grid.position.y=-2; grid.material.transparent=true; grid.material.opacity=.25; 
 scene.add(grid);
 
-let cloud=null, plyRows=null;
-let cachedScan = null; // Stores AI tensor for instant re-projection
+let cloud=null, plyRows=null, cachedScan = null;
 
 addEventListener('resize', () => { 
   cam.aspect=innerWidth/innerHeight; 
@@ -212,13 +218,44 @@ addEventListener('resize', () => {
   renderer.render(scene,cam); 
 })();
 
+/* ---------- IMU / Gyroscope Integration ---------- */
+let imuActive = false;
+let currentGyro = { alpha: 0, beta: 0, gamma: 0 };
+
+$('bImu').onclick = () => {
+  if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(permissionState => {
+        if (permissionState === 'granted') enableIMU();
+        else { $('imu-readout').textContent = "IMU: DENIED"; $('imu-readout').style.display='block'; }
+      })
+      .catch(console.error);
+  } else {
+    enableIMU(); // Non-iOS 13+ devices
+  }
+};
+
+function enableIMU() {
+  window.addEventListener('deviceorientation', (event) => {
+    currentGyro = { alpha: event.alpha, beta: event.beta, gamma: event.gamma };
+    if(!imuActive) {
+      imuActive = true;
+      $('imu-readout').style.display='block';
+      $('bImu').style.background = 'rgba(57,255,139,.2)';
+      $('bImu').style.color = '#fff';
+    }
+    $('imu-readout').textContent = `IMU: P:${Math.round(event.beta)} R:${Math.round(event.gamma)} Y:${Math.round(event.alpha)}`;
+  });
+}
+
+/* ---------- OpenCV Ready Gate ---------- */
 let cvReady=false;
 function whenCv(){ 
   if(window.cv && cv.Mat){ 
-    cvReady=true; stat('System Online'); subStat('Multi-Frame Core active · Open camera'); $('bCam').disabled = false;
+    cvReady=true; stat('System Online'); subStat('Core active · Open camera'); $('bCam').disabled = false;
   }
   else if(window.cv && cv.onRuntimeInitialized !== undefined){ 
-    cv.onRuntimeInitialized=()=>{ cvReady=true; stat('System Online'); subStat('Multi-Frame Core active · Open camera'); $('bCam').disabled = false; }; 
+    cv.onRuntimeInitialized=()=>{ cvReady=true; stat('System Online'); subStat('Core active · Open camera'); $('bCam').disabled = false; }; 
   }
   else { setTimeout(whenCv,200); }
 }
@@ -271,8 +308,8 @@ function matchPairs(desA, desB) {
   return good;
 }
 
-/* ================= Multi-Frame Accumulation Loop ================= */
-const MAX_KF=12, PAR_STEP=0.04;
+/* ================= V9: Uncapped SLAM Accumulation ================= */
+const PAR_STEP = 0.08; // Increased baseline requirement
 let accumulating=false, refFrame=null, accTimer=null;
 let anchorMap=null, keyframes=0, lastKfPar=0, refScaleSet=false;
 
@@ -285,7 +322,7 @@ function stopScan() {
 
 $('bScan').onclick = ()=>{
   if(!cvReady || !stream) return;
-  if(accumulating){ finishAccum(); return; } // Tapping again finishes the scan
+  if(accumulating){ finishAccum(); return; } // V9: User manually ends accumulation
   
   const g=grab(); if(!g){ subStat('No video frame yet'); return; }
   const det=detect(g.gray, +$('orbn').value);
@@ -309,7 +346,7 @@ function accStep(){
     det=detect(g.gray, +$('orbn').value);
     const good=(refFrame.des.rows && det.des.rows) ? matchPairs(refFrame.des, det.des) : [];
     
-    if(good.length<15){ // Reference drifting out of view
+    if(good.length<15){ 
       det.kp.delete(); det.des.delete(); g.gray.delete();
       if(keyframes>=2){ finishAccum(); return; }
       $('meter-label').textContent='KEEP REFERENCE IN VIEW'; $('meter-label').style.color='var(--wrn)';
@@ -324,7 +361,7 @@ function accStep(){
     $('meterFill').style.width=Math.min(100, n/200*100)+'%';
     $('meter-label').textContent=`KF: ${keyframes} | Anchors: ${n} | Parallax: ${(med*100).toFixed(0)}%`;
 
-    // Promote to keyframe
+    // V9: Uncapped keyframe promotion
     if(med>=fire && med>=lastKfPar+PAR_STEP){
       const res=poseAndTriangulate(refFrame, det, good);
       if(res){
@@ -348,7 +385,7 @@ function accStep(){
         }
       }
       det.kp.delete(); det.des.delete(); g.gray.delete();
-      if(keyframes>=MAX_KF){ finishAccum(); return; }
+      // V9: No auto-finish. Continue until user presses FINISH.
       accTimer=setTimeout(accStep,120); return;
     }
     det.kp.delete(); det.des.delete(); g.gray.delete();
@@ -366,7 +403,7 @@ function finishAccum(){
   const A = refFrame ? { color:refFrame.color, w:refFrame.w, h:refFrame.h } : null;
   if(refFrame){ refFrame.gray.delete(); refFrame.kp.delete(); refFrame.des.delete(); refFrame=null; }
   
-  if(!A || !anchorMap || anchorMap.size<30){ 
+  if(!A || !anchorMap || anchorMap.size<20){ 
     stat('Not enough anchors'); subStat(`Only ${anchorMap?anchorMap.size:0} — orbit the object more`); 
     anchorMap=null; return; 
   }
@@ -516,14 +553,7 @@ async function densify(A, sfm){
     
     const { predicted_depth } = await model(await RawImage.fromCanvas(cnv));
     
-    // Save to global cache so geometry dials can rebuild instantly
-    cachedScan = {
-      A: A,
-      sfm: sfm,
-      dims: predicted_depth.dims,
-      D: predicted_depth.data
-    };
-    
+    cachedScan = { A: A, sfm: sfm, dims: predicted_depth.dims, D: predicted_depth.data };
     projectCloud();
     
   } catch(e) { stat('Densify error'); subStat(e.message); console.error(e); }
@@ -555,7 +585,6 @@ function projectCloud() {
   const fov=+$('fov').value*Math.PI/180, f=(0.5*dw)/Math.tan(0.5*fov), cx=dw/2, cy=dh/2;
   const cull=+$('fc').value, edge=+$('er').value, stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
   
-  // Build Grid for Triangulation
   const gw=Math.floor((dw-1)/stride)+1, gh=Math.floor((dh-1)/stride)+1;
   const vidx=new Int32Array(gw*gh).fill(-1);
   const pos=[], col=[], vdn=[];   
@@ -564,11 +593,9 @@ function projectCloud() {
   for(let gy=0;gy<gh;gy++){ const y=gy*stride; if(y>=dh) continue;
     for(let gx=0;gx<gw;gx++){ const x=gx*stride; if(x>=dw) continue;
       const i=y*dw+x, d=dn(i);
-      
       if(d<cull) continue;
-      const invd=a*d+b; if(invd<=1e-3) continue;       // behind camera / at infinity
+      const invd=a*d+b; if(invd<=1e-3) continue;       
       const Z=1/invd;
-      
       vidx[gy*gw+gx]=vc++;
       pos.push((x-cx)*Z/f, -(y-cy)*Z/f, -Z); vdn.push(d);
       
@@ -579,10 +606,19 @@ function projectCloud() {
   
   if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
   
-  // Stitch triangles over the grid, apply edge-tear logic
+  // V9: Grazing Angle / Edge Tear Cull
   const index=[]; const tear=edge>0?edge:Infinity;
-  const ok3=(p,q,r)=> p>=0&&q>=0&&r>=0 &&
-    Math.abs(vdn[p]-vdn[q])<=tear && Math.abs(vdn[q]-vdn[r])<=tear && Math.abs(vdn[p]-vdn[r])<=tear;
+  const ok3=(p,q,r)=>{
+    if(p<0||q<0||r<0) return false;
+    // Tear check
+    if(Math.abs(vdn[p]-vdn[q])>tear || Math.abs(vdn[q]-vdn[r])>tear || Math.abs(vdn[p]-vdn[r])>tear) return false;
+    // Grazing angle cull (kills the smeared spikes)
+    const z0 = pos[p*3+2], z1 = pos[q*3+2], z2 = pos[r*3+2];
+    const maxZDiff = Math.max(Math.abs(z0-z1), Math.abs(z1-z2), Math.abs(z0-z2));
+    const minZ = Math.min(Math.abs(z0), Math.abs(z1), Math.abs(z2));
+    if (maxZDiff > Math.abs(minZ) * 0.15) return false; // Drop if highly stretched relative to its depth
+    return true;
+  };
     
   for(let gy=0;gy<gh-1;gy++) for(let gx=0;gx<gw-1;gx++){
     const v00=vidx[gy*gw+gx], v10=vidx[gy*gw+gx+1], v01=vidx[(gy+1)*gw+gx], v11=vidx[(gy+1)*gw+gx+1];
@@ -606,12 +642,9 @@ function drawMesh(pos,col,index){
   g.computeBoundingSphere();
   
   const s=g.boundingSphere.radius||1; g.scale(2/s,2/s,2/s); g.center();
-  
-  // Render as solid mesh with double-sided texture
   cloud=new THREE.Mesh(g, new THREE.MeshBasicMaterial({vertexColors:true, side:THREE.DoubleSide}));
-  
   scene.add(cloud);
-  applyTransforms(); // Apply visual Z-stretch / invert
+  applyTransforms(); 
   
   plyRows=()=>{
     const p=g.attributes.position, c=g.attributes.color, zs=cloud.scale.z;
@@ -626,24 +659,19 @@ function drawMesh(pos,col,index){
 function applyTransforms() {
   if (!cloud) return;
   let sz = +$('zs').value;
-  if ($('inv').checked) sz = -sz; // True instant topological flip
+  if ($('inv').checked) sz = -sz; 
   cloud.scale.z = sz;
 }
 
 /* ---------- Dials & Instant Re-Projection Hooks ---------- */
-// Visual hooks only (0ms execution time)
 $('zs').oninput=e=>{ $('vzs').textContent=Number(e.target.value).toFixed(2); applyTransforms(); };
 $('inv').onchange=()=>{ applyTransforms(); };
 
-// Live label updates for re-project geometry dials
 $('fov').oninput=e=>$('vfov').textContent=e.target.value;
 $('fc').oninput=e=>$('vfc').textContent=(+e.target.value).toFixed(2);
 $('er').oninput=e=>$('ver').textContent=(+e.target.value).toFixed(2);
 
-// Re-project geometry on release
-['fov', 'fc', 'er'].forEach(id => {
-  $(id).addEventListener('change', () => { if (cachedScan) projectCloud(); });
-});
+['fov', 'fc', 'er'].forEach(id => { $(id).addEventListener('change', () => { if (cachedScan) projectCloud(); }); });
 
 $('bReset').onclick=()=>{ 
   stopScan(); 
@@ -653,7 +681,7 @@ $('bReset').onclick=()=>{
 
 $('bExport').onclick=()=>{
   if(!plyRows) return; const { verts, faces }=plyRows();
-  const head=`ply\nformat ascii 1.0\ncomment P3dK DepthScan v8.0 - hybrid mesh (edge-culled), RELATIVE scale\n`+
+  const head=`ply\nformat ascii 1.0\ncomment P3dK DepthScan v9.0 - hybrid mesh (edge-culled), RELATIVE scale\n`+
     `element vertex ${verts.length}\nproperty float x\nproperty float y\nproperty float z\n`+
     `property uchar red\nproperty uchar green\nproperty uchar blue\n`+
     `element face ${faces.length}\nproperty list uchar int vertex_indices\nend_header\n`;
