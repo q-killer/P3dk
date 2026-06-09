@@ -1,826 +1,668 @@
 ```html
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<title>P3dK WebXR Native Scanner</title>
-<!-- Safe Global CDN Dependencies (No modular bare-specifier import risks) -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/MarchingCubes.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/SimplifyModifier.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/EdgeSplitModifier.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>P3dK · DepthScan V8.0 · Mesh Pro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-* { box-sizing:border-box; margin:0; padding:0; touch-action:none; user-select:none; }
-body { background:#030712; color:#0ff; font-family:'Courier New',monospace; width:100vw; height:100dvh; overflow:hidden; font-size:12px; }
-#hud-root { position:absolute; inset:0; width:100vw; height:100dvh; overflow:hidden; pointer-events:none; z-index: 10; }
-#hud-root * { pointer-events:auto; }
-#vid { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; opacity:0.85; }
-#hud { position:absolute; inset:0; z-index:2; pointer-events:none; }
-#inset { position:absolute; inset:0; width:100vw; height:100dvh; z-index:5; background:transparent; pointer-events:none; transition:all 0.5s ease; }
-#inset.fullscreen { background:#020617; pointer-events:auto; z-index:40; }
-#top, #bot { position:absolute; left:0; right:0; z-index:20; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px 12px; }
-#top { top:0; display:flex; justify-content:space-between; align-items:center; }
-#bot { bottom:0; padding:10px 12px 16px; }
-#boot { position:absolute; inset:0; z-index:100; background:#030712; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
-#done { position:absolute; inset:0; z-index:50; background:rgba(3,7,18,0.96); display:none; flex-direction:column; align-items:center; padding:20px; overflow-y:auto; pointer-events:none; }
-#done * { pointer-events:auto; }
-.btn { background:rgba(0,20,20,.6); border:1px solid rgba(0,255,255,.4); color:#0ff; font-family:inherit; padding:10px; cursor:pointer; font-weight:bold; border-radius:2px; width:100%; transition:.1s; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing: 1px; }
-.btn:active { background:#0ff; color:#000; }
-.btn.go { border-color:#0f9; color:#0f9; }
-.btn.go2 { border-color:#ffb000; color:#ffb000; }
-.btn.go3 { border-color:#ff00ff; color:#ff00ff; }
-.dot { width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,255,255,.3); background:rgba(0,0,0,.5); transition: background-color 0.3s; }
-.dot.active { background:#0ff; box-shadow:0 0 8px #0ff; transform:scale(1.2); }
-.slider-group { width:100%; max-width:320px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#888; }
-.slider-group input { width:60%; accent-color:#0f9; }
-#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0f9; color:#000; padding:12px 24px; font-weight:bold; border-radius:3px; z-index:120; box-shadow:0 0 15px rgba(16,185,129,0.5); opacity:0; pointer-events:none; transition:opacity 0.3s, transform 0.3s; text-align:center; max-width:90vw; }
-#toast.show { opacity:1; transform:translate(-50%, -10px); }
-.loader-text { animation: pulse 1.5s infinite; }
-@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
-#sandbox-alert { display:none; background:rgba(239,68,68,0.2); border:1px solid #f87171; color:#f87171; padding:6px; font-size:9px; text-align:center; margin-top:4px; max-width:320px; }
+  :root { --cy:#00f0ff; --mg:#ff2bd6; --bg:#04060a; --ink:#bfeaff; --gd:#39ff8b; --wrn:#ff9900; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { 
+    height:100%; background:var(--bg); color:var(--ink);
+    font-family:'Share Tech Mono',monospace; overflow:hidden; user-select:none; -webkit-user-select:none; 
+  }
+  
+  #stage { position:fixed; inset:0; }
+  canvas { display:block; }
+  
+  #scan { position:fixed; inset:0; pointer-events:none; z-index:50;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.18)0,rgba(0,0,0,.18)1px,transparent 2px,transparent 3px); mix-blend-mode:overlay; }
+  #vig { position:fixed; inset:0; pointer-events:none; z-index:49;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.8)100%); }
+    
+  .hud { position:fixed; z-index:60; }
+  
+  #top { 
+    top:0; left:0; right:0; padding:12px 16px; display:flex; justify-content:space-between; align-items:flex-start;
+    background:linear-gradient(180deg,rgba(4,6,10,.95),rgba(4,6,10,0)); font-family:'Orbitron',sans-serif; letter-spacing:2px; 
+  }
+  #top .ttl { font-weight:900; font-size:18px; color:var(--cy); text-shadow:0 0 8px var(--cy); line-height:1.2; }
+  #top .ttl b { color:var(--mg); text-shadow:0 0 8px var(--mg); }
+  #top .ttl s { color:var(--gd); font-size:10px; text-decoration:none; display:block; letter-spacing:3px; text-shadow:0 0 4px var(--gd); }
+  
+  #stat-container { text-align:right; max-width:55%; }
+  #stat { font-size:12px; color:var(--mg); line-height:1.4; text-shadow:0 0 4px rgba(255,43,214,.5); font-weight:bold; }
+  #sub-stat { font-size:10px; color:var(--cy); opacity:.9; margin-top:4px; text-shadow:0 0 4px rgba(0,240,255,.5); }
+  
+  #cam { 
+    position:fixed; z-index:40; top:80px; right:16px; width:100px; border:2px solid var(--mg); border-radius:8px;
+    box-shadow:0 0 16px rgba(255,43,214,.4); display:none; object-fit:cover; aspect-ratio:3/4; background:#000; 
+  }
+
+  #meter-container {
+    position:fixed; z-index:60; top:100px; left:50%; transform:translateX(-50%); width: 80%; max-width: 400px;
+    display:none; flex-direction:column; align-items:center; gap:8px;
+  }
+  #meter-label { font-family:'Orbitron', sans-serif; font-size:12px; font-weight:700; color:var(--gd); text-shadow:0 0 8px var(--gd); letter-spacing:2px; }
+  #meter { 
+    width:100%; height:20px; border:1px solid rgba(57,255,139,.5); border-radius:10px; background:rgba(4,6,10,.8); overflow:hidden;
+    backdrop-filter:blur(6px); -webkit-backdrop-filter:blur(6px); box-shadow:0 0 12px rgba(0,0,0,0.5); position:relative;
+  }
+  #meterFill { 
+    position:absolute; left:0; top:0; bottom:0; width:0%; 
+    background:linear-gradient(90deg, rgba(255,43,214,0.8), rgba(57,255,139,1)); 
+    transition:width .1s linear; box-shadow: 0 0 10px var(--gd);
+  }
+  #meter .band { position:absolute; top:0; bottom:0; border-left:2px solid #fff; box-shadow: 0 0 4px #fff; z-index: 2;}
+
+  #panel { 
+    position:fixed; left:16px; right:16px; bottom:150px; z-index:60; 
+    display:flex; flex-direction:column; gap:8px; 
+    margin-bottom:max(0px,env(safe-area-inset-bottom));
+    max-height: 45vh; overflow-y: auto; overscroll-behavior: contain;
+  }
+  #panel::-webkit-scrollbar { display: none; }
+  
+  .dgrid { display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; }
+  .dial { 
+    background:rgba(4,6,10,.7); border:1px solid rgba(0,240,255,.2); border-radius:8px; padding:10px 12px;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); box-shadow:0 4px 6px rgba(0,0,0,.3); 
+  }
+  .dial label { display:block; color:var(--mg); margin-bottom:8px; letter-spacing:1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dial input[type=range] { width:100%; accent-color:var(--cy); }
+  .dial .v { color:var(--cy); float:right; font-weight:bold; }
+  
+  .chk { 
+    display:flex; align-items:center; justify-content:center; gap:10px; background:rgba(4,6,10,.7); border:1px solid rgba(0,240,255,.2); 
+    border-radius:8px; padding:10px 12px; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); cursor:pointer;
+  }
+  .chk input { accent-color:var(--mg); width:18px; height:18px; cursor:pointer;}
+  .chk label { color:var(--mg); letter-spacing:1px; margin:0; line-height:1.2; cursor:pointer;}
+
+  #bar { 
+    position:fixed; bottom:0; left:0; right:0; padding:16px; display:grid; gap:10px; grid-template-columns:1fr 1fr;
+    background:linear-gradient(0deg,rgba(4,6,10,1) 10%, rgba(4,6,10,.8) 50%, rgba(4,6,10,0)); 
+    padding-bottom:max(16px,env(safe-area-inset-bottom)); z-index: 60;
+  }
+  button { 
+    font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:1px; font-size:13px;
+    color:var(--cy); background:rgba(0,240,255,.08); border:1px solid var(--cy); border-radius:8px; padding:14px 10px;
+    cursor:pointer; text-shadow:0 0 6px rgba(0,240,255,.5); transition:all .15s; min-height:56px;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); 
+  }
+  button:active:not(:disabled) { background:var(--cy); color:#000; text-shadow:none; transform:scale(.98); }
+  button.mg { color:var(--mg); border-color:var(--mg); background:rgba(255,43,214,.08); text-shadow:0 0 6px rgba(255,43,214,.5); }
+  button.mg:active:not(:disabled) { background:var(--mg); color:#000; }
+  
+  button.gd { color:var(--gd); border-color:var(--gd); background:rgba(57,255,139,.08); text-shadow:0 0 6px rgba(57,255,139,.5); }
+  button.gd.armed { background:rgba(255,43,214,.2); border-color: #fff; color:#fff; text-shadow:0 0 8px #fff; animation:pulse-mg 1s infinite alternate; }
+  @keyframes pulse-mg { from { box-shadow: 0 0 4px var(--mg); } to { box-shadow: 0 0 16px var(--mg), inset 0 0 10px var(--mg); } }
+  
+  button:disabled { opacity:.25; border-style:dashed; cursor:not-allowed; }
+  .spin { display:inline-block; width:10px; height:10px; border:2px solid var(--mg); border-top-color:transparent;
+    border-radius:50%; animation:s .8s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes s { to { transform:rotate(360deg); } }
+
+  @media (min-width:768px){ 
+    #panel { max-width:460px; left:50%; transform:translateX(-50%); } 
+    #bar { max-width:500px; left:50%; transform:translateX(-50%); border-radius:12px 12px 0 0; } 
+  }
 </style>
-<script>
-window.addEventListener('error', function(e) {
-    const bs = document.getElementById('bs');
-    if (bs) { bs.innerText = "CRITICAL BOOT ERROR: " + (e.message || "Module failed"); bs.style.color = '#f55'; }
-});
-</script>
 </head>
 <body>
 
-<div id="hud-root">
-    <video id="vid" autoplay playsinline muted></video>
-    <canvas id="hud"></canvas>
-    <div id="inset"></div>
+<div id="stage"></div>
+<div id="vig"></div>
+<div id="scan"></div>
 
-    <div id="top">
-        <div><span style="color:#0f9">▶</span> <span id="mode-title">P3DK INITIALIZING...</span></div>
-        <div style="display:flex;align-items:center;gap:8px;">IDX: <span id="qv">--</span>
-            <svg width="16" height="16" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/><circle id="qr" cx="10" cy="10" r="8" stroke="#0ff" stroke-width="2" fill="none" stroke-dasharray="50.3" stroke-dashoffset="50.3"/></svg>
-        <span id="qb">WAIT</span></div>
-    </div>
-
-    <div id="bot">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:10px;">
-            <div>
-                <div style="font-size:9px; color:#888; margin-bottom:4px;">ANGULAR COVERAGE</div>
-                <div id="sectors" style="display:flex;gap:6px;"></div>
-            </div>
-            <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end;">
-                <div id="cc" style="font-size:16px; font-weight:bold;">0 PHOTOS</div>
-                <label id="lbl-tt" style="font-size:9px; color:#888; cursor:pointer; margin-top:4px;"><input type="checkbox" id="chk-tt" checked> TURNTABLE MODE</label>
-                <label style="font-size:9px; color:#888; cursor:pointer; margin-top:2px;"><input type="checkbox" id="chk-sym" checked> SYMMETRY FILL</label>
-            </div>
-        </div>
-        <div id="clg">READY. ALIGN SCANNER WITH OBJECT.</div>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-            <button id="btn-manual-capture" class="btn go" style="margin:0; flex-grow:2;">📷 CAPTURE FRAME (RAPID OVERRIDE)</button>
-            <button id="btn-finalize" class="btn" style="margin:0; border-color:#0f9; color:#0f9; display:none; flex-grow:1;">FINALIZE</button>
-        </div>
-    </div>
-
-    <div id="boot">
-        <div style="font-size:18px; font-weight:bold; color:#0ff; margin-bottom:10px;">P3DK HYBRID SCANNER</div>
-        <button id="btn-start" class="btn go" style="width:200px;">START SCANNER</button>
-        <div id="sandbox-alert">WEBXR SENSORS BLOCKED BY CONTAINER SANDBOX. WILL BOOT IN PORTABLE SENSOR MODE.</div>
-        <div style="width:200px; height:6px; border:1px solid #0ff; border-radius:3px; margin: 10px 0; display:none;" id="loader-bar-wrap"><div id="bp" style="width:0; height:100%; background:#0ff;"></div></div>
-        <div id="bs" style="font-size:10px; color:#fff; text-align:center;">READY.</div>
-    </div>
-
-    <div id="done">
-        <div style="text-align:center; margin:10px 0 20px; z-index:60; pointer-events:none;">
-            <div style="color:#0f9; font-size:22px; font-weight:bold; text-shadow: 0 2px 10px #000;">✔ SCAN COMPLETE</div>
-            <div id="es" style="font-size:11px; color:#ccc; margin-top:4px; text-shadow: 0 1px 4px #000;">0 POINTS · 0 TRIANGLES</div>
-            <div id="async-status" class="loader-text" style="font-size:10px; color:#ffb000; margin-top:6px; font-weight:bold; text-shadow: 0 1px 4px #000; display:none;">PROCESSING...</div>
-        </div>
-        
-        <div style="flex-grow:1; min-height:80px;"></div> 
-
-        <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(0,255,255,0.2); padding:16px; width:100%; max-width:360px; margin-bottom:16px;">
-            <div style="color:#0f9; font-weight:bold; margin-bottom:12px; font-size:11px;">FUSION CONFIGURATION</div>
-            <div class="slider-group"><span>RESOLUTION</span><input type="range" id="sl-res" min="32" max="128" step="8" value="64"></div>
-            <!-- BUG FIX 3: Default Metaball Intersection Values Recalibrated for Metric Normalized Bounding Box -->
-            <div class="slider-group"><span>BLOB SIZE</span><input type="range" id="sl-str" min="0.0001" max="0.02" step="0.0001" value="0.004"></div>
-            <div class="slider-group"><span>TIGHTNESS</span><input type="range" id="sl-iso" min="10" max="200" step="5" value="40"></div>
-            <div class="slider-group"><span>FALLOFF</span><input type="range" id="sl-sub" min="1" max="20" step="1" value="8"></div>
-            <div class="slider-group"><span>DECIMATION</span><input type="range" id="sl-det" min="0.05" max="1.0" step="0.05" value="0.25"></div>
-            <div class="slider-group" style="margin-top:10px; justify-content:flex-end;">
-                <label style="color:#fff; cursor:pointer;"><input type="checkbox" id="chk-edge" checked> ENABLE EDGESPLIT</label>
-            </div>
-        </div>
-
-        <div style="width:100%; max-width:360px; display:flex; flex-direction:column;">
-            <button id="dl-stl" class="btn go">↓ EXPORT WATERTIGHT STL</button>
-            <button id="dl-glb" class="btn go3">↓ EXPORT COLOR GLB</button>
-            <button id="dl-ply" class="btn go2">↓ EXPORT COLOR PLY</button>
-            <button id="rs" class="btn" style="border:1px dashed #555; background:transparent; margin-top:8px;">⟳ SCAN ANOTHER</button>
-        </div>
-    </div>
-    <div id="toast">FILE GENERATED successfully!</div>
+<div id="top" class="hud">
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V8.0 MESH PRO</s></div>
+  <div id="stat-container">
+    <div id="stat"><span class="spin"></span>Booting engine...</div>
+    <div id="sub-stat">Loading AI & OpenCV</div>
+  </div>
 </div>
 
+<video id="cam" autoplay playsinline muted></video>
+
+<div id="meter-container">
+  <div id="meter-label">ORBIT THE OBJECT</div>
+  <div id="meter">
+    <div id="meterFill"></div>
+    <div class="band" id="meterLo" style="display:none;"></div>
+  </div>
+</div>
+
+<div id="panel" class="hud">
+  <div class="dgrid">
+    <div class="dial"><label>FOV° (calib)<span class="v" id="vfov">60</span></label>
+      <input type="range" id="fov" min="30" max="100" step="1" value="60"></div>
+    <div class="dial"><label>FAR CULL<span class="v" id="vfc">0.05</span></label>
+      <input type="range" id="fc" min="0" max="0.5" step="0.01" value="0.05"></div>
+    <div class="dial"><label>EDGE REJECT<span class="v" id="ver">0.12</span></label>
+      <input type="range" id="er" min="0" max="0.5" step="0.01" value="0.12"></div>
+    <div class="dial"><label>Z-STRETCH<span class="v" id="vzs">1.00</span></label>
+      <input type="range" id="zs" min="0.05" max="3.0" step="0.05" value="1.0"></div>
+    <label class="chk" style="grid-column: span 2;"><input type="checkbox" id="inv">INVERT Z / CONCAVE</label>
+  </div>
+</div>
+
+<div id="bar" class="hud">
+  <button id="bCam" disabled>◉ CAMERA</button>
+  <button id="bScan" class="gd" disabled>⚡ AUTO SCAN</button>
+  <button id="bReset" class="mg">↺ CLEAR</button>
+  <button id="bExport" class="mg" disabled>⤓ EXPORT PLY</button>
+  
+  <input type="hidden" id="orbn" value="1500">
+  <input type="hidden" id="px" value="8">
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
+
 <script type="module">
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0';
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { pipeline, env, RawImage } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
+env.allowLocalModels = false;
 
-const MAX_P = 16, RES = 24, V_SZ = 0.015, R2D = 180 / Math.PI, tanH = Math.tan(Math.PI / 6);
-const $ = id => document.getElementById(id), lC = m => $('clg').innerText = m;
-const showToast = msg => { const t=$('toast'); if(!t)return; t.innerText=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4500); };
-const yieldLoop = () => new Promise(r => setTimeout(r, 0)); 
+const $ = id => document.getElementById(id);
+const stat = m => $('stat').innerHTML = m;
+const subStat = m => $('sub-stat').innerHTML = m;
 
-const state = { mode: '', pipe:null, rmbg:null, pht:[], rawPts:[], dsPts:[], spatialHash:new Map(), cR:new THREE.Quaternion(), lQ:null, sQ:null, aV:0, lCap:0, lck:false, wMesh:null, scan:false, vw:640, vh:480, scaleFactor:1, mnX:0, mnY:0, mnZ:0, lastCamPos: null, centroid: new THREE.Vector3(0,0,0) };
+/* ---------- Three.js Scene Setup ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); 
+renderer.setSize(innerWidth,innerHeight);
+$('stage').appendChild(renderer.domElement);
 
-let iScn, iCam, iRnd, iCtl, hCtx, ManifoldClass = null, livePointsGroup;
-const dCtx = document.createElement('canvas').getContext('2d', {willReadFrequently:true}); dCtx.canvas.width = dCtx.canvas.height = 128;
-const eBuf = new Uint8ClampedArray(128*128*4);
+const scene = new THREE.Scene();
+// Camera set to Z=4 to prevent near-clipping
+const cam = new THREE.PerspectiveCamera(55, innerWidth/innerHeight, 0.001, 5000);
+cam.position.set(0,0,4);
 
-function resizeHUD() {
-    const v = $('vid'), h = $('hud');
-    if (v && h) {
-        state.vw = v.videoWidth || window.innerWidth; state.vh = v.videoHeight || window.innerHeight;
-        h.width = v.clientWidth || window.innerWidth; h.height = v.clientHeight || window.innerHeight;
-    }
+const ctrl = new OrbitControls(cam, renderer.domElement); 
+ctrl.enableDamping=true; ctrl.rotateSpeed=.7;
+
+const grid = new THREE.GridHelper(10,20,0x00f0ff,0x0a2a33);
+grid.position.y=-2; grid.material.transparent=true; grid.material.opacity=.25; 
+scene.add(grid);
+
+let cloud=null, plyRows=null;
+let cachedScan = null; // Stores AI tensor for instant re-projection
+
+addEventListener('resize', () => { 
+  cam.aspect=innerWidth/innerHeight; 
+  cam.updateProjectionMatrix(); 
+  renderer.setSize(innerWidth,innerHeight); 
+});
+
+(function loop(){ 
+  requestAnimationFrame(loop); 
+  ctrl.update(); 
+  renderer.render(scene,cam); 
+})();
+
+let cvReady=false;
+function whenCv(){ 
+  if(window.cv && cv.Mat){ 
+    cvReady=true; stat('System Online'); subStat('Multi-Frame Core active · Open camera'); $('bCam').disabled = false;
+  }
+  else if(window.cv && cv.onRuntimeInitialized !== undefined){ 
+    cv.onRuntimeInitialized=()=>{ cvReady=true; stat('System Online'); subStat('Multi-Frame Core active · Open camera'); $('bCam').disabled = false; }; 
+  }
+  else { setTimeout(whenCv,200); }
 }
+whenCv();
 
-function initThreeJS() {
-    hCtx = $('hud').getContext('2d');
-    iScn = new THREE.Scene();
-    iScn.background = null; 
-
-    iCam = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 20); 
-    iCam.position.set(0, 0, 0.4); 
-
-    iRnd = new THREE.WebGLRenderer({ antialias:true, alpha:true }); 
-    iRnd.setSize(window.innerWidth, window.innerHeight); 
-    
-    const insetDiv = $('inset');
-    iRnd.domElement.style.position = 'absolute';
-    iRnd.domElement.style.inset = '0';
-    iRnd.domElement.style.width = '100%';
-    iRnd.domElement.style.height = '100%';
-    insetDiv.appendChild(iRnd.domElement);
-
-    iRnd.toneMapping = THREE.ACESFilmicToneMapping; iRnd.outputEncoding = THREE.sRGBEncoding;
-    const pmrem = new THREE.PMREMGenerator(iRnd); iScn.environment = pmrem.fromScene(new THREE.Scene(), 0.04).texture;
-
-    iCtl = new THREE.OrbitControls(iCam, iRnd.domElement); 
-    iCtl.enableDamping = true; iCtl.dampingFactor = 0.05; 
-    iCtl.autoRotate = false; iCtl.enabled = false; 
-
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-    const dl1 = new THREE.DirectionalLight(0x06b6d4, 1.5); dl1.position.set(1, 2, 1);
-    iScn.add(ambient, dl1);
-
-    livePointsGroup = new THREE.Group();
-    iScn.add(livePointsGroup);
-}
-
-window.onload = () => {
-    for(let i=0; i<MAX_P; i++) $('sectors').innerHTML += `<div id="s${i}" class="dot"></div>`;
-    env.allowLocalModels = false; 
-    env.useBrowserCache = true;
-    if(env.backends && env.backends.onnx) env.backends.onnx.logLevel = 'fatal';
-    setTimeout(checkSandboxSupport, 1000);
+let stream=null;
+$('bCam').onclick = async ()=>{
+  if(stream){ 
+    stream.getTracks().forEach(t=>t.stop()); stream=null; $('cam').style.display='none'; 
+    $('bCam').textContent='◉ CAMERA'; $('bScan').disabled=true; stopScan(); return; 
+  }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}}});
+    const v=$('cam'); v.srcObject=stream; v.style.display='block'; 
+    $('bCam').textContent='◉ STOP CAM'; $('bScan').disabled=!cvReady; 
+    stat('Optics Online'); subStat(cvReady ? 'Point at object, tap AUTO SCAN' : 'Waiting for Core…');
+  } catch(e) { stat('Camera Denied'); subStat(e.message); }
 };
 
-function checkSandboxSupport() {
-    if (!navigator.xr) $('sandbox-alert').style.display = 'block';
+const PROC_W = 480;
+function grab() {
+  const v=$('cam'); if(!v.videoWidth) return null;
+  const w=PROC_W, h=Math.round(PROC_W * v.videoHeight / v.videoWidth);
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const cx=c.getContext('2d'); cx.drawImage(v,0,0,w,h);
+  const id=cx.getImageData(0,0,w,h);
+  const rgba=cv.matFromImageData(id);
+  const gray=new cv.Mat(); cv.cvtColor(rgba,gray,cv.COLOR_RGBA2GRAY); rgba.delete();
+  return { gray, color:id.data, w, h };
 }
 
-// ----------------------------------------------------------------------
-// SENSOR ROUTING (WebXR vs Legacy fallbacks)
-// ----------------------------------------------------------------------
-$('btn-start').onclick = async () => {
-    $('btn-start').style.display = 'none';
-    $('sandbox-alert').style.display = 'none';
-    $('loader-bar-wrap').style.display = 'block';
-    $('bs').innerText = 'INITIALIZING SYSTEM...';
+function detect(gray, n) {
+  const orb=new cv.ORB(n), kp=new cv.KeyPointVector(), des=new cv.Mat(), mask=new cv.Mat();
+  orb.detectAndCompute(gray, mask, kp, des); mask.delete(); orb.delete();
+  return { kp, des };
+}
 
-    try { initThreeJS(); } catch (err) { $('bs').innerText = "THREE.JS INIT FAILED: " + err.message; return; }
+function matchPairs(desA, desB) {
+  const bf=new cv.BFMatcher(cv.NORM_HAMMING,false), mm=new cv.DMatchVectorVector();
+  bf.knnMatch(desA, desB, mm, 2);
+  const good=[];
+  for(let i=0; i<mm.size(); i++){ 
+    const m=mm.get(i);
+    if(m.size()>=2){ 
+      const a=m.get(0), b=m.get(1); 
+      if(a.distance < 0.75 * b.distance) good.push({q:a.queryIdx, t:a.trainIdx}); m.delete?.(); 
+    } 
+  }
+  mm.delete(); bf.delete();
+  return good;
+}
 
-    if (navigator.xr && typeof navigator.xr.isSessionSupported === 'function') {
-        try {
-            const supported = await navigator.xr.isSessionSupported('immersive-ar');
-            if (supported) {
-                $('bs').innerText = 'REQUESTING NATIVE AR SENSORS...';
-                const session = await navigator.xr.requestSession('immersive-ar', {
-                    requiredFeatures: ['depth-sensing'],
-                    optionalFeatures: ['dom-overlay'],
-                    depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha'] },
-                    domOverlay: { root: document.getElementById('hud-root') }
-                });
-                state.mode = 'xr-depth';
-                return initXRSession(session);
-            }
-        } catch(e) {
-            console.warn("WebXR Session failed, booting CPU-Fallback Gyro pipeline", e);
-        }
-    }
-    
-    state.mode = 'gyro-da2';
-    bootLegacy();
+/* ================= Multi-Frame Accumulation Loop ================= */
+const MAX_KF=12, PAR_STEP=0.04;
+let accumulating=false, refFrame=null, accTimer=null;
+let anchorMap=null, keyframes=0, lastKfPar=0, refScaleSet=false;
+
+function stopScan() { 
+  accumulating=false; if(accTimer){ clearTimeout(accTimer); accTimer=null; }
+  $('bScan').classList.remove('armed'); $('meter-container').style.display='none';
+  if(refFrame){ refFrame.gray.delete(); refFrame.kp.delete(); refFrame.des.delete(); refFrame=null; } 
+  anchorMap=null;
+}
+
+$('bScan').onclick = ()=>{
+  if(!cvReady || !stream) return;
+  if(accumulating){ finishAccum(); return; } // Tapping again finishes the scan
+  
+  const g=grab(); if(!g){ subStat('No video frame yet'); return; }
+  const det=detect(g.gray, +$('orbn').value);
+  if(det.des.rows<30){ g.gray.delete(); det.kp.delete(); det.des.delete(); subStat('Reference too featureless — aim at texture'); return; }
+  
+  refFrame={ ...g, ...det };
+  anchorMap=new Map(); keyframes=0; lastKfPar=0; refScaleSet=false;
+  accumulating=true; 
+  $('bScan').classList.add('armed'); $('bScan').textContent='■ FINISH SCAN';
+  $('meter-container').style.display='flex';
+  
+  stat('Reference set'); subStat('Orbit the object — keep it centered');
+  accStep();
 };
 
-// ----------------------------------------------------------------------
-// TIER 1: WEBXR METRIC DEPTH RENDERING
-// ----------------------------------------------------------------------
-function initXRSession(session) {
-    state.session = session;
-    $('boot').style.display = 'none';
-    $('vid').style.display = 'none'; 
-    $('legacy-ui').style.display = 'none';
-    $('btn-finalize').style.display = 'block';
-    document.body.style.background = 'transparent';
-    state.scan = true;
+function accStep(){
+  if(!accumulating) return;
+  let g=null, det=null;
+  try{
+    g=grab(); if(!g){ accTimer=setTimeout(accStep,200); return; }
+    det=detect(g.gray, +$('orbn').value);
+    const good=(refFrame.des.rows && det.des.rows) ? matchPairs(refFrame.des, det.des) : [];
     
-    $('mode-title').innerText = "P3DK NATIVE XR (ACTIVE)";
-    lC("ARCORE ACTIVE. METRIC DEPTH FAST-STREAM.");
-
-    iRnd.xr.enabled = true;
-    iRnd.xr.setReferenceSpaceType('local');
-    iRnd.xr.setSession(session);
-    iRnd.setAnimationLoop(renderXRLoop);
-}
-
-function renderXRLoop(time, frame) {
-    if (!frame || !state.scan) return;
-    const refSpace = iRnd.xr.getReferenceSpace();
-    const pose = frame.getViewerPose(refSpace);
-    if (!pose) return;
-    
-    const view = pose.views[0];
-    const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
-    const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
-
-    const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
-    if (!state.lastCamPos) state.lastCamPos = camPos.clone();
-    
-    if (camPos.distanceTo(state.lastCamPos) > 0.03) { 
-        state.lastCamPos.copy(camPos);
-        const depthInfo = frame.getDepthInformation(view);
-        if (depthInfo) {
-            accumulateDepthFrame(depthInfo, camMatrix, invProj);
-            
-            const rotQ = new THREE.Quaternion().setFromRotationMatrix(camMatrix);
-            state.pht.push({ pq: [rotQ.x, rotQ.y, rotQ.z, rotQ.w], pos: [camPos.x, camPos.y, camPos.z] }); 
-            updateCentroidSectors(camPos);
-            
-            $('cc').innerText = `${state.pht.length} FRAMES`;
-            if (state.pht.length >= 100) finalize(); 
-        }
+    if(good.length<15){ // Reference drifting out of view
+      det.kp.delete(); det.des.delete(); g.gray.delete();
+      if(keyframes>=2){ finishAccum(); return; }
+      $('meter-label').textContent='KEEP REFERENCE IN VIEW'; $('meter-label').style.color='var(--wrn)';
+      accTimer=setTimeout(accStep,200); return;
     }
     
-    iRnd.render(iScn, iCam); 
-}
-
-function updateCentroidSectors(camPos) {
-    if (state.rawPts.length < 10) return;
-    let sumX=0, sumY=0, sumZ=0;
-    const step = Math.max(1, Math.floor(state.rawPts.length / 50));
-    let sampleCount = 0;
-    for (let i = 0; i < state.rawPts.length; i += step) {
-        sumX += state.rawPts[i].x; sumY += state.rawPts[i].y; sumZ += state.rawPts[i].z;
-        sampleCount++;
-    }
-    state.centroid.set(sumX/sampleCount, sumY/sampleCount, sumZ/sampleCount);
+    $('meter-label').style.color='var(--gd)';
+    const disps=[]; for(const m of good){ const a=refFrame.kp.get(m.q).pt, b=det.kp.get(m.t).pt; disps.push(Math.hypot(a.x-b.x,a.y-b.y)); }
+    disps.sort((x,y)=>x-y); const med=disps[disps.length>>1]/g.w;
     
-    const viewDir = new THREE.Vector3().copy(camPos).sub(state.centroid).normalize();
-    const yaw = Math.atan2(viewDir.x, viewDir.z); 
-    const sectorIndex = Math.floor((((yaw * R2D) + 360) % 360) / 45) % 8;
-    
-    const dot = $(`s${sectorIndex}`);
-    if (dot) dot.classList.add('active');
-}
+    const fire=+$('px').value/100, n=anchorMap.size;
+    $('meterFill').style.width=Math.min(100, n/200*100)+'%';
+    $('meter-label').textContent=`KF: ${keyframes} | Anchors: ${n} | Parallax: ${(med*100).toFixed(0)}%`;
 
-function accumulateDepthFrame(depth, camMatrix, invProj) {
-    const STEP = 0.04; 
-    const addedPoints = [];
-
-    for (let ny = 0; ny < 1; ny += STEP) {
-        for (let nx = 0; nx < 1; nx += STEP) {
-            const d = depth.getDepthInMeters(nx, ny);  
-            if (!d || d < 0.1 || d > 1.2) continue; 
-            
-            const ndc = new THREE.Vector3(nx*2-1, (1-ny)*2-1, 0.5);
-            const ray = ndc.clone().applyMatrix4(invProj);
-            ray.divideScalar(ray.z === 0 ? 1 : -ray.z);  
-            const viewPt = ray.multiplyScalar(d);          
-            const world = viewPt.applyMatrix4(camMatrix);
-            
-            const normDist = Math.max(0, Math.min(1, (d - 0.1) / 1.1));
-            world.col = new THREE.Color().setHSL(0.5 + normDist*0.3, 0.8, 0.6); 
-            world.conf = 1.0; 
-            state.rawPts.push(world);
-            addedPoints.push(world);
-        }
-    }
-    
-    if (addedPoints.length > 0) {
-        const pts = [], cols = [];
-        for(let i=0; i<addedPoints.length; i++) {
-            pts.push(addedPoints[i].x, addedPoints[i].y, addedPoints[i].z);
-            cols.push(addedPoints[i].col.r, addedPoints[i].col.g, addedPoints[i].col.b);
-        }
-        const bg=new THREE.BufferGeometry();
-        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
-        bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
-        const pc = new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.015}));
-        livePointsGroup.add(pc);
-    }
-}
-
-// ----------------------------------------------------------------------
-// TIER 3: LEGACY GYRO + NEURAL ENGINE
-// ----------------------------------------------------------------------
-function bootLegacy() {
-    $('mode-title').innerText = "P3DK HYBRID (LEGACY SENSORS)";
-    $('mode-title').style.color = '#ffb000';
-    lC("SENSORS CONFIGURED. COMMENCING NETWORK COMPILATION.");
-
-    // BUG 1 FIXED: Dedicated isolated startup ensures camera object is requested ONLY ONCE.
-    (async () => {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            try {
-                let st = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}}}).catch(()=>navigator.mediaDevices.getUserMedia({video:true}));
-                $('vid').srcObject = st; 
-                await new Promise(r => { $('vid').onloadedmetadata = r; setTimeout(r, 2000); });
-                $('vid').play().catch(()=>{});
-            } catch(e) { lC("Camera fallback initialized."); }
-        }
-        resizeHUD(); window.addEventListener('resize', resizeHUD);
-    })();
-
-    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-        $('bs').innerText = 'TAP TO GRANT SENSOR PERMISSION';
-        const btnG = document.createElement('button'); btnG.className = 'btn go'; btnG.innerText = 'GRANT GYRO PERMISSIONS';
-        btnG.style.width = '200px'; btnG.style.marginTop = '10px';
-        btnG.onclick = async () => {
-            btnG.style.display = 'none';
-            try { if (await DeviceOrientationEvent.requestPermission() === 'granted') setupSensors(); else fallbackSensors(); } catch(err) { fallbackSensors(); }
-            loadAIEngine();
-        };
-        $('boot').appendChild(btnG);
-    } else { 
-        setupSensors(); 
-        loadAIEngine(); 
-    }
-}
-
-async function loadAIEngine() {
-    $('bs').innerText = 'STARTING COMPILER...';
-    try {
-        const pCb = p => { if(p.status==='progress') { $('bp').style.width=Math.round(p.progress)+'%'; $('bs').innerText=`LOADING AI... ${(p.loaded/(1024**2)).toFixed(1)}MB`; } };
-        const optsGPU = { device: 'webgpu', dtype: 'fp16', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
-        const optsRmbgGPU = { device: 'webgpu', dtype: 'q8', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
-        const optsCPU = { progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
-        
-        try {
-            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsGPU);
-            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsRmbgGPU);
-        } catch(e) {
-            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsCPU);
-            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsCPU);
-        }
-        
-        $('boot').style.display='none'; state.scan=true;
-        requestAnimationFrame(loopLegacy); 
-        setInterval(evalQuality, 350); 
-        setInterval(captureGate, 120);
-    } catch(e) { $('bs').innerText="AI FAILURE: "+e.message; $('bs').style.color = '#f55'; }
-}
-
-function setupSensors() {
-    window.addEventListener('deviceorientation', e => {
-        state.gyroAvailable = true;
-        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(e.beta||0), THREE.MathUtils.degToRad(e.alpha||0), -THREE.MathUtils.degToRad(e.gamma||0), 'YXZ'))
-            .multiply(new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2))
-            .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -THREE.MathUtils.degToRad(window.orientation||0)));
-        if(!state.sQ) state.sQ=q.clone();
-        if(state.lQ) {
-            state.aV = 2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.lQ.clone().conjugate()).w)));
-            const chkT = $('chk-tt');
-            if(2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.sQ.clone().conjugate()).w)))*R2D > 15 && chkT && chkT.checked) chkT.checked=false;
-        }
-        state.lQ=q.clone(); state.cR.copy(q);
-    });
-}
-function fallbackSensors() { state.gyroAvailable = false; }
-
-function evalQuality() {
-    if(!state.scan||!state.vw || state.mode !== 'gyro-da2') return; dCtx.drawImage($('vid'),0,0,128,128);
-    const px=dCtx.getImageData(0,0,128,128).data, gy=new Uint8Array(16384), la=new Float32Array(16384); let lS=0, lV=0, cr=0, tL=0, ovr=0, drk=0;
-    for(let i=0;i<16384;i++) { gy[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2]; tL+=gy[i]; if(gy[i]>235)ovr++; if(gy[i]<25)drk++; }
-    for(let y=1;y<127;y++) for(let x=1;x<127;x++) { let i=x+y*128, v=-4*gy[i]+gy[i-1]+gy[i+1]+gy[i-128]+gy[i+128]; la[i]=v; lS+=v; }
-    for(let y=1;y<127;y++) for(let x=1;x<127;x++) lV+=(la[x+y*128]-lS/15876)**2;
-    let bS = Math.min(100, (lV/15876)*1.8);
-
-    const ci=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
-    for(let y=3;y<125;y+=3) for(let x=3;x<125;x+=3) {
-        let v=gy[x+y*128], br=0, dr=0, mb=0, md=0;
-        for(let i=0; i<32; i++) { let n=gy[(x+ci[i%16][0])+(y+ci[i%16][1])*128]; if(n>v+18){br++;mb=Math.max(mb,br)}else br=0; if(n<v-18){dr++;md=Math.max(md,dr)}else dr=0; }
-        if(mb>8||md>8) cr++;
-    }
-    let fS = Math.min(100, (cr/40)*100), mL = tL/16384, eS=100, l="OK";
-    if(mL<55){eS=40;l="DIM";} else if(mL>215){eS=55;l="BRIGHT";} else if(ovr/16384>.15){eS=30;l="OVER";} else if(drk/16384>.3){eS=20;l="DARK";}
-    
-    state.quality = bS*0.4 + fS*0.4 + eS*0.2;
-    $('qv').innerText = Math.round(state.quality); $('qr').style.strokeDashoffset = 50.3 - (state.quality/100)*50.3; $('qb').innerText = l; $('qb').style.color = state.quality>57 ? '#0f9' : '#f90';
-}
-
-function captureGate() {
-    if(!state.scan||state.lck||performance.now()-state.lCap<400||state.quality<58 || state.mode !== 'gyro-da2') return;
-    if(state.aV>0.12) return lC("STABILIZE...");
-    if(state.pht.length>=MAX_P) {
-        $('btn-finalize').style.display = 'block';
-        return lC("CAPTURE READY. TAP FINALIZE.");
-    }
-    const chkT = $('chk-tt');
-    if(!chkT || !chkT.checked) for(const p of state.pht) if(state.cR.angleTo(new THREE.Quaternion(...p.pq))*R2D < 15) return lC("ROTATE SCANNER...");
-    doCaptureLegacy();
-}
-
-function smoothDepthMap(raw, W, H) {
-    const sm = new Float32Array(raw.length); sm.set(raw);
-    for(let y=1; y<H-1; y++) {
-        for(let x=1; x<W-1; x++) {
-            let sum=0, val=0, c=0;
-            for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++) { val = raw[(y+dy)*W + (x+dx)]; if(Number.isFinite(val)) { sum+=val; c++; } }
-            sm[y*W+x] = c>0 ? sum/c : raw[y*W+x];
-        }
-    } return sm;
-}
-
-async function doCaptureLegacy() {
-    // BUG 2 FIXED: Prevent 0-dimension canvas scaling IndexSizeErrors if the camera is still spinning up
-    if (state.vw === 0 || state.vh === 0) return;
-
-    state.lck=true; state.lCap=performance.now(); lC("CAPTURING..."); navigator.vibrate?.([35]);
-    
-    try {
-        const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=256;
-        sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 256, 256); 
-        
-        const rgb = sX.getImageData(0,0,256,256).data;
-        
-        const res = await state.pipe(sC); 
-        const W = res.predicted_depth.width;
-        const H = res.predicted_depth.height;
-        
-        const aMask = new Uint8Array(W * H); aMask.fill(255); 
-        try {
-            const maskRes = await state.rmbg(sC), mC = document.createElement('canvas'); mC.width=W; mC.height=H; const mCtx = mC.getContext('2d');
-            if (maskRes && maskRes.length && maskRes[0].mask && maskRes[0].mask.toCanvas) mCtx.drawImage(maskRes[0].mask.toCanvas(), 0, 0, W, H);
-            else if (maskRes && maskRes.toCanvas) mCtx.drawImage(maskRes.toCanvas(), 0, 0, W, H);
-            const mData = mCtx.getImageData(0,0,W,H).data; 
-            for(let i=0; i<W*H; i++) aMask[i] = mData[i*4]; 
-        } catch(err) { console.warn("Background removal fallback.", err); }
-
-        const raw = smoothDepthMap(res.predicted_depth.data, W, H);
-        
-        const sortedRaw = Float32Array.from(raw).sort(), medRaw = sortedRaw[Math.floor(raw.length/2)] || 0.001;
-        const depth = new Float32Array(raw.length); 
-        for(let i=0;i<raw.length;i++) {
-            let val = raw[i]; if (!Number.isFinite(val) || val === 0) val = 0.001; 
-            let d = medRaw / val; 
-            depth[i] = 1.0 + (d - 1.0) * 1.5; 
-            if (!Number.isFinite(depth[i])) depth[i] = 1.0;
-        }
-        
-        const chkT = $('chk-tt');
-        let pq=[state.cR.x, state.cR.y, state.cR.z, state.cR.w];
-        if(chkT && chkT.checked) {
-            let fQ = new THREE.Quaternion(...pq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), state.pht.length*(Math.PI/4)));
-            pq = [fQ.x, fQ.y, fQ.z, fQ.w];
-        }
-        
-        state.pht.push({ depth, aMask, dW:W, dH:H, pq, rgb, isT:(chkT && chkT.checked) });
-        let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
-        
-        const pts=[], cols=[], q=new THREE.Quaternion(...pq);
-        for(let y=0; y<RES; y++) {
-            for(let x=0; x<RES; x++) {
-                let u = Math.floor((x/RES)*W), v = Math.floor((y/RES)*H);
-                let dv = depth[v * W + u]; 
-                if(aMask[v * W + u] < 128) continue;
-                let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
-                if(chkT && chkT.checked) pt.z += 1.0; 
-                pt.applyQuaternion(q).multiplyScalar(0.35);
-                pts.push(pt.x, pt.y, pt.z);
-                
-                const pxI = Math.floor((u/W)*256), pyI = Math.floor((v/H)*256), idx = (pyI*256+pxI)*4;
-                cols.push(rgb[idx]/255, rgb[idx+1]/255, rgb[idx+2]/255);
-            }
-        }
-        const bg=new THREE.BufferGeometry();
-        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
-        bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
-        const pc = new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.015}));
-        livePointsGroup.add(pc);
-
-        if (state.pht.length >= 3) $('btn-finalize').style.display = 'block';
-        
-        const sectorIndex = Math.floor((((state.pht.length * 45) + 360) % 360) / 45) % 8;
-        const lDot = $(`s${sectorIndex}`);
-        if (lDot) lDot.classList.add('active');
-
-    } catch (err) {
-        console.error("Capture routine failed: ", err);
-    } finally {
-        state.lck = false; // Always lift UI capture lock even if math threw exception!
-    }
-}
-
-$('btn-manual-capture').onclick = () => {
-    if(state.mode === 'gyro-da2') {
-        state.lCap = 0; 
-        doCaptureLegacy();
-    } else {
-        const refSpace = iRnd.xr.getReferenceSpace();
-        state.session.requestAnimationFrame((t, frame) => {
-            const pose = frame.getViewerPose(refSpace);
-            if (pose) {
-                const view = pose.views[0];
-                const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
-                const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
-                const depthInfo = frame.getDepthInformation(view);
-                if (depthInfo) {
-                    accumulateDepthFrame(depthInfo, camMatrix, invProj, view);
-                    const rotQ = new THREE.Quaternion().setFromRotationMatrix(camMatrix);
-                    const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
-                    state.pht.push({ pq: [rotQ.x, rotQ.y, rotQ.z, rotQ.w], pos: [camPos.x, camPos.y, camPos.z] });
-                    updateCentroidSectors(camPos);
-                    $('cc').innerText = `${state.pht.length} FRAMES`;
-                    if (state.pht.length >= 3) $('btn-finalize').style.display = 'block';
-                }
-            }
-        });
-    }
-};
-
-$('btn-finalize').onclick = finalize;
-
-function loopLegacy() {
-    requestAnimationFrame(loopLegacy); 
-    iRnd.render(iScn, iCam);
-    if(!state.scan || !state.vw || !hCtx) return; const hw=$('hud').width, hh=$('hud').height; hCtx.clearRect(0,0,hw,hh);
-    dCtx.drawImage($('vid'), 0, 0, 128, 128); const p=dCtx.getImageData(0,0,128,128).data, g=new Uint8Array(16384), e=new Float32Array(16384), eV=[];
-    for(let i=0; i<16384; i++) g[i]=0.299*p[i*4]+0.587*p[i*4+1]+0.114*p[i*4+2];
-    for(let y=1; y<127; y++) for(let x=1; x<127; x++) {
-        let i=x+y*128, gx=(-g[i-129]-2*g[i-1]-g[i+127])+(g[i-127]+2*g[i+1]+g[i+129]), gy=(-g[i-129]-2*g[i-128]-g[i-127])+(g[i+127]+2*g[i+128]+g[i+129]), mg=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128); e[i]=mg; eV.push(mg);
-    }
-    const aT=Math.max(0.27, eV.sort((a,b)=>a-b)[Math.floor(eV.length*0.85)]);
-    for(let i=0; i<16384; i++) { if(e[i]>aT){ eBuf[i*4]=0; eBuf[i*4+1]=195; eBuf[i*4+2]=160; eBuf[i*4+3]=Math.min(155,((e[i]-aT)/(1-aT))*430)|0; } else eBuf[i*4+3]=0; }
-    hCtx.putImageData(new ImageData(eBuf,128,128), 0, 0); 
-}
-
-// ----------------------------------------------------------------------
-// POST-PROCESSING METABALL CONTRUCTION
-// ----------------------------------------------------------------------
-function decimate(geo, targetRatio = 0.25) {
-    if (targetRatio >= 0.99) return geo;
-    const mod = new THREE.SimplifyModifier(), triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3, target = Math.floor(triCount * targetRatio);
-    try { return mod.modify(geo, target); } catch(e) { return geo; }
-}
-
-async function finalize() {
-    state.scan=false;
-    
-    if (state.session) {
-        await state.session.end().catch(()=>{});
-        iRnd.xr.enabled = false;
-        iRnd.setAnimationLoop(null);
-    }
-    
-    $('btn-manual-capture').style.display = 'none';
-    $('btn-finalize').style.display = 'none';
-    
-    livePointsGroup.clear();
-    const vid = $('vid'); if(vid) vid.style.display = 'none';
-    const hd = $('hud'); if(hd) hd.style.display = 'none';
-    
-    $('inset').classList.add('fullscreen'); 
-    iRnd.domElement.style.pointerEvents = 'auto'; 
-    iCtl.enabled = true;
-
-    $('done').style.display='flex'; $('async-status').style.display='block';
-    
-    await yieldLoop();
-
-    if (state.mode === 'gyro-da2') {
-        const legacyPts=[]; 
-        let allD=[];
-        state.pht.forEach(ph=>{for(let i=0;i<ph.depth.length;i+=100)if(Number.isFinite(ph.depth[i]))allD.push(ph.depth[i]);});
-        const medZ = allD.sort((a,b)=>a-b)[Math.floor(allD.length/2)] || 0.35, sF = 0.35/medZ; state.scaleFactor = sF;
-
-        for(const ph of state.pht) {
-            ph.orbitPivot = medZ;
-            const sr=Array.from(ph.depth).filter(Number.isFinite).sort((a,b)=>a-b), p05=sr[Math.floor(sr.length*0.05)], p95=sr[Math.floor(sr.length*0.95)], q=new THREE.Quaternion(...ph.pq);
-            for(let y=0; y<RES; y++) {
-                for(let x=0; x<RES; x++) {
-                    const u=Math.floor((x/RES)*ph.dW), v=Math.floor((y/RES)*ph.dH), dv=ph.depth[v*ph.dW+u];
-                    if(ph.aMask[v * ph.dW + u] < 128) continue; 
-                    if(dv<p05||dv>p95||!Number.isFinite(dv)) continue;
-                    let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
-                    if(ph.isT) pt.z+=medZ; pt.applyQuaternion(q).multiplyScalar(sF);
-                    
-                    let grad = 0;
-                    if (u > 0 && u < ph.dW - 1 && v > 0 && v < ph.dH - 1) {
-                        const dx = ph.depth[v*ph.dW + (u+1)] - ph.depth[v*ph.dW + (u-1)];
-                        const dy = ph.depth[(v+1)*ph.dW + u] - ph.depth[(v-1)*ph.dW + u];
-                        grad = Math.hypot(dx, dy);
-                    }
-                    
-                    const pxI = Math.floor((u/ph.dW)*256), pyI = Math.floor((v/ph.dH)*256), idx=(pyI*256+pxI)*4;
-                    pt.col = new THREE.Color(ph.rgb[idx]/255, ph.rgb[idx+1]/255, ph.rgb[idx+2]/255);
-                    pt.conf = Math.max(0.2, Math.min(1.0, 1.0 - (grad * 10)));
-                    if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) legacyPts.push(pt);
-                }
-            }
-        }
-        state.rawPts = legacyPts;
-    }
-    
-    const rPts = state.rawPts;
-    
-    if ($('chk-sym') && $('chk-sym').checked && rPts.length > 50) {
-        let cx=0,cy=0,cz=0; rPts.forEach(p=>{cx+=p.x;cy+=p.y;cz+=p.z;}); cx/=rPts.length; cy/=rPts.length; cz/=rPts.length;
-        let nx=0,ny=0,nz=0; 
-        if (state.pht.length > 0 && state.mode === 'gyro-da2') {
-            state.pht.forEach(ph=>{ const f=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion(...ph.pq)); nx+=f.x;ny+=f.y;nz+=f.z; });
+    // Promote to keyframe
+    if(med>=fire && med>=lastKfPar+PAR_STEP){
+      const res=poseAndTriangulate(refFrame, det, good);
+      if(res){
+        if(!refScaleSet){
+          for(const p of res.pts) anchorMap.set(p.qi,{px:p.px,py:p.py,z:p.z,n:1});
+          refScaleSet=true; keyframes=1; lastKfPar=med;
         } else {
-            nx = 0; ny = 0; nz = 1; 
+          const shared=res.pts.filter(p=>anchorMap.has(p.qi));
+          if(shared.length>=6){
+            const ratios=shared.map(p=>anchorMap.get(p.qi).z/p.z).filter(r=>isFinite(r)&&r>0).sort((a,b)=>a-b);
+            const s=ratios[ratios.length>>1];
+            if(isFinite(s)&&s>0){
+              for(const p of res.pts){ 
+                const zs=p.z*s;
+                if(anchorMap.has(p.qi)){ const e=anchorMap.get(p.qi); e.z=(e.z*e.n+zs)/(e.n+1); e.n++; }
+                else anchorMap.set(p.qi,{px:p.px,py:p.py,z:zs,n:1}); 
+              }
+              keyframes++; lastKfPar=med;
+            }
+          }
         }
-        const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
-        const mirrored=[];
-        for (const p of rPts) {
-            const dx=p.x-cx, dy=p.y-cy, dz=p.z-cz, d=dx*nx+dy*ny+dz*nz;
-            if (d < 0 || !Number.isFinite(d)) continue; 
-            const m = new THREE.Vector3(p.x-2*d*nx, p.y-2*d*ny, p.z-2*d*nz);
-            if (Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.z)) {
-                m.conf = (p.conf||1) * 0.8; 
-                if(p.col) m.col = p.col;
-                mirrored.push(m);
-            }
-        } rPts.push(...mirrored);
+      }
+      det.kp.delete(); det.des.delete(); g.gray.delete();
+      if(keyframes>=MAX_KF){ finishAccum(); return; }
+      accTimer=setTimeout(accStep,120); return;
     }
-    
-    const counts=new Map(), map=new Map(); let mnX=1e9,mnY=1e9,mnZ=1e9; rPts.forEach(p=>{mnX=Math.min(mnX,p.x); mnY=Math.min(mnY,p.y); mnZ=Math.min(mnZ,p.z);});
-    state.mnX = mnX; state.mnY = mnY; state.mnZ = mnZ;
-    
-    rPts.forEach(p=>{ const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; counts.set(k, (counts.get(k)||0)+1); });
-    rPts.forEach(p=>{ 
-        const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; 
-        if(!map.has(k)) { p.density = counts.get(k); p.sumConf = p.conf||1; map.set(k,p); } else { map.get(k).sumConf += (p.conf||1); }
-    });
-    state.dsPts = Array.from(map.values()).map(p => { p.conf = p.sumConf / p.density; return p; });
-    state.spatialHash = map; 
-    
-    buildWatertightMesh();
+    det.kp.delete(); det.des.delete(); g.gray.delete();
+    accTimer=setTimeout(accStep,120);
+  }catch(e){
+    if(g){ try{g.gray.delete();}catch{} } if(det){ try{det.kp.delete();det.des.delete();}catch{} }
+    stat('Accum error'); subStat(e.message); console.error(e);
+    accumulating=false; $('meter-container').style.display='none'; $('bScan').textContent='⚡ AUTO SCAN'; $('bScan').classList.remove('armed');
+  }
 }
 
-async function buildWatertightMesh() {
-    if (!state.dsPts || state.dsPts.length < 5) {
-        $('async-status').innerText = "ERROR: Insufficient points to extract.";
-        return;
-    }
-    $('async-status').style.display='block'; $('async-status').innerText = "MARCHING CUBES..."; await yieldLoop();
-    
-    const xs = state.dsPts.map(p => p.x).sort((a,b)=>a-b), ys = state.dsPts.map(p => p.y).sort((a,b)=>a-b), zs = state.dsPts.map(p => p.z).sort((a,b)=>a-b), N = state.dsPts.length;
-    const b = { w:xs[Math.floor(N*.98)]-xs[Math.floor(N*.02)], h:ys[Math.floor(N*.98)]-ys[Math.floor(N*.02)], d:zs[Math.floor(N*.98)]-zs[Math.floor(N*.02)], cx:(xs[Math.floor(N*.98)]+xs[Math.floor(N*.02)])/2, cy:(ys[Math.floor(N*.98)]+ys[Math.floor(N*.02)])/2, cz:(zs[Math.floor(N*.98)]+zs[Math.floor(N*.02)])/2 }, sz = Math.max(b.w,b.h,b.d)*1.3 || 0.1;
-    
-    const mc = new THREE.MarchingCubes(parseInt($('sl-res').value), new THREE.MeshStandardMaterial(), true, true, 100000);
-    mc.isolation = parseFloat($('sl-iso').value); const str = parseFloat($('sl-str').value), sub = parseFloat($('sl-sub').value);
-    
-    for(let i=0; i<state.dsPts.length; i++) {
-        if (i%500===0) await yieldLoop(); 
-        const p = state.dsPts[i], nx=(p.x-b.cx)/sz+0.5, ny=(p.y-b.cy)/sz+0.5, nz=(p.z-b.cz)/sz+0.5;
-        if(nx>0&&nx<1&&ny>0&&ny<1&&nz>0&&nz<1) mc.addBall(nx, ny, nz, (str / Math.sqrt(p.density || 1)) * (p.conf || 1), sub); 
-    }
-    
-    $('async-status').innerText = "DECIMATING & WELDING..."; await yieldLoop();
-    let geo = mc.generateBufferGeometry();
-    if (!geo || !geo.attributes.position || geo.attributes.position.count === 0) {
-        $('async-status').innerText = "ERROR: No intersection found.";
-        return;
-    }
-
-    geo.scale(sz/2, sz/2, sz/2); geo.translate(b.cx, b.cy, b.cz);
-    geo = THREE.BufferGeometryUtils.mergeVertices(geo);
-    geo = decimate(geo, parseFloat($('sl-det').value));
-    
-    try {
-        if(!ManifoldClass) { const mod = await import('https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js'); const wasm = await mod.default(); wasm.setup(); ManifoldClass = wasm.Manifold; }
-        const mObj = { vertProperties: geo.attributes.position.array, triVerts: geo.index.array, numProp: 3 };
-        const solid = ManifoldClass.ofMesh(mObj).asOriginal(); const rep = solid.getMesh(); solid.delete();
-        const rp=[], ri=[];
-        for(let i=0; i<rep.vertProperties.length; i++) rp.push(rep.vertProperties[i]);
-        for(let i=0; i<rep.triVerts.length; i++) ri.push(rep.triVerts[i]);
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); geo.setIndex(ri);
-    } catch(e) { console.warn("Manifold repair skipped.", e); }
-    
-    if($('chk-edge').checked) geo = new THREE.EdgeSplitModifier().modify(geo, 30 * Math.PI / 180);
-    geo.computeVertexNormals();
-
-    $('async-status').innerText = "PROJECTING VERTEX COLORS..."; await yieldLoop();
-    
-    const pos = geo.attributes.position.array, col = new Float32Array(pos.length);
-
-    for(let i=0; i<pos.length; i+=3) {
-        if(i%3000===0) await yieldLoop(); 
-        const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
-        const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
-        let sR=0, sG=0, sB=0, cw=0, nearby=0;
-        for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
-            const k = `${gx+dx},${gy+dy},${gz+dz}`;
-            if(state.spatialHash.has(k)) {
-                const pt = state.spatialHash.get(k);
-                if(pt.col) { sR += pt.col.r; sG += pt.col.g; sB += pt.col.b; cw++; }
-                nearby += pt.density;
-            }
-        }
-        const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
-        if(cw > 0) { col[i] = (sR/cw)*aoCoeff; col[i+1] = (sG/cw)*aoCoeff; col[i+2] = (sB/cw)*aoCoeff; }
-        else { col[i] = 0.5*aoCoeff; col[i+1] = 0.5*aoCoeff; col[i+2] = 0.5*aoCoeff; }
-    }
-    
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-
-    iScn.children.filter(c=>c.isMesh).forEach(m=>{m.geometry.dispose();m.material.dispose();iScn.remove(m);});
-    state.wMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, metalness:0.12, roughness:0.58, envMapIntensity:1.0 })); 
-    iScn.add(state.wMesh);
-    
-    const sr = geo.boundingSphere || new THREE.Sphere(new THREE.Vector3(), 0.1);
-    iCam.position.set(0,0,sr.radius*2.8); iCtl.target.set(0,0,0); iCtl.autoRotate=true; iCtl.update();
-    
-    const triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3;
-    $('es').innerText = `${state.pht.length || state.rawPts.length} FRAMES/POINTS · ${(geo.attributes.position.count/3).toLocaleString()} TRIANGLES`;
-    $('async-status').style.display='none';
+function finishAccum(){
+  accumulating=false; if(accTimer){ clearTimeout(accTimer); accTimer=null; }
+  $('bScan').classList.remove('armed'); $('bScan').textContent='⚡ AUTO SCAN'; $('meter-container').style.display='none';
+  const A = refFrame ? { color:refFrame.color, w:refFrame.w, h:refFrame.h } : null;
+  if(refFrame){ refFrame.gray.delete(); refFrame.kp.delete(); refFrame.des.delete(); refFrame=null; }
+  
+  if(!A || !anchorMap || anchorMap.size<30){ 
+    stat('Not enough anchors'); subStat(`Only ${anchorMap?anchorMap.size:0} — orbit the object more`); 
+    anchorMap=null; return; 
+  }
+  
+  const pairs=[...anchorMap.values()].map(e=>({px:e.px,py:e.py,z:e.z}));
+  stat('<span class="spin"></span>Phase 1: Fusing Data'); subStat(`${pairs.length} multi-view anchors...`);
+  anchorMap=null;
+  
+  setTimeout(() => densify(A, { pairs }), 50);
 }
 
-['sl-res','sl-str','sl-iso','sl-sub','sl-det','chk-edge'].forEach(id => { const e = $(id); if(e) e.onchange = buildWatertightMesh; });
+/* ================= Pure JS SfM Helpers ================= */
+const mul=(P,Q)=>{ const a=P.length,b=Q[0].length,c=Q.length,R=[]; for(let i=0;i<a;i++){R[i]=[];for(let j=0;j<b;j++){let s=0;for(let k=0;k<c;k++)s+=P[i][k]*Q[k][j];R[i][j]=s;}} return R; };
+const tT=M=>M[0].map((_,j)=>M.map(r=>r[j]));
+const mv3=(M,v)=>[M[0][0]*v[0]+M[0][1]*v[1]+M[0][2]*v[2], M[1][0]*v[0]+M[1][1]*v[1]+M[1][2]*v[2], M[2][0]*v[0]+M[2][1]*v[1]+M[2][2]*v[2]];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const nrm=v=>{ const n=Math.hypot(...v)||1; return v.map(x=>x/n); };
+const det3=M=>M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])-M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])+M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);
 
-if($('dl-ply')) {
-    $('dl-ply').onclick = async () => {
-        if(!state.wMesh) return; const btn=$('dl-ply'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING PLY..."; await yieldLoop();
-        try {
-            const g = state.wMesh.geometry, pos = g.attributes.position, col = g.attributes.color, n = pos.count;
-            let head = `ply\nformat ascii 1.0\nelement vertex ${n}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\n`;
-            const idx = g.index ? g.index.array : null, fcount = idx ? idx.length/3 : n/3;
-            head += `element face ${fcount}\nproperty list uchar int vertex_index\nend_header\n`;
-            let body = '';
-            for(let i=0; i<n; i++) {
-                if(i%1000===0) await yieldLoop();
-                const r = col ? Math.round(col.getX(i)*255) : 200, gg = col ? Math.round(col.getY(i)*255) : 200, bb = col ? Math.round(col.getZ(i)*255) : 200;
-                body += `${pos.getX(i)} ${pos.getY(i)} ${pos.getZ(i)} ${r} ${gg} ${bb}\n`;
-            }
-            for(let i=0; i<fcount; i++) { if(i%1000===0) await yieldLoop(); const a = idx?idx[i*3]:i*3, b = idx?idx[i*3+1]:i*3+1, c = idx?idx[i*3+2]:i*3+2; body += `3 ${a} ${b} ${c}\n`; }
-            const aLink = document.createElement('a'); aLink.href = URL.createObjectURL(new Blob([head+body], {type:'text/plain'}));
-            aLink.download = `p3dk-color-${Date.now()}.ply`; aLink.click(); showToast("Color PLY Exported!");
-        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
+function jacobi(S){
+  const n=S.length; let A=S.map(r=>r.slice()); let V=A.map((_,i)=>A.map((_,j)=>i===j?1:0));
+  for(let sweep=0;sweep<24;sweep++){
+    let off=0; for(let p=0;p<n;p++)for(let q=p+1;q<n;q++) off+=A[p][q]*A[p][q];
+    if(off<1e-24) break;
+    for(let p=0;p<n;p++)for(let q=p+1;q<n;q++){
+      if(Math.abs(A[p][q])<1e-300) continue;
+      const phi=0.5*Math.atan2(2*A[p][q], A[p][p]-A[q][q]), c=Math.cos(phi), s=Math.sin(phi);
+      const J=A.map((_,i)=>A.map((_,j)=>i===j?1:0));
+      J[p][p]=c; J[q][q]=c; J[p][q]=-s; J[q][p]=s;       
+      A=mul(mul(tT(J),A),J); V=mul(V,J);                  
+    }
+  }
+  return { val:A.map((_,i)=>A[i][i]), V };
+}
+const colOf=(V,c)=>[V[0][c],V[1][c],V[2][c]];
+function nullVec(S){ const {val,V}=jacobi(S); let mi=0; for(let i=1;i<S.length;i++) if(val[i]<val[mi]) mi=i; return S.map((_,r)=>V[r][mi]); }
+
+function eightPoint(idx, x1,y1,x2,y2){
+  const M=Array.from({length:9},()=>new Array(9).fill(0));
+  for(const i of idx){ const r=[x1[i]*x2[i],y1[i]*x2[i],x2[i], x1[i]*y2[i],y1[i]*y2[i],y2[i], x1[i],y1[i],1];
+    for(let a=0;a<9;a++)for(let b=0;b<9;b++) M[a][b]+=r[a]*r[b]; }
+  const e=nullVec(M); return [[e[0],e[1],e[2]],[e[3],e[4],e[5]],[e[6],e[7],e[8]]];
+}
+
+const sampson=(E,a,b)=>{ 
+  const Ea=mv3(E,a), Etb=mv3(tT(E),b), num=(b[0]*Ea[0]+b[1]*Ea[1]+b[2]*Ea[2]);
+  const den=Ea[0]*Ea[0]+Ea[1]*Ea[1]+Etb[0]*Etb[0]+Etb[1]*Etb[1]; return num*num/(den||1e-12); };
+
+function decomposeE(E){
+  const ETE=mul(tT(E),E), {val,V}=jacobi(ETE); const ord=[0,1,2].sort((i,j)=>val[j]-val[i]);           
+  const v1=colOf(V,ord[0]), v2=colOf(V,ord[1]), v3=colOf(V,ord[2]);
+  let Vm=[[v1[0],v2[0],v3[0]],[v1[1],v2[1],v3[1]],[v1[2],v2[2],v3[2]]];
+  let u1=nrm(mv3(E,v1)), u2=nrm(mv3(E,v2)), u3=cross(u1,u2);
+  let Um=[[u1[0],u2[0],u3[0]],[u1[1],u2[1],u3[1]],[u1[2],u2[2],u3[2]]];
+  if(det3(Um)<0){ Um=Um.map(r=>[r[0],r[1],-r[2]]); } if(det3(Vm)<0){ Vm=Vm.map(r=>[r[0],r[1],-r[2]]); }
+  const W=[[0,-1,0],[1,0,0],[0,0,1]], Vt=tT(Vm);
+  let Ra=mul(mul(Um,W),Vt), Rb=mul(mul(Um,tT(W)),Vt);
+  if(det3(Ra)<0) Ra=Ra.map(r=>r.map(x=>-x)); if(det3(Rb)<0) Rb=Rb.map(r=>r.map(x=>-x));
+  const t=[Um[0][2],Um[1][2],Um[2][2]], tn=t.map(x=>-x);
+  return [{R:Ra,t},{R:Ra,t:tn},{R:Rb,t},{R:Rb,t:tn}];
+}
+
+function triangulate(R,t,a,b){
+  const r3=[b[0]*R[2][0]-R[0][0], b[0]*R[2][1]-R[0][1], b[0]*R[2][2]-R[0][2], b[0]*t[2]-t[0]];
+  const r4=[b[1]*R[2][0]-R[1][0], b[1]*R[2][1]-R[1][1], b[1]*R[2][2]-R[1][2], b[1]*t[2]-t[1]];
+  const rows=[[-1,0,a[0],0],[0,-1,a[1],0],r3,r4];
+  const M=Array.from({length:4},()=>new Array(4).fill(0));
+  for(const rr of rows)for(let i=0;i<4;i++)for(let j=0;j<4;j++) M[i][j]+=rr[i]*rr[j];
+  const X=nullVec(M), w=X[3]; if(Math.abs(w)<1e-12) return null;
+  const P=[X[0]/w,X[1]/w,X[2]/w]; const z2=R[2][0]*P[0]+R[2][1]*P[1]+R[2][2]*P[2]+t[2];
+  return { P, z1:P[2], z2 };
+}
+
+function poseAndTriangulate(A, B, good){
+  try{
+    const n=good.length, w=A.w; if(n<20) return null;
+    const f=(0.5*w)/Math.tan(0.5*(+$('fov').value)*Math.PI/180), cx=w/2, cy=A.h/2;
+    const x1=[],y1=[],x2=[],y2=[];
+    for(const m of good){ const p=A.kp.get(m.q).pt, q=B.kp.get(m.t).pt;
+      x1.push((p.x-cx)/f); y1.push((p.y-cy)/f); x2.push((q.x-cx)/f); y2.push((q.y-cy)/f); }
+    const SAMP=2e-4; let bestE=null,bestIn=-1,bestMask=null;
+    for(let it=0; it<220; it++){
+      const s=new Set(); while(s.size<8) s.add((Math.random()*n)|0);
+      let E; try{ E=eightPoint([...s], x1,y1,x2,y2); }catch{ continue; }
+      let cnt=0; const mask=new Uint8Array(n);
+      for(let i=0;i<n;i++){ if(sampson(E,[x1[i],y1[i],1],[x2[i],y2[i],1])<SAMP){ mask[i]=1; cnt++; } }
+      if(cnt>bestIn){ bestIn=cnt; bestE=E; bestMask=mask; }
+    }
+    if(!bestE || bestIn<15) return null;
+    const inl=[]; for(let i=0;i<n;i++) if(bestMask[i]) inl.push(i);
+    const E=eightPoint(inl, x1,y1,x2,y2);
+    const cands=decomposeE(E); let best=null,bestFront=-1;
+    for(const c of cands){ let front=0;
+      for(const i of inl){ const r=triangulate(c.R,c.t,[x1[i],y1[i],1],[x2[i],y2[i],1]); if(r&&r.z1>0&&r.z2>0) front++; }
+      if(front>bestFront){ bestFront=front; best=c; } }
+    if(!best || bestFront<10) return null;
+    const pts=[];
+    for(const i of inl){ const r=triangulate(best.R,best.t,[x1[i],y1[i],1],[x2[i],y2[i],1]);
+      if(!r || r.z1<=0 || r.z2<=0 || !isFinite(r.P[0]+r.P[1]+r.P[2])) continue;
+      const p=A.kp.get(good[i].q).pt;
+      pts.push({ qi:good[i].q, px:p.x, py:p.y, z:r.z1 });
+    }
+    return pts.length>=10 ? { pts, inliers:bestIn } : null;
+  }catch(e){ console.error(e); return null; }
+}
+
+/* ---------- Neural Depth Model ---------- */
+let depther=null;
+async function getDepther(){
+  if(depther) return depther;
+  const dev=('gpu' in navigator)?'webgpu':'wasm';
+  stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat(`Loading DA2 via ${dev.toUpperCase()}`);
+  depther=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{ device:dev,
+    progress_callback:p=>{ if(p.status==='progress'&&p.total) subStat(`Downloading Model: ${(p.progress||0).toFixed(0)}%`); } });
+  return depther;
+}
+
+/* ---------- Robust Affine Fit ---------- */
+function robustAffine(xs, ys){
+  const n=xs.length; if(n<12) return null;
+  let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
+  for(let i=0;i<n;i++){ if(xs[i]<xmin)xmin=xs[i]; if(xs[i]>xmax)xmax=xs[i]; if(ys[i]<ymin)ymin=ys[i]; if(ys[i]>ymax)ymax=ys[i]; }
+  if(xmax-xmin<0.08) return { reliable:false, why:'no disparity spread' };
+  
+  const slopes=[], cap=20000, pe=n*(n-1)/2, step=pe>cap?Math.ceil(pe/cap):1;
+  for(let i=0;i<n;i++) for(let j=i+1;j<n;j+=step){ const dx=xs[j]-xs[i]; if(Math.abs(dx)<1e-3) continue; slopes.push((ys[j]-ys[i])/dx); }
+  if(slopes.length<10) return { reliable:false, why:'few slopes' };
+  slopes.sort((p,q)=>p-q); const a=slopes[slopes.length>>1];
+  const b=xs.map((x,i)=>ys[i]-a*x).sort((p,q)=>p-q)[n>>1];          
+  const mad=(1.4826*xs.map((x,i)=>Math.abs(ys[i]-(a*x+b))).sort((p,q)=>p-q)[n>>1])||1e-9;
+  const signal=a*(xmax-xmin), invHi=a*xmax+b;
+  
+  const reliable = a>0 && signal>4*mad && invHi>1e-4;
+  return { a, b, reliable, anchors:n, snr:signal/mad };
+}
+
+/* ---------- Hybrid Densification + Caching ---------- */
+async function densify(A, sfm){
+  try {
+    const w=A.w, h=A.h;
+    const cnv=document.createElement('canvas'); cnv.width=w; cnv.height=h;
+    cnv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(A.color), w, h), 0, 0);
+    
+    const model=await getDepther();
+    stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Inferring dense tensor array...'); 
+    await new Promise(r=>setTimeout(r,30));
+    
+    const { predicted_depth } = await model(await RawImage.fromCanvas(cnv));
+    
+    // Save to global cache so geometry dials can rebuild instantly
+    cachedScan = {
+      A: A,
+      sfm: sfm,
+      dims: predicted_depth.dims,
+      D: predicted_depth.data
     };
+    
+    projectCloud();
+    
+  } catch(e) { stat('Densify error'); subStat(e.message); console.error(e); }
 }
 
-if($('dl-stl')) {
-    $('dl-stl').onclick = async () => {
-        if(!state.wMesh) return; const btn=$('dl-stl'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING STL..."; await yieldLoop();
-        try {
-            const pos = state.wMesh.geometry.attributes.position, idx = state.wMesh.geometry.index ? state.wMesh.geometry.index.array : null;
-            const nT = idx ? idx.length/3 : pos.count/3, B = new ArrayBuffer(84 + nT * 50), V = new DataView(B); let O = 84;
-            new TextEncoder().encode('P3dK Watertight STL').forEach((b,i)=>V.setUint8(i,b)); V.setUint32(80, nT, true);
-            for(let t=0; t<nT; t++) {
-                if(t%2000===0) await yieldLoop();
-                const i0 = idx ? idx[t*3] : t*3, i1 = idx ? idx[t*3+1] : t*3+1, i2 = idx ? idx[t*3+2] : t*3+2;
-                const ax = pos.getX(i0), ay = pos.getY(i0), az = pos.getZ(i0), bx = pos.getX(i1), by = pos.getY(i1), bz = pos.getZ(i1), cx = pos.getX(i2), cy = pos.getY(i2), cz = pos.getZ(i2);
-                const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
-                let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx, len = Math.sqrt(nx*nx + ny*ny + nz*nz);
-                if(len > 0) { nx /= len; ny /= len; nz /= len; }
-                V.setFloat32(O, nx, true); V.setFloat32(O+4, ny, true); V.setFloat32(O+8, nz, true);
-                V.setFloat32(O+12, ax, true); V.setFloat32(O+16, ay, true); V.setFloat32(O+20, az, true);
-                V.setFloat32(O+24, bx, true); V.setFloat32(O+28, by, true); V.setFloat32(O+32, bz, true);
-                V.setFloat32(O+36, cx, true); V.setFloat32(O+40, cy, true); V.setFloat32(O+44, cz, true); V.setUint16(O+48, 0, true); O += 50;
-            }
-            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([B], {type:'application/octet-stream'})); a.download = `p3dk-geometry-${Date.now()}.stl`; a.click(); showToast("STL Exported Successfully!");
-        } catch(e) { showToast("Export failed: " + e.message); } btn.disabled = false; btn.innerText = orig;
-    };
+/* ---------- Instant Reprojection Engine (Mesh Version) ---------- */
+function projectCloud() {
+  if (!cachedScan) return;
+  const { A, sfm, dims, D } = cachedScan;
+  const dh = dims[dims.length-2], dw = dims[dims.length-1], w = A.w, h = A.h;
+  
+  let mn=Infinity,mx=-Infinity; for(let i=0;i<D.length;i++){ const v=D[i]; if(v<mn)mn=v; if(v>mx)mx=v; }
+  const span=(mx-mn)||1, dn=i=>(D[i]-mn)/span; 
+  
+  stat('<span class="spin"></span>Phase 3: Meshing'); subStat('Mapping neural map to physical anchors...');
+  
+  const xs=[], ys=[];
+  for(const p of sfm.pairs){
+    const sx=Math.min(dw-1,Math.max(0,Math.round(p.px/w*dw))), sy=Math.min(dh-1,Math.max(0,Math.round(p.py/h*dh)));
+    xs.push(dn(sy*dw+sx)); ys.push(1/p.z);
+  }
+  
+  const fit=robustAffine(xs, ys);                                   
+  const useAnchors = !!(fit && fit.reliable);
+  
+  const a = useAnchors ? fit.a : 2.0;
+  const b = useAnchors ? fit.b : 0.5;
+  
+  const fov=+$('fov').value*Math.PI/180, f=(0.5*dw)/Math.tan(0.5*fov), cx=dw/2, cy=dh/2;
+  const cull=+$('fc').value, edge=+$('er').value, stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
+  
+  // Build Grid for Triangulation
+  const gw=Math.floor((dw-1)/stride)+1, gh=Math.floor((dh-1)/stride)+1;
+  const vidx=new Int32Array(gw*gh).fill(-1);
+  const pos=[], col=[], vdn=[];   
+  let vc=0;
+  
+  for(let gy=0;gy<gh;gy++){ const y=gy*stride; if(y>=dh) continue;
+    for(let gx=0;gx<gw;gx++){ const x=gx*stride; if(x>=dw) continue;
+      const i=y*dw+x, d=dn(i);
+      
+      if(d<cull) continue;
+      const invd=a*d+b; if(invd<=1e-3) continue;       // behind camera / at infinity
+      const Z=1/invd;
+      
+      vidx[gy*gw+gx]=vc++;
+      pos.push((x-cx)*Z/f, -(y-cy)*Z/f, -Z); vdn.push(d);
+      
+      const cxp=Math.min(w-1,Math.round(x/dw*w)), cyp=Math.min(h-1,Math.round(y/dh*h)), o=(cyp*w+cxp)*4;
+      col.push(A.color[o]/255, A.color[o+1]/255, A.color[o+2]/255);
+    }
+  }
+  
+  if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
+  
+  // Stitch triangles over the grid, apply edge-tear logic
+  const index=[]; const tear=edge>0?edge:Infinity;
+  const ok3=(p,q,r)=> p>=0&&q>=0&&r>=0 &&
+    Math.abs(vdn[p]-vdn[q])<=tear && Math.abs(vdn[q]-vdn[r])<=tear && Math.abs(vdn[p]-vdn[r])<=tear;
+    
+  for(let gy=0;gy<gh-1;gy++) for(let gx=0;gx<gw-1;gx++){
+    const v00=vidx[gy*gw+gx], v10=vidx[gy*gw+gx+1], v01=vidx[(gy+1)*gw+gx], v11=vidx[(gy+1)*gw+gx+1];
+    if(ok3(v00,v10,v01)) index.push(v00,v10,v01);
+    if(ok3(v10,v11,v01)) index.push(v10,v11,v01);
+  }
+  
+  drawMesh(pos,col,index);
+  
+  const NV=vc.toLocaleString(), NF=(index.length/3).toLocaleString();
+  if(useAnchors){ stat('Hybrid Mesh Complete'); subStat(`${NV} verts · ${NF} faces · ${fit.anchors} anchors`); }
+  else { stat('Mesh · NEURAL-ONLY'); subStat(`${NV} verts · ${NF} faces · Manual Z-Stretch available`); }
 }
 
-if($('dl-glb')) {
-    $('dl-glb').onclick = async () => {
-        if(!state.wMesh) return; const btn=$('dl-glb'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING GLB..."; await yieldLoop();
-        try {
-            new THREE.GLTFExporter().parse(state.wMesh, gltf => {
-                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(gltf)], {type:'model/gltf+json'}));
-                a.download = `p3dk-color-${Date.now()}.gltf`; a.click(); showToast("GLB Exported!");
-            }, { binary: false });
-        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
-    };
+function drawMesh(pos,col,index){
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(index);
+  g.computeBoundingSphere();
+  
+  const s=g.boundingSphere.radius||1; g.scale(2/s,2/s,2/s); g.center();
+  
+  // Render as solid mesh with double-sided texture
+  cloud=new THREE.Mesh(g, new THREE.MeshBasicMaterial({vertexColors:true, side:THREE.DoubleSide}));
+  
+  scene.add(cloud);
+  applyTransforms(); // Apply visual Z-stretch / invert
+  
+  plyRows=()=>{
+    const p=g.attributes.position, c=g.attributes.color, zs=cloud.scale.z;
+    const verts=[]; for(let i=0;i<p.count;i++) verts.push(`${p.getX(i).toFixed(4)} ${p.getY(i).toFixed(4)} ${(p.getZ(i)*zs).toFixed(4)} ${(c.getX(i)*255)|0} ${(c.getY(i)*255)|0} ${(c.getZ(i)*255)|0}`);
+    const idx=g.index.array, faces=[]; for(let i=0;i<idx.length;i+=3) faces.push(`3 ${idx[i]} ${idx[i+1]} ${idx[i+2]}`);
+    return { verts, faces };
+  };
+  $('bExport').disabled=false;
 }
 
-if($('rs')) $('rs').onclick = () => location.reload();
+/* ---------- Instant Visual Transforms ---------- */
+function applyTransforms() {
+  if (!cloud) return;
+  let sz = +$('zs').value;
+  if ($('inv').checked) sz = -sz; // True instant topological flip
+  cloud.scale.z = sz;
+}
+
+/* ---------- Dials & Instant Re-Projection Hooks ---------- */
+// Visual hooks only (0ms execution time)
+$('zs').oninput=e=>{ $('vzs').textContent=Number(e.target.value).toFixed(2); applyTransforms(); };
+$('inv').onchange=()=>{ applyTransforms(); };
+
+// Live label updates for re-project geometry dials
+$('fov').oninput=e=>$('vfov').textContent=e.target.value;
+$('fc').oninput=e=>$('vfc').textContent=(+e.target.value).toFixed(2);
+$('er').oninput=e=>$('ver').textContent=(+e.target.value).toFixed(2);
+
+// Re-project geometry on release
+['fov', 'fc', 'er'].forEach(id => {
+  $(id).addEventListener('change', () => { if (cachedScan) projectCloud(); });
+});
+
+$('bReset').onclick=()=>{ 
+  stopScan(); 
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud=null; }
+  cachedScan=null; plyRows=null; $('bExport').disabled=true; $('bScan').textContent='⚡ AUTO SCAN'; stat('Cleared'); subStat(stream?'Tap AUTO SCAN':'Open camera'); 
+};
+
+$('bExport').onclick=()=>{
+  if(!plyRows) return; const { verts, faces }=plyRows();
+  const head=`ply\nformat ascii 1.0\ncomment P3dK DepthScan v8.0 - hybrid mesh (edge-culled), RELATIVE scale\n`+
+    `element vertex ${verts.length}\nproperty float x\nproperty float y\nproperty float z\n`+
+    `property uchar red\nproperty uchar green\nproperty uchar blue\n`+
+    `element face ${faces.length}\nproperty list uchar int vertex_indices\nend_header\n`;
+  const body=verts.join('\n')+'\n'+faces.join('\n')+'\n';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([head+body],{type:'application/octet-stream'}));
+  a.download=`p3dk_mesh_${Date.now()}.ply`; a.click();
+  stat('Mesh Exported'); subStat(`${verts.length.toLocaleString()} verts · ${faces.length.toLocaleString()} faces → PLY`);
+};
+
 </script>
 </body>
 </html>
