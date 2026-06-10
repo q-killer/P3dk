@@ -22,6 +22,14 @@
      math (cheirality disambiguation is sufficient and bench-validated).
      A previous header claimed gyro fusion that did not exist in code.
 
+  v16: FULLSCREEN hybrid camera (corner thumbnail only after meshing) ·
+  camera controls: zoom reset to hardware minimum on start (kills Android
+  default digital crop), continuous autofocus requested, CAM ZOOM dial
+  shown only if the camera reports the capability · TAP-TO-TARGET: tap a
+  detection box to lock its label (magenta); the hybrid mesh then re-runs
+  detection on the reference frame in the worker and CROPS the relief to
+  that object (+8% margin) — object isolation from clutter.
+
   v15 (engineering core — Gemini: port Elite CSS/markup on top, ZERO JS
   edits): object detection moved to a Web Worker (main thread only ships
   ImageBitmaps and draws returned boxes — no tensor work on the UI thread)
@@ -62,7 +70,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V15 · Core</title>
+<title>P3dK · DepthScan V16 · Core</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -147,7 +155,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V15 CORE</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V16 CORE</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -177,6 +185,8 @@
       <input type="range" id="er" min="0" max="0.5" step="0.01" value="0.12"></div>
     <div class="dial"><label>Z-STRETCH<span class="v" id="vzs">1.00</span></label>
       <input type="range" id="zs" min="0.05" max="3.0" step="0.05" value="1.0"></div>
+    <div class="dial" id="zoomWrap" style="display:none;grid-column:span 2;"><label>CAM ZOOM<span class="v" id="vzm">1.0</span></label>
+      <input type="range" id="zm" min="1" max="8" step="0.1" value="1"></div>
     <label class="chk" style="grid-column:span 2;"><input type="checkbox" id="inv">INVERT Z / CONCAVE</label>
   </div>
   <div class="dgrid" id="controlsXr" style="display:none;">
@@ -275,7 +285,7 @@ function selectMode(mode){
   /* v12 fix: STL stays visible in XR mode — it IS the metric export */
   $('bSolid').style.display='block'; $('bSolid').style.gridColumn=hy?'span 1':'span 2';
   $('bSolid').disabled=true; $('bExport').disabled=true;
-  if(hy){ $('cam').style.display=stream?'block':'none'; $('bScan').disabled=!(stream&&cvReady);
+  if(hy){ $('cam').style.display=stream?'block':'none'; if(stream&&!cloud) setPreviewLayout(true); $('bScan').disabled=!(stream&&cvReady);
     subStat('Hybrid: front 2.5D relief (relative). MATTE, TEXTURED objects required for automatic SfM scaling. True 360° = METRIC XR.'); }
   else { $('cam').style.display='none'; $('bScan').disabled=false;
     subStat('Metric volumetric scan · watertight STL in millimetres'); }
@@ -309,6 +319,30 @@ whenCv();
 
 /* ---------- camera ---------- */
 let stream=null;
+/* v16: fullscreen framing view; corner thumbnail only once a mesh is on stage */
+function setPreviewLayout(full){
+  const geo = full
+    ? {top:'0',left:'0',right:'0',bottom:'0',width:'100%',height:'100%',border:'none',borderRadius:'0',objectFit:'cover'}
+    : {top:'84px',left:'auto',right:'16px',bottom:'auto',width:'100px',height:'auto',border:'',borderRadius:'8px',objectFit:'cover'};
+  Object.assign($('cam').style,geo,{zIndex:full?'15':'40'});
+  Object.assign($('det').style,geo,{zIndex:full?'16':'41'});
+}
+async function tuneCamera(){
+  try{
+    const track=stream.getVideoTracks()[0];
+    const caps=track.getCapabilities?.()||{};
+    const adv=[];
+    if(caps.focusMode&&caps.focusMode.includes('continuous')) adv.push({focusMode:'continuous'});
+    if(caps.zoom){ adv.push({zoom:caps.zoom.min});               // kill default digital crop
+      const z=$('zm'); z.min=caps.zoom.min; z.max=caps.zoom.max; z.step=caps.zoom.step||0.1; z.value=caps.zoom.min;
+      $('vzm').textContent=(+caps.zoom.min).toFixed(1);
+      $('zoomWrap').style.display='block';
+      z.oninput=async e=>{ $('vzm').textContent=(+e.target.value).toFixed(1);
+        try{ await track.applyConstraints({advanced:[{zoom:+e.target.value}]}); }catch(x){} };
+    } else $('zoomWrap').style.display='none';
+    if(adv.length) await track.applyConstraints({advanced:adv});
+  }catch(e){ console.warn('camera tune',e); }
+}
 $('bCam').onclick=async()=>{
   if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; $('cam').style.display='none';
     $('bCam').textContent='◉ CAMERA'; $('bScan').disabled=true; $('bDetect').disabled=true; stopDetect(); stopScan(); return; }
@@ -316,6 +350,7 @@ $('bCam').onclick=async()=>{
     stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}}});
     const v=$('cam'); v.srcObject=stream; v.style.display='block';
     $('bCam').textContent='◉ STOP CAM'; $('bScan').disabled=!cvReady; $('bDetect').disabled=false;
+    setPreviewLayout(true); tuneCamera();
     stat('Optics Online'); subStat(cvReady?'Point at object, tap AUTO SCAN':'Waiting for Core…');
   }catch(e){ stat('Camera Denied'); subStat(e.message); }
 };
@@ -365,6 +400,7 @@ function startHybridScan(){
   accumulating=true;
   $('bScan').classList.add('armed'); $('bScan').textContent='■ FINISH SCAN';
   $('meter-container').style.display='flex';
+  setPreviewLayout(true);
   $('meter-label').textContent='SIDE-STEP SLOWLY ◀ ▶'; $('meter-label').style.color='var(--gd)';
   stat('Reference Locked'); subStat('Side-step left/right · output = front 2.5D relief');
   accStep();
@@ -556,13 +592,31 @@ async function densify(A,sfm){
     stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Inferring dense tensor array...');
     await new Promise(r=>setTimeout(r,30));
     const { predicted_depth }=await model(await RawImage.fromCanvas(cnv));
-    cachedScan={ A, sfm, dims:predicted_depth.dims, D:predicted_depth.data };
+    /* v16: target isolation — re-detect on the REFERENCE frame, crop to the locked label */
+    let crop=null;
+    if(selLabel&&detWorker){
+      try{
+        stat('<span class="spin"></span>Phase 2b: Target lock'); subStat(`Locating ${selLabel} in reference frame…`);
+        const res=await new Promise(res2=>{
+          targetResolve=res2;
+          createImageBitmap(cnv).then(bmp=>detWorker.postMessage({type:'frame',tag:'target',bitmap:bmp},[bmp]));
+          setTimeout(()=>{ if(targetResolve){ targetResolve(null); targetResolve=null; } },5000);
+        });
+        if(res){
+          let best=null; for(const o of res.boxes) if(o.label===selLabel&&(!best||o.score>best.score)) best=o;
+          if(best){ const m=0.08, b=best.box;
+            crop={ x0:Math.max(0,b.xmin/res.w-m), x1:Math.min(1,b.xmax/res.w+m),
+                   y0:Math.max(0,b.ymin/res.h-m), y1:Math.min(1,b.ymax/res.h+m) }; }
+        }
+      }catch(e){ console.warn('target lock',e); }
+    }
+    cachedScan={ A, sfm, dims:predicted_depth.dims, D:predicted_depth.data, crop };
     projectHybridMesh();
   }catch(e){ stat('Densify error'); subStat(e.message); console.error(e); }
 }
 function projectHybridMesh(){
   if(!cachedScan) return;
-  const { A, sfm, dims, D }=cachedScan;
+  const { A, sfm, dims, D, crop }=cachedScan;
   const dh=dims[dims.length-2],dw=dims[dims.length-1],w=A.w,h=A.h;
   let mn=Infinity,mx=-Infinity; for(let i=0;i<D.length;i++){ const v=D[i]; if(v<mn)mn=v; if(v>mx)mx=v; }
   const span=(mx-mn)||1,dn=i=>(D[i]-mn)/span;
@@ -583,6 +637,7 @@ function projectHybridMesh(){
   for(let gy=0;gy<gh;gy++){ const y=gy*stride; if(y>=dh) continue;
     for(let gx=0;gx<gw;gx++){ const x=gx*stride; if(x>=dw) continue;
       const i=y*dw+x,d=dn(i);
+      if(crop){ const nx2=x/dw, ny2=y/dh; if(nx2<crop.x0||nx2>crop.x1||ny2<crop.y0||ny2>crop.y1) continue; }
       if(d<cull) continue;
       const invd=a*d+b; if(invd<=1e-3) continue;
       const Z=1/invd;
@@ -614,10 +669,12 @@ function projectHybridMesh(){
   }
   drawMesh(pos,col,index);
   const NV=vc.toLocaleString(),NF=(index.length/3).toLocaleString();
-  if(useAnchors){ stat('Hybrid Mesh Complete'); subStat(`${NV} verts · ${NF} faces · ${fit.anchors} anchors · 2.5D relief (Relative)`); }
-  else { stat('[FALLBACK] NEURAL-ONLY'); subStat(`${NV} verts · ${NF} faces · 2.5D relief (Relative) · matte/textured objects required for auto-scale · Z-STRETCH + INVERT live`); }
+  const tgt=crop?` · ◎ ${selLabel}`:'';
+  if(useAnchors){ stat('Hybrid Mesh Complete'); subStat(`${NV} verts · ${NF} faces · ${fit.anchors} anchors · 2.5D relief (Relative)${tgt}`); }
+  else { stat('[FALLBACK] NEURAL-ONLY'); subStat(`${NV} verts · ${NF} faces · 2.5D relief (Relative)${tgt} · matte/textured required for auto-scale · Z-STRETCH + INVERT live`); }
 }
 function drawMesh(pos,col,index){
+  setPreviewLayout(false);                       // result takes the stage; camera to corner
   if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
@@ -904,12 +961,13 @@ self.onmessage=async e=>{
     const id=cx.getImageData(0,0,oc.width,oc.height);
     const img=new RawImageC(new Uint8ClampedArray(id.data),oc.width,oc.height,4);
     const out=await detector(img,{threshold:0.55});
-    self.postMessage({type:'boxes',w:oc.width,h:oc.height,
+    self.postMessage({type:'boxes',tag:d.tag||'live',w:oc.width,h:oc.height,
       boxes:out.slice(0,4).map(o=>({label:o.label,score:o.score,box:o.box}))});
   }catch(err){ self.postMessage({type:'err',msg:String(err&&err.message||err)}); }
 };`;
 let detWorker=null, detOn=false, detTimer=null, detBusy=false;
-function stopDetect(){ detOn=false; if(detTimer){clearTimeout(detTimer);detTimer=null;} $('det').style.display='none'; $('bDetect').classList.remove('armed'); }
+let lastBoxes=null, selLabel=null, targetResolve=null;
+function stopDetect(){ detOn=false; if(detTimer){clearTimeout(detTimer);detTimer=null;} $('det').style.display='none'; $('det').style.pointerEvents='none'; $('bDetect').classList.remove('armed'); }
 function ensureDetWorker(){
   if(detWorker) return;
   detWorker=new Worker(URL.createObjectURL(new Blob([DET_WORKER_SRC],{type:'text/javascript'})),{type:'module'});
@@ -917,16 +975,19 @@ function ensureDetWorker(){
     const d=e.data;
     if(d.type==='ready'){ subStat('[AI DETECT · IN WORKER] online — labels are local; 3D-from-web-images needs cloud (V-next), and is an asset, not a measurement of YOUR object.'); }
     else if(d.type==='boxes'){
+      if(d.tag==='target'){ if(targetResolve){ targetResolve(d); targetResolve=null; } return; }
       const v=$('cam'), k=$('det');
       if(detOn && v.videoWidth){
         k.width=d.w; k.height=d.h;
+        lastBoxes=d;
         const kc=k.getContext('2d');
         kc.drawImage(v,0,0,k.width,k.height);
-        kc.lineWidth=3; kc.font='16px monospace';
+        kc.font='16px monospace';
         for(const o of d.boxes){
-          const b=o.box;
-          kc.strokeStyle='#39ff8b'; kc.strokeRect(b.xmin,b.ymin,b.xmax-b.xmin,b.ymax-b.ymin);
-          kc.fillStyle='#39ff8b'; kc.fillText(`${o.label} ${(o.score*100)|0}%`,b.xmin+3,Math.max(14,b.ymin-4));
+          const b=o.box, sel=(o.label===selLabel);
+          kc.lineWidth=sel?4:3;
+          kc.strokeStyle=sel?'#ff2bd6':'#39ff8b'; kc.strokeRect(b.xmin,b.ymin,b.xmax-b.xmin,b.ymax-b.ymin);
+          kc.fillStyle=sel?'#ff2bd6':'#39ff8b'; kc.fillText(`${sel?'◎ ':''}${o.label} ${(o.score*100)|0}%`,b.xmin+3,Math.max(14,b.ymin-4));
         }
       }
       detBusy=false;
@@ -934,10 +995,26 @@ function ensureDetWorker(){
     else if(d.type==='err'){ subStat('Detect worker: '+d.msg); detBusy=false; }
   };
 }
+$('det').addEventListener('click',e=>{
+  if(!detOn||!lastBoxes) return;
+  const k=$('det'), r=k.getBoundingClientRect();
+  /* invert object-fit:cover mapping: screen -> canvas-internal coords */
+  const sc=Math.max(r.width/k.width, r.height/k.height);
+  const ix=(e.clientX-r.left-(r.width-k.width*sc)/2)/sc;
+  const iy=(e.clientY-r.top-(r.height-k.height*sc)/2)/sc;
+  let best=null,bestA=Infinity;
+  for(const o of lastBoxes.boxes){ const b=o.box;
+    if(ix>=b.xmin&&ix<=b.xmax&&iy>=b.ymin&&iy<=b.ymax){
+      const a=(b.xmax-b.xmin)*(b.ymax-b.ymin); if(a<bestA){bestA=a;best=o;} } }
+  if(best){
+    if(selLabel===best.label){ selLabel=null; subStat('Target unlocked — full-frame relief'); }
+    else { selLabel=best.label; subStat(`◎ Target locked: ${best.label.toUpperCase()} — hybrid mesh will crop to this object`); }
+  } else { selLabel=null; subStat('Target cleared — full-frame relief'); }
+});
 $('bDetect').onclick=()=>{
-  if(detOn){ stopDetect(); subStat('DETECT off'); return; }
+  if(detOn){ stopDetect(); selLabel=null; lastBoxes=null; subStat('DETECT off'); return; }
   if(!stream){ subStat('Open camera first'); return; }
-  detOn=true; $('bDetect').classList.add('armed'); $('det').style.display='block';
+  detOn=true; $('bDetect').classList.add('armed'); $('det').style.display='block'; $('det').style.pointerEvents='auto';
   subStat('[AI DETECT · IN WORKER] loading YOLOS-tiny off-thread…');
   ensureDetWorker();
   detLoop();
@@ -967,6 +1044,7 @@ $('bReset').onclick=()=>{
   if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud=null; }
   cachedScan=null; plyRows=null; stlData=null; vol=null;
   $('bExport').disabled=true; $('bSolid').disabled=true;
+  if(activeMode==='hybrid'&&stream) setPreviewLayout(true);
   stat('Cleared'); subStat(activeMode==='hybrid'?(stream?'Tap AUTO SCAN':'Open camera'):'Tap START XR SCAN');
 };
 $('bExport').onclick=()=>{
