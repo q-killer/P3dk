@@ -22,6 +22,19 @@
      math (cheirality disambiguation is sufficient and bench-validated).
      A previous header claimed gyro fusion that did not exist in code.
 
+  v17: XR TAP-TO-PLACE — volume no longer auto-seeds on first pose (that
+  produced offset fragment scans); aim, tap, and the scan volume renders
+  as a magenta wireframe box in AR. Re-tap re-seeds. · XR start now auto-
+  releases the getUserMedia camera (ARCore and getUserMedia cannot share
+  the sensor — this was the "XR only works after STOP CAM" failure) ·
+  DETECT overlay is now transparent boxes-only (the old design copied a
+  stale video frame fullscreen at 0.8fps — that was the glitch) · hybrid
+  AUTO ISOLATE: per-scan Otsu threshold on the neural depth histogram
+  culls the background automatically; FAR CULL is manual override when
+  unchecked. · Honest notes: ARCore passthrough FOV is fixed by the AR
+  camera config (it cannot be zoomed out to match the wide lens); hybrid
+  remains a single-reference 2.5D relief — gyro display adds no coverage.
+
   v16: FULLSCREEN hybrid camera (corner thumbnail only after meshing) ·
   camera controls: zoom reset to hardware minimum on start (kills Android
   default digital crop), continuous autofocus requested, CAM ZOOM dial
@@ -70,7 +83,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V16 · Core</title>
+<title>P3dK · DepthScan V17 · Core</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -155,7 +168,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V16 CORE</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V17 CORE</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -188,6 +201,7 @@
     <div class="dial" id="zoomWrap" style="display:none;grid-column:span 2;"><label>CAM ZOOM<span class="v" id="vzm">1.0</span></label>
       <input type="range" id="zm" min="1" max="8" step="0.1" value="1"></div>
     <label class="chk" style="grid-column:span 2;"><input type="checkbox" id="inv">INVERT Z / CONCAVE</label>
+    <label class="chk" style="grid-column:span 2;"><input type="checkbox" id="iso" checked>AUTO ISOLATE BG (OTSU)</label>
   </div>
   <div class="dgrid" id="controlsXr" style="display:none;">
     <div class="dial"><label>VOLUME SIZE m<span class="v" id="vvs">0.60</span></label>
@@ -208,7 +222,8 @@
 </div>
 
 <div id="xrhud">
-  <div id="xrtop">placing volume…</div>
+  <div id="xrtap" style="position:absolute;inset:0;pointer-events:auto;"></div>
+  <div id="xrtop">AIM AT TARGET · TAP TO PLACE VOLUME</div>
   <button id="xrbtn">■ FINISH</button>
 </div>
 
@@ -325,7 +340,7 @@ function setPreviewLayout(full){
     ? {top:'0',left:'0',right:'0',bottom:'0',width:'100%',height:'100%',border:'none',borderRadius:'0',objectFit:'cover'}
     : {top:'84px',left:'auto',right:'16px',bottom:'auto',width:'100px',height:'auto',border:'',borderRadius:'8px',objectFit:'cover'};
   Object.assign($('cam').style,geo,{zIndex:full?'15':'40'});
-  Object.assign($('det').style,geo,{zIndex:full?'16':'41'});
+  Object.assign($('det').style,geo,{zIndex:full?'16':'41',background:'transparent'});
 }
 async function tuneCamera(){
   try{
@@ -630,7 +645,19 @@ function projectHybridMesh(){
   const useAnchors=!!(fit&&fit.reliable);
   const a=useAnchors?fit.a:1.0, b=useAnchors?fit.b:0.12;
   const fov=+$('fov').value*Math.PI/180,f=(0.5*dw)/Math.tan(0.5*fov),cx=dw/2,cy=dh/2;
-  const cull=+$('fc').value,edge=+$('er').value,stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
+  let cull=+$('fc').value;
+  if($('iso').checked){
+    /* Otsu split on the depth histogram: keep the near (foreground) cluster */
+    const hist=new Float32Array(64);
+    for(let i=0;i<D.length;i+=7) hist[Math.min(63,(dn(i)*64)|0)]++;
+    let tot=0,sum=0; for(let b=0;b<64;b++){ tot+=hist[b]; sum+=b*hist[b]; }
+    let wB=0,sB=0,best=0,bt=0;
+    for(let b=0;b<64;b++){ wB+=hist[b]; if(!wB) continue; const wF=tot-wB; if(!wF) break;
+      sB+=b*hist[b]; const mB=sB/wB,mF=(sum-sB)/wF,v2=wB*wF*(mB-mF)*(mB-mF);
+      if(v2>best){ best=v2; bt=b; } }
+    cull=Math.max(cull,(bt+0.5)/64);
+  }
+  const edge=+$('er').value,stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
   const gw=Math.floor((dw-1)/stride)+1,gh=Math.floor((dh-1)/stride)+1;
   const vidx=new Int32Array(gw*gh).fill(-1);
   const pos=[],col=[],vdn=[]; let vc=0;
@@ -669,7 +696,7 @@ function projectHybridMesh(){
   }
   drawMesh(pos,col,index);
   const NV=vc.toLocaleString(),NF=(index.length/3).toLocaleString();
-  const tgt=crop?` · ◎ ${selLabel}`:'';
+  const tgt=(crop?` · ◎ ${selLabel}`:'')+($('iso').checked?` · iso ${(cull*100)|0}%`:'');
   if(useAnchors){ stat('Hybrid Mesh Complete'); subStat(`${NV} verts · ${NF} faces · ${fit.anchors} anchors · 2.5D relief (Relative)${tgt}`); }
   else { stat('[FALLBACK] NEURAL-ONLY'); subStat(`${NV} verts · ${NF} faces · 2.5D relief (Relative)${tgt} · matte/textured required for auto-scale · Z-STRETCH + INVERT live`); }
 }
@@ -782,6 +809,9 @@ function toField(vol,blur=0){
   return f;
 }
 async function startXrScan(){
+  /* v17: ARCore and getUserMedia cannot share the camera — release it */
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; $('cam').style.display='none';
+    $('bCam').textContent='◉ CAMERA'; $('bDetect').disabled=true; stopDetect(); }
   const S=+$('vs').value, RES=+$('vr').value;
   let session;
   try{
@@ -791,7 +821,7 @@ async function startXrScan(){
       domOverlay:{root:$('xrhud')}
     });
   }catch(e){ stat('XR session failed'); subStat(e.message+' — depth-sensing may be unsupported on this device'); return; }
-  $('xrhud').style.display='block'; $('xrtop').textContent='placing volume…';
+  $('xrhud').style.display='block'; $('xrtop').textContent='AIM AT TARGET · TAP TO PLACE VOLUME';
   /* RAW loop, fully decoupled from three.js (v12 fix) — bare GL layer, no renderer.xr */
   const glc=document.createElement('canvas');
   const gl=glc.getContext('webgl',{xrCompatible:true});
@@ -802,10 +832,12 @@ async function startXrScan(){
   const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);return o;};
   const prog=gl.createProgram();
   gl.attachShader(prog,sh(gl.VERTEX_SHADER,'attribute vec3 p;uniform mat4 mvp;void main(){gl_Position=mvp*vec4(p,1.0);gl_PointSize=3.0;}'));
-  gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,'precision mediump float;void main(){gl_FragColor=vec4(0.0,0.94,1.0,0.85);}'));
+  gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,'precision mediump float;uniform vec4 c;void main(){gl_FragColor=c;}'));
   gl.linkProgram(prog);
-  const aP=gl.getAttribLocation(prog,'p'), uM=gl.getUniformLocation(prog,'mvp');
+  const aP=gl.getAttribLocation(prog,'p'), uM=gl.getUniformLocation(prog,'mvp'), uC=gl.getUniformLocation(prog,'c');
   const pBuf=gl.createBuffer(); let pN=0;
+  const lBuf=gl.createBuffer(); let lN=0, placeReq=false;
+  $('xrtap').onclick=()=>{ placeReq=true; };
   const PRES=48, pmc=new MarchingCubes(PRES,new THREE.MeshBasicMaterial(),false,false,120000);
   const MVP=new THREE.Matrix4(), INV=new THREE.Matrix4();
   const refreshPreview=()=>{ if(!vol) return;
@@ -835,21 +867,35 @@ async function startXrScan(){
     gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);
     gl.viewport(vp.x,vp.y,vp.width,vp.height);
     gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
-    if(pN){
+    if(pN||lN){
       INV.fromArray(view.transform.inverse.matrix);
       MVP.fromArray(view.projectionMatrix).multiply(INV);
       gl.useProgram(prog); gl.uniformMatrix4fv(uM,false,MVP.elements);
-      gl.bindBuffer(gl.ARRAY_BUFFER,pBuf); gl.enableVertexAttribArray(aP);
-      gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
-      gl.drawArrays(gl.POINTS,0,pN);
+      gl.enableVertexAttribArray(aP);
+      if(lN){ gl.uniform4f(uC,1.0,0.17,0.84,0.95);
+        gl.bindBuffer(gl.ARRAY_BUFFER,lBuf); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+        gl.drawArrays(gl.LINES,0,lN); }
+      if(pN){ gl.uniform4f(uC,0.0,0.94,1.0,0.85);
+        gl.bindBuffer(gl.ARRAY_BUFFER,pBuf); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+        gl.drawArrays(gl.POINTS,0,pN); }
     }
-    if(!vol){
+    if(placeReq){
+      placeReq=false;
       const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(Q);
       const c=Pv.clone().add(fwd.multiplyScalar(0.25+S/2));
-      vol=makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2);
-      $('xrtop').textContent='volume placed — orbit · cyan dots = captured surface';
+      vol=makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2); kf=0; pN=0;
+      /* magenta wireframe = exactly what will be scanned */
+      const o=[vol.ox,vol.oy,vol.oz], e2=[o[0]+S,o[1]+S,o[2]+S];
+      const Cn=[[o[0],o[1],o[2]],[e2[0],o[1],o[2]],[e2[0],e2[1],o[2]],[o[0],e2[1],o[2]],
+                [o[0],o[1],e2[2]],[e2[0],o[1],e2[2]],[e2[0],e2[1],e2[2]],[o[0],e2[1],e2[2]]];
+      const Ed=[0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7];
+      const L=new Float32Array(Ed.length*3);
+      Ed.forEach((vi,i)=>{ L[3*i]=Cn[vi][0]; L[3*i+1]=Cn[vi][1]; L[3*i+2]=Cn[vi][2]; });
+      gl.bindBuffer(gl.ARRAY_BUFFER,lBuf); gl.bufferData(gl.ARRAY_BUFFER,L,gl.STATIC_DRAW); lN=Ed.length;
+      $('xrtop').textContent='volume placed — orbit · re-tap to re-seed';
       lastP=Pv.clone(); lastQ=Q.clone(); lastT=t; return;
     }
+    if(!vol) return;
     const moved=Pv.distanceTo(lastP)>0.03 || lastQ.angleTo(Q)>0.05;
     if(!moved || t-lastT<150) return;
     let di=null; try{ di=frame.getDepthInformation(view); }catch(e){}
@@ -960,7 +1006,7 @@ self.onmessage=async e=>{
     const cx=oc.getContext('2d'); cx.drawImage(bmp,0,0); bmp.close();
     const id=cx.getImageData(0,0,oc.width,oc.height);
     const img=new RawImageC(new Uint8ClampedArray(id.data),oc.width,oc.height,4);
-    const out=await detector(img,{threshold:0.55});
+    const out=await detector(img,{threshold:0.5});
     self.postMessage({type:'boxes',tag:d.tag||'live',w:oc.width,h:oc.height,
       boxes:out.slice(0,4).map(o=>({label:o.label,score:o.score,box:o.box}))});
   }catch(err){ self.postMessage({type:'err',msg:String(err&&err.message||err)}); }
@@ -981,7 +1027,7 @@ function ensureDetWorker(){
         k.width=d.w; k.height=d.h;
         lastBoxes=d;
         const kc=k.getContext('2d');
-        kc.drawImage(v,0,0,k.width,k.height);
+        kc.clearRect(0,0,k.width,k.height);            // v17: transparent overlay — live video stays live
         kc.font='16px monospace';
         for(const o of d.boxes){
           const b=o.box, sel=(o.label===selLabel);
@@ -1029,7 +1075,7 @@ async function detLoop(){
       detWorker.postMessage({type:'frame',bitmap:bmp},[bmp]);
     }catch(e){ console.error(e); detBusy=false; }
   }
-  detTimer=setTimeout(detLoop,1200);
+  detTimer=setTimeout(detLoop,900);
 }
 
 /* ---------- routers ---------- */
@@ -1082,7 +1128,7 @@ $('fc').oninput=e=>$('vfc').textContent=(+e.target.value).toFixed(2);
 $('er').oninput=e=>$('ver').textContent=(+e.target.value).toFixed(2);
 $('vs').oninput=e=>$('vvs').textContent=(+e.target.value).toFixed(2);
 $('vr').oninput=e=>$('vvr').textContent=e.target.value;
-['fov','fc','er'].forEach(id=>{ $(id).addEventListener('change',()=>{ if(cachedScan&&activeMode==='hybrid') projectHybridMesh(); }); });
+['fov','fc','er','iso'].forEach(id=>{ $(id).addEventListener('change',()=>{ if(cachedScan&&activeMode==='hybrid') projectHybridMesh(); }); });
 </script>
 </body>
 </html>
