@@ -286,17 +286,18 @@ let cloud = null;
 let plyRows = null;       
 let cachedScan = null;     
 
+// Glowing Wireframe WebXR placement indicator
+const boxGeom = new THREE.BoxGeometry(1, 1, 1);
+const boxMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.4 });
+const boxMesh = new THREE.Mesh(boxGeom, boxMat);
+boxMesh.visible = false;
+scene.add(boxMesh);
+
 addEventListener('resize', () => {
   cam.aspect = innerWidth / innerHeight; 
   cam.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
-
-(function loop() { 
-  requestAnimationFrame(loop); 
-  ctrl.update(); 
-  renderer.render(scene, cam); 
-})();
 
 /* ---------- Unified Mode Architecture ---------- */
 let activeMode = 'hybrid'; // 'hybrid' or 'xr'
@@ -620,8 +621,7 @@ const sampson=(E,a,b)=>{
   const den=Ea[0]*Ea[0]+Ea[1]*Ea[1]+Etb[0]*Etb[0]+Etb[1]*Etb[1]; return num*num/(den||1e-12); };
 
 function decomposeE(E){
-  const ETE=mul(tT(E),E), {val,V}=jacobi(ETE); 
-  const ord=[0,1,2].sort((i,j)=>val[j]-val[i]);           
+  const ETE=mul(tT(E),E), {val,V}=jacobi(ETE); const ord=[0,1,2].sort((i,j)=>val[j]-val[i]);           
   const v1=colOf(V,ord[0]);
   const v2=colOf(V,ord[1]);
   const v3=colOf(V,ord[2]);
@@ -745,8 +745,10 @@ function poseAndTriangulate(A, B, good, probeGyro){
 /* ---------- robust affine alignment ---------- */
 function robustAffine(xs, ys){
   const n=xs.length; if(n<12) return null;
-  let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
-  for(let i=0;i<n;i++){ if(xs[i]<xmin)xmin=xs[i]; if(xs[i]>xmax)xmax=xs[i]; if(ys[i]<ymin)ymin=ys[i]; if(ys[i]>ymax)ymax=ys[i]; }
+  const xmin = xs.reduce((min, val) => val < min ? val : min, Infinity);
+  const xmax = xs.reduce((max, val) => val > max ? val : max, -Infinity);
+  const ymin = ys.reduce((min, val) => val < min ? val : min, Infinity);
+  const ymax = ys.reduce((max, val) => val > max ? val : max, -Infinity);
   if(xmax-xmin<0.08) return { reliable:false, why:'no disparity spread' };
   
   const slopes=[];
@@ -765,13 +767,29 @@ function robustAffine(xs, ys){
   return { a, b, reliable, anchors:n, snr:signal/mad };
 }
 
+/* ---------- lazy neural depth loader ---------- */
+let depther = null;
+async function getDepther() {
+  if (depther) return depther;
+  const dev = ('gpu' in navigator) ? 'webgpu' : 'wasm';
+  stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat(`Loading DA2 via ${dev.toUpperCase()}`);
+  depther = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', {
+    device: dev,
+    progress_callback: p => {
+      if (p.status === 'progress' && p.total) subStat(`Downloading Model: ${(p.progress || 0).toFixed(0)}%`);
+    }
+  });
+  return depther;
+}
+
 /* ---------- hybrid densification ---------- */
 async function densify(A, sfm){
   try {
-    const w=A.w, h=A.h;
-    const cnv=document.createElement('canvas'); cnv.width=w; cnv.height=h;
+    const w = A.w;
+    const h = A.h;
+    const cnv = document.createElement('canvas'); cnv.width = w; cnv.height = h;
     cnv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(A.color), w, h), 0, 0);
-    const model=await getDepther();
+    const model = await getDepther();
     stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Inferring dense tensor array...'); 
     await new Promise(r=>setTimeout(r,30));
     
@@ -848,7 +866,8 @@ function projectHybridMesh() {
   if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
   
   // Grazing Angle / Edge Tear Cull
-  const index=[]; const tear=edge>0?edge:Infinity;
+  const index=[]; 
+  const tear = edge > 0 ? edge : Infinity;
   const GRAZE=0.10;   
   const P=k=>[pos[3*k],pos[3*k+1],pos[3*k+2]];
   
@@ -977,10 +996,19 @@ function makeVol(res,size,ox,oy,oz){
 }
 
 function integrate(vol,dep,W2V,P){
-  const {res,vox,ox,oy,oz,tsdf,w} = vol;
-  const {dw,dh,data} = dep;
+  const res = vol.res;
+  const vox = vol.vox;
+  const ox = vol.ox;
+  const oy = vol.oy;
+  const oz = vol.oz;
+  const tsdf = vol.tsdf;
+  const w = vol.w;
+  const dw = dep.dw;
+  const dh = dep.dh;
+  const data = dep.data;
   const tau = 3*vox;
   const r2 = res*res;
+  
   for(let z=0;z<res;z++){ const wz=oz+(z+0.5)*vox;
     for(let y=0;y<res;y++){ const wy=oy+(y+0.5)*vox,base=y*res+z*r2;
       for(let x=0;x<res;x++){ const wx=ox+(x+0.5)*vox;
@@ -999,8 +1027,14 @@ function integrate(vol,dep,W2V,P){
 }
 
 function toField(vol){    
-  const {res,tsdf,w}=vol,n=res**3,r2=res*res,f=new Float32Array(n);
-  const ext=new Uint8Array(n),stack=[];
+  const res = vol.res;
+  const tsdf = vol.tsdf;
+  const w = vol.w;
+  const n = Math.pow(res, 3);
+  const r2 = res*res;
+  const f = new Float32Array(n);
+  const ext=new Uint8Array(n);
+  const stack=[];
   const empty=i=>w[i]===0||tsdf[i]>0;
   for(let z=0;z<res;z++)for(let y=0;y<res;y++)for(let x=0;x<res;x++)
     if(x===0||y===0||z===0||x===res-1||y===res-1||z===res-1){const i=x+y*res+z*r2;if(empty(i)&&!ext[i]){ext[i]=1;stack.push(i);}}
@@ -1033,44 +1067,92 @@ async function startXrScan() {
   }
   
   $('xrhud').style.display='block'; $('xrtop').textContent='placing volume…';
-  const glc = document.createElement('canvas');
-  const gl = glc.getContext('webgl',{xrCompatible:true});
-  await gl.makeXRCompatible?.();
-  session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
-  const ref = await session.requestReferenceSpace('local');
+  
+  // Bind native XR session directly to Three.js renderer
+  renderer.xr.enabled = true;
+  await renderer.xr.setSession(session);
+  const ref = renderer.xr.getReferenceSpace();
+  
   vol = null; kf = 0;
   
   const DW = 160, DH = 120, dep = {dw:DW, dh:DH, data:new Float32Array(DW*DH)};
-  let lastP = null, lastQ = null, lastT = 0, depthMiss = 0;
+  let lastP = new THREE.Vector3(), lastQ = new THREE.Quaternion(), lastT = 0, depthMiss = 0;
   const M = new THREE.Matrix4(), Q = new THREE.Quaternion(), Pv = new THREE.Vector3();
 
-  const onFrame = (t, frame) => {
-    session.requestAnimationFrame(onFrame);
-    const pose = frame.getViewerPose(ref); if(!pose) return;
-    const view = pose.views[0];
-    M.fromArray(view.transform.matrix);
-    Pv.setFromMatrixPosition(M); Q.setFromRotationMatrix(M);
-    if(!vol){  
-      const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(Q);
-      const c = Pv.clone().add(fwd.multiplyScalar(0.25+S/2));
-      vol = makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2);
-      $('xrtop').textContent='volume placed — orbit the object';
-      lastP = Pv.clone(); lastQ = Q.clone(); lastT = t; return;
+  // Set up animation loop inside Three.js native WebXR
+  renderer.setAnimationLoop((timestamp, frame) => {
+    if (!renderer.xr.isPresenting) {
+      ctrl.update();
+    } else {
+      if (frame) {
+        const referenceSpace = renderer.xr.getReferenceSpace();
+        const pose = frame.getViewerPose(referenceSpace);
+        if (pose) {
+          const view = pose.views[0];
+          M.fromArray(view.transform.matrix);
+          Pv.setFromMatrixPosition(M); 
+          Q.setFromRotationMatrix(M);
+          
+          if (!vol) {
+            const fwd = new THREE.Vector3(0,0,-1).applyQuaternion(Q);
+            const c = Pv.clone().add(fwd.multiplyScalar(0.25 + S/2));
+            vol = makeVol(RES, S, c.x - S/2, c.y - S/2, c.z - S/2);
+            
+            // Reposition glowing box bounds indicator
+            boxMesh.scale.set(S, S, S);
+            boxMesh.position.copy(c);
+            boxMesh.visible = true;
+            
+            $('xrtop').textContent = 'Volume placed — orbit the object fully';
+            lastP.copy(Pv); 
+            lastQ.copy(Q); 
+            lastT = timestamp;
+          } else {
+            const moved = Pv.distanceTo(lastP) > 0.03 || lastQ.angleTo(Q) > 0.05;
+            if (moved && (timestamp - lastT > 150)) {
+              let di = null;
+              try {
+                di = frame.getDepthInformation(view);
+              } catch(e) {
+                console.error("WebXR Depth extraction error", e);
+              }
+              
+              if (di) {
+                depthMiss = 0;
+                for (let py=0; py<DH; py++) {
+                  for (let px=0; px<DW; px++) {
+                    dep.data[py*DW+px] = di.getDepthInMeters((px+0.5)/DW, (py+0.5)/DH);
+                  }
+                }
+                const t0 = performance.now();
+                integrate(vol, dep, M.clone().invert().elements, view.projectionMatrix);
+                kf++; 
+                lastP.copy(Pv); 
+                lastQ.copy(Q); 
+                lastT = timestamp;
+                $('xrtop').textContent = `KF: ${kf} | Integration: ${Math.round(performance.now() - t0)}ms | Orbit 360° then press FINISH`;
+              } else {
+                depthMiss++;
+                if (depthMiss >= 30) {
+                  $('xrtop').textContent = 'Waiting for depth stream from ARCore...';
+                }
+              }
+            }
+          }
+        }
+      }
     }
-    const moved = Pv.distanceTo(lastP)>0.03 || lastQ.angleTo(Q)>0.05;
-    if(!moved || t-lastT<150) return;
-    let di=null; try{ di=frame.getDepthInformation(view); }catch(e){}
-    if(!di){ if(++depthMiss===30){ $('xrtop').textContent='no depth data — device may lack ARCore depth'; } return; }
-    for(let py=0;py<DH;py++)for(let px=0;px<DW;px++)
-      dep.data[py*DW+px]=di.getDepthInMeters((px+0.5)/DW,(py+0.5)/DH);
-    const t0=performance.now();
-    integrate(vol, dep, M.clone().invert().elements, view.projectionMatrix);
-    kf++; lastP.copy(Pv); lastQ.copy(Q); lastT=t;
-    $('xrtop').textContent=`KF ${kf} · ${(performance.now()-t0)|0}ms/integrate · orbit fully, then FINISH`;
-  };
-  session.requestAnimationFrame(onFrame);
+    renderer.render(scene, cam);
+  });
+
   $('xrbtn').onclick = () => session.end();
-  session.addEventListener('end', () => { $('xrhud').style.display='none'; buildXrMesh(S,RES); });
+  
+  session.addEventListener('end', () => { 
+    $('xrhud').style.display='none'; 
+    boxMesh.visible = false;
+    renderer.xr.enabled = false;
+    buildXrMesh(S, RES); 
+  });
 }
 
 function buildXrMesh(S, RES){
