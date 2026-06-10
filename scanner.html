@@ -1,7 +1,7 @@
 ```html
 <!doctype html>
 <!--
-  P3dK · DepthScan v11 Pro  —  Ultimate Dual WebXR & IMU-SfM Scanner
+  P3dK · DepthScan v11 Pro  —  Ultimate Dual WebXR & IMU-SfM Scanner (Strict Parser Compliant)
   ========================================================================
   HONEST PHYSICS & ARCHITECTURE NOTE (Unified Pipeline):
   
@@ -47,7 +47,7 @@
     
   .hud { position:fixed; z-index:60; }
   
-  /* Top HUD HUD */
+  /* Top HUD */
   #top { 
     top:0; left:0; right:0; padding:12px 16px; display:flex; justify-content:space-between; align-items:flex-start;
     background:linear-gradient(180deg,rgba(4,6,10,.95),rgba(4,6,10,0)); font-family:'Orbitron',sans-serif; letter-spacing:2px; 
@@ -523,7 +523,8 @@ function accStep(){
     const disps=[]; for(const m of good){ const a=refFrame.kp.get(m.q).pt, b=det.kp.get(m.t).pt; disps.push(Math.hypot(a.x-b.x,a.y-b.y)); }
     disps.sort((x,y)=>x-y); const med=disps[disps.length>>1]/g.w;
     
-    const fire=0.08, n=anchorMap.size;
+    const fire=0.08;
+    const n=anchorMap.size;
     $('meterFill').style.width=Math.min(100, n/200*100)+'%';
     $('meter-label').textContent=`KF: ${keyframes} | Anchors: ${n} | Parallax: ${(med*100).toFixed(0)}%`;
 
@@ -619,16 +620,23 @@ const sampson=(E,a,b)=>{
   const den=Ea[0]*Ea[0]+Ea[1]*Ea[1]+Etb[0]*Etb[0]+Etb[1]*Etb[1]; return num*num/(den||1e-12); };
 
 function decomposeE(E){
-  const ETE=mul(tT(E),E), {val,V}=jacobi(ETE); const ord=[0,1,2].sort((i,j)=>val[j]-val[i]);           
-  const v1=colOf(V,ord[0]), v2=colOf(V,ord[1]), v3=colOf(V,ord[2]);
+  const ETE=mul(tT(E),E), {val,V}=jacobi(ETE); 
+  const ord=[0,1,2].sort((i,j)=>val[j]-val[i]);           
+  const v1=colOf(V,ord[0]);
+  const v2=colOf(V,ord[1]);
+  const v3=colOf(V,ord[2]);
   let Vm=[[v1[0],v2[0],v3[0]],[v1[1],v2[1],v3[1]],[v1[2],v2[2],v3[2]]];
-  let u1=nrm(mv3(E,v1)), u2=nrm(mv3(E,v2)), u3=cross(u1,u2);
+  let u1=nrm(mv3(E,v1));
+  let u2=nrm(mv3(E,v2));
+  let u3=cross(u1,u2);
   let Um=[[u1[0],u2[0],u3[0]],[u1[1],u2[1],u3[1]],[u1[2],u2[2],u3[2]]];
   if(det3(Um)<0){ Um=Um.map(r=>[r[0],r[1],-r[2]]); } if(det3(Vm)<0){ Vm=Vm.map(r=>[r[0],r[1],-r[2]]); }
-  const W=[[0,-1,0],[1,0,0],[0,0,1]], Vt=tT(Vm);
+  const W=[[0,-1,0],[1,0,0],[0,0,1]];
+  const Vt=tT(Vm);
   let Ra=mul(mul(Um,W),Vt), Rb=mul(mul(Um,tT(W)),Vt);
   if(det3(Ra)<0) Ra=Ra.map(r=>r.map(x=>-x)); if(det3(Rb)<0) Rb=Rb.map(r=>r.map(x=>-x));
-  const t=[Um[0][2],Um[1][2],Um[2][2]], tn=t.map(x=>-x);
+  const t=[Um[0][2],Um[1][2],Um[2][2]];
+  const tn=t.map(x=>-x);
   return [{R:Ra,t},{R:Ra,t:tn},{R:Rb,t},{R:Rb,t:tn}];
 }
 
@@ -638,20 +646,31 @@ function triangulate(R,t,a,b){
   const rows=[[-1,0,a[0],0],[0,-1,a[1],0],r3,r4];
   const M=Array.from({length:4},()=>new Array(4).fill(0));
   for(const rr of rows)for(let i=0;i<4;i++)for(let j=0;j<4;j++) M[i][j]+=rr[i]*rr[j];
-  const X=nullVec(M), w=X[3]; if(Math.abs(w)<1e-12) return null;
-  const P=[X[0]/w,X[1]/w,X[2]/w]; const z2=R[2][0]*P[0]+R[2][1]*P[1]+R[2][2]*P[2]+t[2];
+  const X=nullVec(M);
+  const w=X[3]; if(Math.abs(w)<1e-12) return null;
+  const P=[X[0]/w,X[1]/w,X[2]/w]; 
+  const z2=R[2][0]*P[0]+R[2][1]*P[1]+R[2][2]*P[2]+t[2];
   return { P, z1:P[2], z2 };
 }
 
 /* ---------- Pose & Triangulate with Frobenius Rotation Matching ---------- */
 function poseAndTriangulate(A, B, good, probeGyro){
   try{
-    const n=good.length, w=A.w; if(n<20) return null;
-    const f=(0.5*w)/Math.tan(0.5*(+$('fov').value)*Math.PI/180), cx=w/2, cy=A.h/2;
-    const x1=[],y1=[],x2=[],y2[];
+    const n=good.length;
+    const w=A.w; if(n<20) return null;
+    const f=(0.5*w)/Math.tan(0.5*(+$('fov').value)*Math.PI/180);
+    const cx=w/2;
+    const cy=A.h/2;
+    const x1=[];
+    const y1=[];
+    const x2=[];
+    const y2=[];
     for(const m of good){ const p=A.kp.get(m.q).pt, q=B.kp.get(m.t).pt;
       x1.push((p.x-cx)/f); y1.push((p.y-cy)/f); x2.push((q.x-cx)/f); y2.push((q.y-cy)/f); }
-    const SAMP=2e-4; let bestE=null,bestIn=-1,bestMask=null;
+    const SAMP=2e-4; 
+    let bestE=null;
+    let bestIn=-1;
+    let bestMask=null;
     for(let it=0; it<220; it++){
       const s=new Set(); while(s.size<8) s.add((Math.random()*n)|0);
       let E; try{ E=eightPoint([...s], x1,y1,x2,y2); }catch{ continue; }
@@ -670,9 +689,12 @@ function poseAndTriangulate(A, B, good, probeGyro){
       const dy = (probeGyro.alpha - A.gyro.alpha) * Math.PI / 180;
       const dr = (probeGyro.gamma - A.gyro.gamma) * Math.PI / 180;
       
-      const cp = Math.cos(dp), sp = Math.sin(dp);
-      const cy = Math.cos(dy), sy = Math.sin(dy);
-      const cr = Math.cos(dr), sr = Math.sin(dr);
+      const cp = Math.cos(dp);
+      const sp = Math.sin(dp);
+      const cy = Math.cos(dy);
+      const sy = Math.sin(dy);
+      const cr = Math.cos(dr);
+      const sr = Math.sin(dr);
 
       Rgyro = [
         [cy*cr, -cy*sr, sy],
@@ -681,7 +703,10 @@ function poseAndTriangulate(A, B, good, probeGyro){
       ];
     }
 
-    const cands=decomposeE(E); let best=null,bestFront=-1, bestMatchError = Infinity;
+    const cands=decomposeE(E); 
+    let best=null;
+    let bestFront=-1;
+    let bestMatchError = Infinity;
     
     for(const c of cands){ 
       let front=0;
@@ -724,13 +749,18 @@ function robustAffine(xs, ys){
   for(let i=0;i<n;i++){ if(xs[i]<xmin)xmin=xs[i]; if(xs[i]>xmax)xmax=xs[i]; if(ys[i]<ymin)ymin=ys[i]; if(ys[i]>ymax)ymax=ys[i]; }
   if(xmax-xmin<0.08) return { reliable:false, why:'no disparity spread' };
   
-  const slopes=[], cap=20000, pe=n*(n-1)/2, step=pe>cap?Math.ceil(pe/cap):1;
+  const slopes=[];
+  const cap=20000;
+  const pe=n*(n-1)/2;
+  const step=pe>cap?Math.ceil(pe/cap):1;
   for(let i=0;i<n;i++) for(let j=i+1;j<n;j+=step){ const dx=xs[j]-xs[i]; if(Math.abs(dx)<1e-3) continue; slopes.push((ys[j]-ys[i])/dx); }
   if(slopes.length<10) return { reliable:false, why:'few slopes' };
   slopes.sort((p,q)=>p-q); const a=slopes[slopes.length>>1];
   const b=xs.map((x,i)=>ys[i]-a*x).sort((p,q)=>p-q)[n>>1];          
   const mad=(1.4826*xs.map((x,i)=>Math.abs(ys[i]-(a*x+b))).sort((p,q)=>p-q)[n>>1])||1e-9;
-  const signal=a*(xmax-xmin), invHi=a*xmax+b;
+  const signal=a*(xmax-xmin);
+  const invHi=a*xmax+b;
+  
   const reliable = a>0 && signal>4*mad && invHi>1e-4;
   return { a, b, reliable, anchors:n, snr:signal/mad };
 }
@@ -757,16 +787,22 @@ async function densify(A, sfm){
 function projectHybridMesh() {
   if (!cachedScan) return;
   const { A, sfm, dims, D } = cachedScan;
-  const dh = dims[dims.length-2], dw = dims[dims.length-1], w = A.w, h = A.h;
+  const dh = dims[dims.length-2];
+  const dw = dims[dims.length-1];
+  const w = A.w;
+  const h = A.h;
   
   let mn=Infinity,mx=-Infinity; for(let i=0;i<D.length;i++){ const v=D[i]; if(v<mn)mn=v; if(v>mx)mx=v; }
-  const span=(mx-mn)||1, dn=i=>(D[i]-mn)/span; 
+  const span=(mx-mn)||1;
+  const dn=i=>(D[i]-mn)/span; 
   
   stat('<span class="spin"></span>Phase 3: Meshing'); subStat('Mapping neural map to physical anchors...');
   
-  const xs=[], ys=[];
+  const xs=[];
+  const ys=[];
   for(const p of sfm.pairs){
-    const sx=Math.min(dw-1,Math.max(0,Math.round(p.px/w*dw))), sy=Math.min(dh-1,Math.max(0,Math.round(p.py/h*dh)));
+    const sx=Math.min(dw-1,Math.max(0,Math.round(p.px/w*dw)));
+    const sy=Math.min(dh-1,Math.max(0,Math.round(p.py/h*dh)));
     xs.push(dn(sy*dw+sx)); ys.push(1/p.z);
   }
   
@@ -776,12 +812,20 @@ function projectHybridMesh() {
   const a = useAnchors ? fit.a : 2.0;
   const b = useAnchors ? fit.b : 0.5;
   
-  const fov=+$('fov').value*Math.PI/180, f=(0.5*dw)/Math.tan(0.5*fov), cx=dw/2, cy=dh/2;
-  const cull=+$('fc').value, edge=+$('er').value, stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
+  const fov=+$('fov').value*Math.PI/180;
+  const f=(0.5*dw)/Math.tan(0.5*fov);
+  const cx=dw/2;
+  const cy=dh/2;
+  const cull=+$('fc').value;
+  const edge=+$('er').value;
+  const stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
   
-  const gw=Math.floor((dw-1)/stride)+1, gh=Math.floor((dh-1)/stride)+1;
+  const gw=Math.floor((dw-1)/stride)+1;
+  const gh=Math.floor((dh-1)/stride)+1;
   const vidx=new Int32Array(gw*gh).fill(-1);
-  const pos=[], col=[], vdn=[];   
+  const pos = [];
+  const col = [];
+  const vdn = [];   
   let vc=0;
   
   for(let gy=0;gy<gh;gy++){ const y=gy*stride; if(y>=dh) continue;
@@ -790,26 +834,34 @@ function projectHybridMesh() {
       if(d<cull) continue;
       const invd=a*d+b; if(invd<=1e-3) continue;       
       const Z=1/invd;
+      
       vidx[gy*gw+gx]=vc++;
       pos.push((x-cx)*Z/f, -(y-cy)*Z/f, -Z); vdn.push(d);
       
-      const cxp=Math.min(w-1,Math.round(x/dw*w)), cyp=Math.min(h-1,Math.round(y/dh*h)), o=(cyp*w+cxp)*4;
+      const cxp=Math.min(w-1,Math.round(x/dw*w));
+      const cyp=Math.min(h-1,Math.round(y/dh*h));
+      const o=(cyp*w+cxp)*4;
       col.push(A.color[o]/255, A.color[o+1]/255, A.color[o+2]/255);
     }
   }
   
   if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
   
+  // Grazing Angle / Edge Tear Cull
   const index=[]; const tear=edge>0?edge:Infinity;
   const GRAZE=0.10;   
   const P=k=>[pos[3*k],pos[3*k+1],pos[3*k+2]];
   
   const grazeOk=(p,q,r)=>{
-    const Av=P(p), Bv=P(q), Cv=P(r);
-    const e1=[Bv[0]-Av[0],Bv[1]-Av[1],Bv[2]-Av[2]], e2=[Cv[0]-Av[0],Cv[1]-Av[1],Cv[2]-Av[2]];
+    const Av = P(p);
+    const Bv = P(q);
+    const Cv = P(r);
+    const e1 = [Bv[0]-Av[0],Bv[1]-Av[1],Bv[2]-Av[2]];
+    const e2 = [Cv[0]-Av[0],Cv[1]-Av[1],Cv[2]-Av[2]];
     const n=[e1[1]*e2[2]-e1[2]*e2[1], e1[2]*e2[0]-e1[0]*e2[2], e1[0]*e2[1]-e1[1]*e2[0]];
     const c=[(Av[0]+Bv[0]+Cv[0])/3,(Av[1]+Bv[1]+Cv[1])/3,(Av[2]+Bv[2]+Cv[2])/3];   
-    const nl=Math.hypot(...n)||1e-9, cl=Math.hypot(...c)||1e-9;
+    const nl = Math.hypot(...n)||1e-9;
+    const cl = Math.hypot(...c)||1e-9;
     return Math.abs(n[0]*c[0]+n[1]*c[1]+n[2]*c[2])/(nl*cl) > GRAZE;
   };
   
@@ -886,8 +938,15 @@ function writeSTL(W, tris){
   dv.setUint32(80, F, true);
   let o=84;
   for(let t=0;t<tris.length;t+=3){
-    const a=tris[t]*3,b=tris[t+1]*3,c=tris[t+2]*3;
-    const ux=W[b]-W[a],uy=W[b+1]-W[a+1],uz=W[b+2]-W[a+2], vx=W[c]-W[a],vy=W[c+1]-W[a+1],vz=W[c+2]-W[a+2];
+    const a = tris[t]*3;
+    const b = tris[t+1]*3;
+    const c = tris[t+2]*3;
+    const ux = W[b]-W[a];
+    const uy = W[b+1]-W[a+1];
+    const uz = W[b+2]-W[a+2];
+    const vx = W[c]-W[a];
+    const vy = W[c+1]-W[a+1];
+    const vz = W[c+2]-W[a+2];
     let nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx; const nl=Math.hypot(nx,ny,nz)||1; nx/=nl;ny/=nl;nz/=nl;
     dv.setFloat32(o,nx,true); dv.setFloat32(o+4,ny,true); dv.setFloat32(o+8,nz,true); o+=12;
     for(const k of [a,b,c]){ dv.setFloat32(o,W[k],true); dv.setFloat32(o+4,W[k+1],true); dv.setFloat32(o+8,W[k+2],true); o+=12; }
@@ -918,7 +977,10 @@ function makeVol(res,size,ox,oy,oz){
 }
 
 function integrate(vol,dep,W2V,P){
-  const {res,vox,ox,oy,oz,tsdf,w}=vol,{dw,dh,data}=dep,tau=3*vox,r2=res*res;
+  const {res,vox,ox,oy,oz,tsdf,w} = vol;
+  const {dw,dh,data} = dep;
+  const tau = 3*vox;
+  const r2 = res*res;
   for(let z=0;z<res;z++){ const wz=oz+(z+0.5)*vox;
     for(let y=0;y<res;y++){ const wy=oy+(y+0.5)*vox,base=y*res+z*r2;
       for(let x=0;x<res;x++){ const wx=ox+(x+0.5)*vox;
@@ -1021,10 +1083,19 @@ function buildXrMesh(S, RES){
     if(!nv){ stat('Empty volume'); subStat('Nothing fused inside the scan volume — re-place and rescan'); return; }
     
     // Weld
-    const q=1e-4,map=new Map(),tri=[],pts=[];
-    for(let i=0;i<nv;i++){ const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),k=`${Math.round(x/q)},${Math.round(y/q)},${Math.round(z/q)}`;
-      if(!map.has(k)){map.set(k,map.size);pts.push([x,y,z]);} tri.push(map.get(k)); }
-    const cnt=new Map(),ek=(a,b)=>a<b?a*4e9+b:b*4e9+a;
+    const q = 1e-4;
+    const map = new Map();
+    const tri = [];
+    const pts = [];
+    for(let i=0;i<nv;i++){ 
+      const x = pa.getX(i);
+      const y = pa.getY(i);
+      const z = pa.getZ(i);
+      const k = `${Math.round(x/q)},${Math.round(y/q)},${Math.round(z/q)}`;
+      if(!map.has(k)){map.set(k,map.size);pts.push([x,y,z]);} tri.push(map.get(k)); 
+    }
+    const cnt = new Map();
+    const ek = (a,b)=>a<b?a*4e9+b:b*4e9+a;
     for(let t=0;t<tri.length;t+=3){const a=tri[t],b=tri[t+1],c=tri[t+2];if(a===b||b===c||a===c)continue;
       for(const [p2,q2] of [[a,b],[b,c],[c,a]]) cnt.set(ek(p2,q2),(cnt.get(ek(p2,q2))||0)+1);}
     let bad=0; for(const v of cnt.values()) if(v!==2) bad++;
@@ -1062,7 +1133,12 @@ function exportMetricStl() {
   dv.setUint32(80,F,true); let o=84;
   for(let t=0;t<nv;t+=3){
     let A=toW(t),B=toW(t+1),C=toW(t+2); if(flip){const tmp=B;B=C;C=tmp;}
-    const ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2],vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+    const ux = B[0]-A[0];
+    const uy = B[1]-A[1];
+    const uz = B[2]-A[2];
+    const vx = C[0]-A[0];
+    const vy = C[1]-A[1];
+    const vz = C[2]-A[2];
     let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const nl=Math.hypot(nx,ny,nz)||1;
     dv.setFloat32(o,nx/nl,true);dv.setFloat32(o+4,ny/nl,true);dv.setFloat32(o+8,nz/nl,true);o+=12;
     for(const Pt of [A,B,C]){dv.setFloat32(o,Pt[0],true);dv.setFloat32(o+4,Pt[1],true);dv.setFloat32(o+8,Pt[2],true);o+=12;}
