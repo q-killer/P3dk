@@ -1,6 +1,6 @@
 <!doctype html>
 <!--
-  P3dK · DepthScan v17  —  Unified Dual-Engine Scanner
+  P3dK · DepthScan v12  —  Unified Dual-Engine Scanner
   ========================================================================
   HONEST PHYSICS & ARCHITECTURE NOTE:
 
@@ -21,6 +21,18 @@
    - Gyro button is telemetry display ONLY. It does not feed the pose
      math (cheirality disambiguation is sufficient and bench-validated).
      A previous header claimed gyro fusion that did not exist in code.
+
+  v18: TABLE CUT — pass-1 marching cubes finds the dominant horizontal
+  plane (histogram of upward-facing triangle heights); the TSDF field is
+  clamped to "outside" below it and MC re-runs, so the support surface
+  vanishes and the object bottom caps flat AT the cut plane — the cap is
+  part of the isosurface, watertightness survives. Toggle: CUT TABLE. ·
+  Re-seed now requires a DOUBLE-tap (stray touches were nuking scans to
+  0 keyframes). · GYRO VIEW: gyro now steers the 3D viewer camera — move
+  the phone, orbit the mesh. Display transform only; it never touches
+  reconstruction. · Stainless/chrome remains invisible to ARCore depth:
+  the tumbler scan captured the table because the table was all the
+  sensor could see. Matte subjects.
 
   v17: XR TAP-TO-PLACE — volume no longer auto-seeds on first pose (that
   produced offset fragment scans); aim, tap, and the scan volume renders
@@ -83,7 +95,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V17 · Core</title>
+<title>P3dK · DepthScan V18 · Core</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -168,7 +180,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V17 CORE</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V18 CORE</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -208,6 +220,7 @@
       <input type="range" id="vs" min="0.2" max="1.2" step="0.05" value="0.6"></div>
     <div class="dial"><label>VOXEL RES<span class="v" id="vvr">96</span></label>
       <input type="range" id="vr" min="64" max="128" step="32" value="96"></div>
+    <label class="chk" style="grid-column:span 2;"><input type="checkbox" id="tc" checked>CUT TABLE / GROUND PLANE</label>
   </div>
 </div>
 
@@ -271,7 +284,13 @@ scene.add(new THREE.AmbientLight(0xffffff,.6));
 const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(1,2,1.5); scene.add(dl);
 let cloud=null, plyRows=null, cachedScan=null;
 addEventListener('resize',()=>{ cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
-(function loop(){ requestAnimationFrame(loop); ctrl.update(); renderer.render(scene,cam); })();
+(function loop(){ requestAnimationFrame(loop);
+  if(gyroView&&gyroQ){
+    const d=cam.position.distanceTo(ctrl.target);
+    cam.quaternion.copy(gyroQ);
+    cam.position.copy(ctrl.target).add(new THREE.Vector3(0,0,d).applyQuaternion(gyroQ));
+  } else ctrl.update();
+  renderer.render(scene,cam); })();
 
 /* ---------- mode tabs ---------- */
 let activeMode='hybrid', xrSupported=false;
@@ -307,16 +326,28 @@ function selectMode(mode){
 }
 
 /* ---------- gyro (telemetry display ONLY — does not feed pose math) ---------- */
+let gyroView=false, gyroQ=null;
+const _zee=new THREE.Vector3(0,0,1), _e=new THREE.Euler(),
+      _q1=new THREE.Quaternion(-Math.sqrt(0.5),0,0,Math.sqrt(0.5)), _q0=new THREE.Quaternion();
 $('bImu').onclick=async()=>{
-  if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
-    try{ if(await DeviceOrientationEvent.requestPermission()!=='granted'){ $('imu-readout').textContent='GYRO: DENIED'; $('imu-readout').style.display='block'; return; } }
-    catch(e){ $('imu-readout').textContent='GYRO: BLOCKED'; $('imu-readout').style.display='block'; return; }
-  }
-  window.addEventListener('deviceorientation',e=>{
-    $('imu-readout').style.display='block';
-    $('imu-readout').textContent=`GYRO: P:${Math.round(e.beta||0)}° R:${Math.round(e.gamma||0)}° Y:${Math.round(e.alpha||0)}° (display only)`;
-    $('bImu').style.borderColor='var(--gd)'; $('bImu').style.background='rgba(57,255,139,.1)';
-  });
+  if(!gyroQ){
+    if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+      try{ if(await DeviceOrientationEvent.requestPermission()!=='granted'){ $('imu-readout').textContent='GYRO: DENIED'; $('imu-readout').style.display='block'; return; } }
+      catch(e){ $('imu-readout').textContent='GYRO: BLOCKED'; $('imu-readout').style.display='block'; return; }
+    }
+    gyroQ=new THREE.Quaternion();
+    window.addEventListener('deviceorientation',e=>{
+      const a=THREE.MathUtils.degToRad(e.alpha||0),b=THREE.MathUtils.degToRad(e.beta||0),g=THREE.MathUtils.degToRad(e.gamma||0);
+      const so=THREE.MathUtils.degToRad((screen.orientation&&screen.orientation.angle)||0);
+      _e.set(b,a,-g,'YXZ'); gyroQ.setFromEuler(_e); gyroQ.multiply(_q1); gyroQ.multiply(_q0.setFromAxisAngle(_zee,-so));
+      $('imu-readout').style.display='block';
+      $('imu-readout').textContent=`GYRO: P:${Math.round(e.beta||0)}° R:${Math.round(e.gamma||0)}° Y:${Math.round(e.alpha||0)}°${gyroView?' · VIEW':''}`;
+      $('bImu').style.borderColor='var(--gd)'; $('bImu').style.background='rgba(57,255,139,.1)';
+    });
+    gyroView=true;
+  } else gyroView=!gyroView;
+  ctrl.enabled=!gyroView;
+  $('bImu').textContent=gyroView?'⊛ GYRO·VIEW':'⊛ GYRO';
 };
 
 /* ---------- OpenCV gate ---------- */
@@ -837,7 +868,13 @@ async function startXrScan(){
   const aP=gl.getAttribLocation(prog,'p'), uM=gl.getUniformLocation(prog,'mvp'), uC=gl.getUniformLocation(prog,'c');
   const pBuf=gl.createBuffer(); let pN=0;
   const lBuf=gl.createBuffer(); let lN=0, placeReq=false;
-  $('xrtap').onclick=()=>{ placeReq=true; };
+  let lastTap=0;
+  $('xrtap').onclick=()=>{
+    if(!vol){ placeReq=true; return; }
+    const now=performance.now();
+    if(now-lastTap<450){ placeReq=true; lastTap=0; }
+    else { lastTap=now; $('xrtop').textContent='double-tap to re-seed (single taps ignored)'; }
+  };
   const PRES=48, pmc=new MarchingCubes(PRES,new THREE.MeshBasicMaterial(),false,false,120000);
   const MVP=new THREE.Matrix4(), INV=new THREE.Matrix4();
   const refreshPreview=()=>{ if(!vol) return;
@@ -918,8 +955,30 @@ function buildXrMesh(S,RES){
   stat('⟳ Extracting'); subStat('marching cubes…');
   setTimeout(()=>{ try{
     const mc=new MarchingCubes(RES,new THREE.MeshNormalMaterial({side:THREE.DoubleSide}),false,false,RES>=128?900000:500000);
-    mc.isolation=0; mc.field.set(toField(vol,2)); mc.update();
-    const pa=mc.geometry.getAttribute('position'),nv=mc.geometry.drawRange.count;
+    const fld=toField(vol,2);
+    mc.isolation=0; mc.field.set(fld); mc.update();
+    let pa=mc.geometry.getAttribute('position'),nv=mc.geometry.drawRange.count,cutNote='';
+    if(nv&&$('tc').checked){
+      /* v18 TABLE CUT: dominant horizontal plane via up-face height histogram (half-voxel bins) */
+      const hb=new Float32Array(2*RES); let up=0;
+      for(let t=0;t<nv;t+=3){
+        const ax=pa.getX(t),ay=pa.getY(t),az=pa.getZ(t),bx=pa.getX(t+1),by=pa.getY(t+1),bz=pa.getZ(t+1),
+              cx=pa.getX(t+2),cy=pa.getY(t+2),cz=pa.getZ(t+2);
+        const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;
+        const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, nl=Math.hypot(nx,ny,nz)||1;
+        if(Math.abs(ny)/nl>0.9){ up++; const ym=(ay+by+cy)/3,b=Math.max(0,Math.min(2*RES-1,((ym+1)*RES)|0)); hb[b]++; }
+      }
+      let bi=-1,bc=0; for(let b=0;b<2*RES;b++) if(hb[b]>bc){ bc=hb[b]; bi=b; }
+      if(bi>=0 && bc>=Math.max(150,0.25*up)){
+        const yCut=bi/RES-1+1.2/RES;            /* plane + 0.6 voxel margin, local units */
+        for(let y=0;y<RES;y++){ const yl=-1+2*(y+0.5)/RES; if(yl>=yCut) continue;
+          for(let z=0;z<RES;z++){ const base=y*RES+z*RES*RES;
+            for(let x=0;x<RES;x++) fld[base+x]=-1; } }
+        mc.field.set(fld); mc.update();
+        pa=mc.geometry.getAttribute('position'); nv=mc.geometry.drawRange.count;
+        cutNote=` · cut@${((vol.oy+(yCut+1)/2*S)*1000).toFixed(0)}mm`;
+      }
+    }
     if(!nv){ stat('Empty volume'); subStat('Nothing fused inside the scan volume — re-place and rescan'); return; }
     const q=1e-4,map=new Map(),tri=[],pts=[];
     for(let i=0;i<nv;i++){ const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),k=`${Math.round(x/q)},${Math.round(y/q)},${Math.round(z/q)}`;
@@ -957,7 +1016,7 @@ function buildXrMesh(S,RES){
     const maxDim=Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])*1000;
     const trip=maxDim>S*1000*1.01?' ⚠ BBOX EXCEEDS VOLUME — mapping bug, report this':'';
     stat(bad===0?'WATERTIGHT · METRIC':'Mesh · METRIC');
-    subStat(`${(kept.length/3).toLocaleString()} faces · ${dims}mm · vol ${S.toFixed(2)}m · kept ${kIsles}/${isles} islands · non-manifold: ${bad}${trip}`);
+    subStat(`${(kept.length/3).toLocaleString()} faces · ${dims}mm · vol ${S.toFixed(2)}m · kept ${kIsles}/${isles} islands · non-manifold: ${bad}${cutNote}${trip}`);
   }catch(e){ stat('Extract error'); subStat(e.message); console.error(e); } },30);
 }
 function exportMetricStl(){
