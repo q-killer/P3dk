@@ -22,6 +22,21 @@
      math (cheirality disambiguation is sufficient and bench-validated).
      A previous header claimed gyro fusion that did not exist in code.
 
+  v20: CONSOLIDATION + PERF PASS. ⚡ ONE-TAP SCAN routes automatically:
+  XR when ARCore is present, hybrid as fallback — tabs remain for manual
+  control. DETECT is now SINGLE-SHOT (tap → one inference → boxes → auto
+  off in ~3s): inference was already in a worker; the jank was continuous
+  frame shipping + WASM CPU contention, so the loop is gone. Haptics:
+  buzz on volume place, every 10th keyframe, mesh complete. Perf: gyro
+  readout was rewriting the DOM at sensor rate (60Hz) — throttled to 5Hz
+  with quaternion still full-rate; the main three.js loop no longer
+  renders behind an active AR session or hidden tab; MarchingCubes
+  instances (up to 900k-vert buffers) are cached per-resolution instead
+  of reallocated per build; renderer requests high-performance GPU.
+  Physics honesty: translucent tape + car interior is a hostile pair —
+  depth passes through the tape, and no orbit means one-sided TSDF
+  shells. Matte object, open table, full orbit.
+
   v19: TABLE CUT FIXED — v18's detector demanded one half-voxel bin hold
   25% of upward faces; real TSDF tables smear across 3-4 bins (noise +
   tilt), so it never fired (no cut@ tag in any v18b field scan). Now a
@@ -106,7 +121,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V19 · Core</title>
+<title>P3dK · DepthScan V20 · Core</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -191,7 +206,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V19 CORE</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V20 CORE</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -212,6 +227,7 @@
     <div id="tabHybrid" class="tab active">SFM + NEURAL (2.5D)</div>
     <div id="tabXr" class="tab">METRIC XR (360°)</div>
   </div>
+  <button class="gd" id="bOne" style="width:100%;margin:6px 0;font-size:1.05em;">⚡ ONE-TAP SCAN</button>
   <div class="dgrid" id="controlsHybrid">
     <div class="dial"><label>FOV° (calib)<span class="v" id="vfov">60</span></label>
       <input type="range" id="fov" min="30" max="100" step="1" value="60"></div>
@@ -283,7 +299,7 @@ const getDepther = async ()=>{
 };
 
 /* ---------- viewer ---------- */
-const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
 renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
 $('stage').appendChild(renderer.domElement);
 const scene=new THREE.Scene();
@@ -295,8 +311,9 @@ scene.add(new THREE.AmbientLight(0xffffff,.6));
 const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(1,2,1.5); scene.add(dl);
 let cloud=null, plyRows=null, cachedScan=null;
 addEventListener('resize',()=>{ cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
-let gyroView=false, gyroQ=null;
+let gyroView=false, gyroQ=null, xrActive=false;
 (function loop(){ requestAnimationFrame(loop);
+  if(xrActive||document.hidden) return;   /* v20: never render behind AR session or hidden tab */
   if(gyroView&&gyroQ){
     const d=cam.position.distanceTo(ctrl.target);
     cam.quaternion.copy(gyroQ);
@@ -312,6 +329,16 @@ async function checkXrSupport(){
   if(!xrSupported){ $('tabXr').style.opacity='0.35'; $('tabXr').title='immersive-ar unsupported on this device'; }
 }
 $('tabHybrid').onclick=()=>selectMode('hybrid');
+const buzz=p=>{ try{ navigator.vibrate&&navigator.vibrate(p); }catch(e){} };
+$('bOne').onclick=async()=>{
+  buzz(15);
+  if(xrSupported){ selectMode('xr'); $('bScan').click(); return; }
+  selectMode('hybrid');
+  if(!stream){ $('bCam').click();
+    for(let i=0;i<30&&!stream;i++) await new Promise(r=>setTimeout(r,100));
+    if(!stream) return; }
+  $('bScan').click();
+};
 $('tabXr').onclick=()=>{ if(xrSupported) selectMode('xr'); else subStat('METRIC XR needs Android Chrome + ARCore'); };
 function selectMode(mode){
   if(accumulating) stopScan();
@@ -351,9 +378,12 @@ $('bImu').onclick=async()=>{
       const a=THREE.MathUtils.degToRad(e.alpha||0),b=THREE.MathUtils.degToRad(e.beta||0),g=THREE.MathUtils.degToRad(e.gamma||0);
       const so=THREE.MathUtils.degToRad((screen.orientation&&screen.orientation.angle)||0);
       _e.set(b,a,-g,'YXZ'); gyroQ.setFromEuler(_e); gyroQ.multiply(_q1); gyroQ.multiply(_q0.setFromAxisAngle(_zee,-so));
-      $('imu-readout').style.display='block';
-      $('imu-readout').textContent=`GYRO: P:${Math.round(e.beta||0)}° R:${Math.round(e.gamma||0)}° Y:${Math.round(e.alpha||0)}°${gyroView?' · VIEW':''}`;
-      $('bImu').style.borderColor='var(--gd)'; $('bImu').style.background='rgba(57,255,139,.1)';
+      const now=performance.now();
+      if(now-(window._gT||0)>200){ window._gT=now;
+        $('imu-readout').style.display='block';
+        $('imu-readout').textContent=`GYRO: P:${Math.round(e.beta||0)}° R:${Math.round(e.gamma||0)}° Y:${Math.round(e.alpha||0)}°${gyroView?' · VIEW':''}`;
+        $('bImu').style.borderColor='var(--gd)'; $('bImu').style.background='rgba(57,255,139,.1)';
+      }
     });
     gyroView=true;
   } else gyroView=!gyroView;
@@ -869,6 +899,7 @@ async function startXrScan(){
       domOverlay:{root:$('xrhud')}
     });
   }catch(e){ stat('XR session failed'); subStat(e.message+' — depth-sensing may be unsupported on this device'); return; }
+  xrActive=true;
   $('xrhud').style.display='block'; $('xrtop').textContent='AIM AT TARGET · TAP TO PLACE VOLUME';
   /* RAW loop, fully decoupled from three.js (v12 fix) — bare GL layer, no renderer.xr */
   const glc=document.createElement('canvas');
@@ -892,7 +923,7 @@ async function startXrScan(){
     if(now-lastTap<450){ placeReq=true; lastTap=0; }
     else { lastTap=now; $('xrtop').textContent='double-tap to re-seed (single taps ignored)'; }
   };
-  const PRES=48, pmc=new MarchingCubes(PRES,new THREE.MeshBasicMaterial(),false,false,120000);
+  const PRES=48, pmc=window._pmc||(window._pmc=new MarchingCubes(PRES,new THREE.MeshBasicMaterial(),false,false,120000));
   const MVP=new THREE.Matrix4(), INV=new THREE.Matrix4();
   const refreshPreview=()=>{ if(!vol) return;
     const f=pmc.field, res=vol.res, r2=res*res, p2=PRES*PRES, st=res/PRES;
@@ -940,7 +971,7 @@ async function startXrScan(){
       const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(Q);
       const dist=aimD>0.1?Math.min(Math.max(aimD,0.15),1.5):(0.25+S/2);
       const c=Pv.clone().add(fwd.multiplyScalar(dist));
-      vol=makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2); kf=0; pN=0;
+      vol=makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2); kf=0; pN=0; buzz(25);
       /* magenta wireframe = exactly what will be scanned */
       const o=[vol.ox,vol.oy,vol.oz], e2=[o[0]+S,o[1]+S,o[2]+S];
       const Cn=[[o[0],o[1],o[2]],[e2[0],o[1],o[2]],[e2[0],e2[1],o[2]],[o[0],e2[1],o[2]],
@@ -962,19 +993,20 @@ async function startXrScan(){
       dep.data[py*DW+px]=di.getDepthInMeters((px+0.5)/DW,(py+0.5)/DH);
     const t0=performance.now();
     integrate(vol,dep,M.clone().invert().elements,view.projectionMatrix);
-    kf++; lastP.copy(Pv); lastQ.copy(Q); lastT=t;
+    kf++; if(kf%10===0)buzz(8); lastP.copy(Pv); lastQ.copy(Q); lastT=t;
     if(kf%8===1) refreshPreview();
     $('xrtop').textContent=`KF ${kf} · ${(performance.now()-t0)|0}ms/integrate · orbit fully, then FINISH`;
   };
   session.requestAnimationFrame(onFrame);
   $('xrbtn').onclick=()=>session.end();
-  session.addEventListener('end',()=>{ $('xrhud').style.display='none'; buildXrMesh(S,RES); });
+  session.addEventListener('end',()=>{ xrActive=false; $('xrhud').style.display='none'; buildXrMesh(S,RES); });
 }
 function buildXrMesh(S,RES){
   if(!vol||kf<3){ stat('Scan too short'); subStat(`${kf} keyframes — orbit the object`); return; }
   stat('⟳ Extracting'); subStat('marching cubes…');
   setTimeout(()=>{ try{
-    const mc=new MarchingCubes(RES,new THREE.MeshNormalMaterial({side:THREE.DoubleSide}),false,false,RES>=128?900000:500000);
+    window._mcC=window._mcC||{};
+    const mc=window._mcC[RES]||(window._mcC[RES]=new MarchingCubes(RES,new THREE.MeshNormalMaterial({side:THREE.DoubleSide}),false,false,RES>=128?900000:500000));
     const fld=toField(vol,2);
     mc.isolation=0; mc.field.set(fld); mc.update();
     let pa=mc.geometry.getAttribute('position'),nv=mc.geometry.drawRange.count,cutNote='';
@@ -1044,7 +1076,7 @@ function buildXrMesh(S,RES){
     const maxDim=Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])*1000;
     const trip=maxDim>S*1000*1.01?' ⚠ BBOX EXCEEDS VOLUME — mapping bug, report this':'';
     stat(bad===0?'WATERTIGHT · METRIC':'Mesh · METRIC');
-    subStat(`${(kept.length/3).toLocaleString()} faces · ${dims}mm · vol ${S.toFixed(2)}m · kept ${kIsles}/${isles} islands · non-manifold: ${bad}${cutNote}${trip}`);
+    subStat(`${(kept.length/3).toLocaleString()} faces · ${dims}mm · vol ${S.toFixed(2)}m · kept ${kIsles}/${isles} islands · non-manifold: ${bad}${cutNote}${trip}`); buzz([15,40,15]);
   }catch(e){ stat('Extract error'); subStat(e.message); console.error(e); } },30);
 }
 function exportMetricStl(){
@@ -1162,7 +1194,7 @@ async function detLoop(){
       detWorker.postMessage({type:'frame',bitmap:bmp},[bmp]);
     }catch(e){ console.error(e); detBusy=false; }
   }
-  detTimer=setTimeout(detLoop,900);
+  detTimer=setTimeout(stopDetect,2800);   /* v20: single-shot — no continuous loop */
 }
 
 /* ---------- routers ---------- */
