@@ -95,7 +95,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V18 · Core</title>
+<title>P3dK · DepthScan V18B · Core</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -180,7 +180,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V18 CORE</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V18B CORE</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -284,6 +284,7 @@ scene.add(new THREE.AmbientLight(0xffffff,.6));
 const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(1,2,1.5); scene.add(dl);
 let cloud=null, plyRows=null, cachedScan=null;
 addEventListener('resize',()=>{ cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+let gyroView=false, gyroQ=null;
 (function loop(){ requestAnimationFrame(loop);
   if(gyroView&&gyroQ){
     const d=cam.position.distanceTo(ctrl.target);
@@ -326,7 +327,6 @@ function selectMode(mode){
 }
 
 /* ---------- gyro (telemetry display ONLY — does not feed pose math) ---------- */
-let gyroView=false, gyroQ=null;
 const _zee=new THREE.Vector3(0,0,1), _e=new THREE.Euler(),
       _q1=new THREE.Quaternion(-Math.sqrt(0.5),0,0,Math.sqrt(0.5)), _q0=new THREE.Quaternion();
 $('bImu').onclick=async()=>{
