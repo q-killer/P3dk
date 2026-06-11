@@ -22,6 +22,17 @@
      math (cheirality disambiguation is sufficient and bench-validated).
      A previous header claimed gyro fusion that did not exist in code.
 
+  v19: TABLE CUT FIXED — v18's detector demanded one half-voxel bin hold
+  25% of upward faces; real TSDF tables smear across 3-4 bins (noise +
+  tilt), so it never fired (no cut@ tag in any v18b field scan). Now a
+  5-bin sliding band (±1 voxel) is tested at 20%/100-face floor, cut at
+  band top. · DEPTH-TARGETED PLACEMENT — pre-placement frames sample the
+  center-pixel ARCore depth and show "target 0.43m"; the tap centers the
+  volume AT that distance instead of a blind 0.55m, so the box wraps the
+  object, not the floor in front of it. · HYBRID WATCHDOG — RE-ACQUIRING
+  for >7s auto-finishes neural-only instead of looping forever in dark/
+  textureless scenes.
+
   v18: TABLE CUT — pass-1 marching cubes finds the dominant horizontal
   plane (histogram of upward-facing triangle heights); the TSDF field is
   clamped to "outside" below it and MC re-runs, so the support surface
@@ -95,7 +106,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V18B · Core</title>
+<title>P3dK · DepthScan V19 · Core</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -180,7 +191,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V18B CORE</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V19 CORE</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -461,11 +472,17 @@ function accStep(){
     if(good.length<15){
       det.kp.delete(); det.des.delete(); g.gray.delete();
       if(keyframes>=2){ finishAccum(); return; }
-      /* v12: high-water — never zero the bar, just flag re-acquisition */
-      $('meter-label').textContent='RE-ACQUIRING — KEEP TARGET IN VIEW'; $('meter-label').style.color='var(--wrn)';
+      /* v12: high-water — never zero the bar, just flag re-acquisition.
+         v19: watchdog — starved tracking auto-finishes neural-only after 7s */
+      if(!accStep.rt) accStep.rt=performance.now();
+      else if(performance.now()-accStep.rt>7000){
+        accStep.rt=0; subStat('tracking starved (low light / low texture) — meshing neural-only');
+        finishAccum(); return;
+      }
+      $('meter-label').textContent='RE-ACQUIRING — KEEP TARGET IN VIEW (auto-finish in 7s)'; $('meter-label').style.color='var(--wrn)';
       accTimer=setTimeout(accStep,200); return;
     }
-    $('meter-label').style.color='var(--gd)';
+    $('meter-label').style.color='var(--gd)'; accStep.rt=0;
     const disps=[]; for(const m of good){ const a=refFrame.kp.get(m.q).pt,b=det.kp.get(m.t).pt; disps.push(Math.hypot(a.x-b.x,a.y-b.y)); }
     disps.sort((x,y)=>x-y); const med=disps[disps.length>>1]/g.w;
     parHi=Math.max(parHi,med);                                  // high-water mark (never decreases)
@@ -916,10 +933,13 @@ async function startXrScan(){
         gl.bindBuffer(gl.ARRAY_BUFFER,pBuf); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
         gl.drawArrays(gl.POINTS,0,pN); }
     }
-    if(placeReq){
+    if(!vol||placeReq){
+      let aimD=0; try{ const di0=frame.getDepthInformation(view); if(di0) aimD=di0.getDepthInMeters(0.5,0.5)||0; }catch(e){}
+      if(!placeReq){ $('xrtop').textContent=aimD>0.1?`target ${aimD.toFixed(2)}m · TAP TO PLACE VOLUME`:'AIM AT TARGET · TAP TO PLACE VOLUME'; return; }
       placeReq=false;
       const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(Q);
-      const c=Pv.clone().add(fwd.multiplyScalar(0.25+S/2));
+      const dist=aimD>0.1?Math.min(Math.max(aimD,0.15),1.5):(0.25+S/2);
+      const c=Pv.clone().add(fwd.multiplyScalar(dist));
       vol=makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2); kf=0; pN=0;
       /* magenta wireframe = exactly what will be scanned */
       const o=[vol.ox,vol.oy,vol.oz], e2=[o[0]+S,o[1]+S,o[2]+S];
@@ -929,7 +949,7 @@ async function startXrScan(){
       const L=new Float32Array(Ed.length*3);
       Ed.forEach((vi,i)=>{ L[3*i]=Cn[vi][0]; L[3*i+1]=Cn[vi][1]; L[3*i+2]=Cn[vi][2]; });
       gl.bindBuffer(gl.ARRAY_BUFFER,lBuf); gl.bufferData(gl.ARRAY_BUFFER,L,gl.STATIC_DRAW); lN=Ed.length;
-      $('xrtop').textContent='volume placed — orbit · re-tap to re-seed';
+      $('xrtop').textContent=`volume centered @ ${dist.toFixed(2)}m — orbit · double-tap to re-seed`;
       lastP=Pv.clone(); lastQ=Q.clone(); lastT=t; return;
     }
     if(!vol) return;
@@ -960,17 +980,25 @@ function buildXrMesh(S,RES){
     let pa=mc.geometry.getAttribute('position'),nv=mc.geometry.drawRange.count,cutNote='';
     if(nv&&$('tc').checked){
       /* v18 TABLE CUT: dominant horizontal plane via up-face height histogram (half-voxel bins) */
+      let sv=0;
+      for(let t=0;t<nv;t+=3){
+        sv+=pa.getX(t)*(pa.getY(t+1)*pa.getZ(t+2)-pa.getY(t+2)*pa.getZ(t+1))
+           -pa.getY(t)*(pa.getX(t+1)*pa.getZ(t+2)-pa.getX(t+2)*pa.getZ(t+1))
+           +pa.getZ(t)*(pa.getX(t+1)*pa.getY(t+2)-pa.getX(t+2)*pa.getY(t+1));
+      }
+      const orient=sv>=0?1:-1;  /* v19b: signed ny = true UP — |ny| also matched table UNDERSIDES */
       const hb=new Float32Array(2*RES); let up=0;
       for(let t=0;t<nv;t+=3){
         const ax=pa.getX(t),ay=pa.getY(t),az=pa.getZ(t),bx=pa.getX(t+1),by=pa.getY(t+1),bz=pa.getZ(t+1),
               cx=pa.getX(t+2),cy=pa.getY(t+2),cz=pa.getZ(t+2);
         const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;
         const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, nl=Math.hypot(nx,ny,nz)||1;
-        if(Math.abs(ny)/nl>0.9){ up++; const ym=(ay+by+cy)/3,b=Math.max(0,Math.min(2*RES-1,((ym+1)*RES)|0)); hb[b]++; }
+        if(orient*ny/nl>0.9){ up++; const ym=(ay+by+cy)/3,b=Math.max(0,Math.min(2*RES-1,((ym+1)*RES)|0)); hb[b]++; }
       }
-      let bi=-1,bc=0; for(let b=0;b<2*RES;b++) if(hb[b]>bc){ bc=hb[b]; bi=b; }
-      if(bi>=0 && bc>=Math.max(150,0.25*up)){
-        const yCut=bi/RES-1+1.2/RES;            /* plane + 0.6 voxel margin, local units */
+      let bi=-1,bc=0;
+      for(let b=2;b<2*RES-2;b++){ const w=hb[b-2]+hb[b-1]+hb[b]+hb[b+1]+hb[b+2]; if(w>bc){ bc=w; bi=b; } }
+      if(bi>=0 && bc>=Math.max(100,0.20*up)){
+        const yCut=(bi+3)/RES-1+0.6/RES;        /* band top + 0.3 voxel margin, local units */
         for(let y=0;y<RES;y++){ const yl=-1+2*(y+0.5)/RES; if(yl>=yCut) continue;
           for(let z=0;z<RES;z++){ const base=y*RES+z*RES*RES;
             for(let x=0;x<RES;x++) fld[base+x]=-1; } }
