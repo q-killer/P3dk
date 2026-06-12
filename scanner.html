@@ -151,7 +151,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<title>P3dK · DepthScan V22 · Seamless</title>
+<title>P3dK · DepthScan V22B · Seamless</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
@@ -236,7 +236,7 @@
 <div id="scan"></div>
 
 <div id="top" class="hud">
-  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V22 SEAMLESS</s></div>
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V22B SEAMLESS</s></div>
   <div id="stat-container">
     <div id="stat">Booting Engine...</div>
     <div id="sub-stat">Initialising Core Web API</div>
@@ -313,8 +313,11 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
-import { pipeline, env, RawImage } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2';
-env.allowLocalModels = false;
+/* v22b: transformers is LAZY — a static import held boot hostage to the CDN.
+   Loaded on first hybrid depth request; XR path never pays for it. */
+let pipeline, env, RawImage, _tfP=null;
+const loadTF=()=>_tfP||(_tfP=import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2')
+  .then(m=>{ ({pipeline,env,RawImage}=m); env.allowLocalModels=false; }));
 
 const $ = id => document.getElementById(id);
 const stat = m => $('stat').innerHTML = m;
@@ -324,8 +327,10 @@ const subStat = m => $('sub-stat').innerHTML = m;
 let depther=null;
 const getDepther = async ()=>{
   if(depther) return depther;
+  stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Fetching inference engine…');
+  await loadTF();
   const dev=('gpu' in navigator)?'webgpu':'wasm';
-  stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat(`Loading DA2 via ${dev.toUpperCase()}`);
+  subStat(`Loading DA2 via ${dev.toUpperCase()}`);
   depther=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{ device:dev,
     progress_callback:p=>{ if(p.status==='progress'&&p.total) subStat(`Downloading Model: ${(p.progress||0).toFixed(0)}%`); } });
   return depther;
