@@ -2682,19 +2682,13 @@ const Graphics = {
             }
         }
 
-        // ── Craft sprite — counter-rotated so nose always points forward ──
-        // World canvas is rotated by -leanAngle; counter-rotate sprite by +leanAngle to cancel it
+        // ── Craft sprite — roll = +leanAngle cancels the -leanAngle world rotation ──
         const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
         const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
         if (!AR.active) {
-            ctx.save();
-            ctx.translate(STATE.cx, STATE.cy);
-            ctx.rotate(STATE.leanAngle * CFG.TO_RAD); // cancel the world rotation
-            ctx.translate(-STATE.cx, -STATE.cy);
-            if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0);
-            else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
-            else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
-            ctx.restore();
+            if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, STATE.leanAngle);
+            else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, STATE.leanAngle, isDark);
+            else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, STATE.leanAngle, isDark);
         }
 
         // ── AR windshield overlays (horizon, speed tape, reticles) ──
