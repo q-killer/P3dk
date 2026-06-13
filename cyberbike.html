@@ -2149,8 +2149,18 @@ const Graphics = {
         const glassColor = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
 
         const invRoll = -roll * CFG.TO_RAD;
-        
-        ctx.fillStyle = shadeColor;
+
+        // ── Shape shadow — fuselage+wing footprint below sprite ──
+        ctx.save();
+        ctx.translate(10, 18); // drop below and slightly right
+        ctx.scale(1, 0.3);     // flatten vertically = ground projection
+        ctx.globalAlpha = isDark ? 0.22 : 0.12;
+        ctx.fillStyle = '#000';
+        // Wing shadow
+        ctx.beginPath(); ctx.ellipse(0, 0, 32, 4, 0, 0, Math.PI*2); ctx.fill();
+        // Fuselage shadow
+        ctx.beginPath(); ctx.ellipse(0, 2, 5, 17, 0, 0, Math.PI*2); ctx.fill();
+        ctx.globalAlpha = 1; ctx.restore();
         ctx.beginPath(); this._rr(ctx, -12, 12, 24, 4, 2); ctx.fill();
         ctx.fillStyle = baseColor;
         ctx.beginPath(); this._rr(ctx, -12, 12, 24, 1.5, 0.75); ctx.fill();
@@ -2280,160 +2290,119 @@ const Graphics = {
         ctx.restore();
     },
 
-    drawBike(x, y, roll, isDark) {
+    drawBike(x, y, _roll, isDark) {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
-        ctx.scale(1.25, 1.25);
-        ctx.rotate(roll * CFG.TO_RAD);
+        ctx.scale(0.88, 0.88); // side-elevation — no tilt
+
+        const t = Date.now();
+        const cadence = STATE.active ? t / Math.max(55, 240 - STATE.spdMph * 2) : 0;
 
         const frameCol  = isDark ? '#64748b' : '#334155';
-        const accentCol = STATE.clrWind;         // rider jersey
+        const accentCol = STATE.clrWind;
         const skinCol   = '#f5c5a3';
-        const tyreCol   = isDark ? '#334155' : '#1e293b';
-        const rimCol    = isDark ? '#94a3b8' : '#64748b';
+        const tyreCol   = isDark ? '#1e293b' : '#0f172a';
+        const rimCol    = isDark ? '#94a3b8' : '#475569';
 
-        // Crank cycle — speed-proportional pedal cadence
-        const cadence = STATE.active ? Date.now() / Math.max(60, 260 - STATE.spdMph * 2) : 0;
+        // Side-elevation geometry: x=left/right, y=up/down, rider faces RIGHT (+x)
+        const RW=16, rWx=-20, rWy=8, fWx=20, fWy=8;
+        const bbX=-4, bbY2=rWy-RW*0.35;  // bottom bracket height
+        const seatX=-14, seatY=bbY2-16;  // seat tube top
+        const htX=16,    htY=bbY2-13;    // head tube top
+        const hbX=18,    hbY=bbY2-4;     // head tube bottom (fork)
 
-        // ── Wheels (behind frame) ──
-        const wheelR = 14;
-        const fwx = 18, bwx = -18, wy = 8; // front/rear wheel centers
+        // ── Ground shadow — ellipse under bike (shape, not blob) ──
+        ctx.save(); ctx.translate(0, 30); ctx.globalAlpha = 0.2;
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.ellipse(0, 0, 24, 4, 0, 0, Math.PI*2); ctx.fill(); // bike shadow
+        ctx.beginPath(); ctx.ellipse(-6, -3, 9, 3, -0.15, 0, Math.PI*2); ctx.fill(); // rider shadow
+        ctx.globalAlpha = 1; ctx.restore();
 
-        const drawWheel = (wx) => {
-            // Tyre
-            ctx.beginPath(); ctx.arc(wx, wy, wheelR, 0, Math.PI*2);
-            ctx.strokeStyle = tyreCol; ctx.lineWidth = 3; ctx.stroke();
-            // Rim
-            ctx.beginPath(); ctx.arc(wx, wy, wheelR - 2, 0, Math.PI*2);
-            ctx.strokeStyle = rimCol; ctx.lineWidth = 1; ctx.stroke();
-            // Hub
-            ctx.beginPath(); ctx.arc(wx, wy, 2, 0, Math.PI*2);
-            ctx.fillStyle = rimCol; ctx.fill();
-            // Spokes (4 rotating with cadence for rear, independent for front)
-            const spinPhase = wx > 0 ? cadence * 0.7 : cadence;
+        // ── Wheels ──
+        const drawWheel = (wx, wy) => {
+            ctx.beginPath(); ctx.arc(wx, wy, RW, 0, Math.PI*2);
+            ctx.fillStyle = tyreCol; ctx.fill();
+            ctx.beginPath(); ctx.arc(wx, wy, RW-2.5, 0, Math.PI*2);
+            ctx.fillStyle = isDark ? '#334155' : '#64748b'; ctx.fill();
             ctx.strokeStyle = rimCol; ctx.lineWidth = 0.8;
-            for (let i = 0; i < 6; i++) {
-                const a = spinPhase + i * Math.PI / 3;
+            for (let i=0; i<6; i++) {
+                const a = cadence + i*Math.PI/3;
                 ctx.beginPath();
-                ctx.moveTo(wx, wy);
-                ctx.lineTo(wx + Math.cos(a) * (wheelR - 2), wy + Math.sin(a) * (wheelR - 2));
+                ctx.moveTo(wx+Math.cos(a)*2, wy+Math.sin(a)*2);
+                ctx.lineTo(wx+Math.cos(a)*(RW-3), wy+Math.sin(a)*(RW-3));
                 ctx.stroke();
             }
+            ctx.beginPath(); ctx.arc(wx, wy, 2.5, 0, Math.PI*2); ctx.fillStyle=rimCol; ctx.fill();
         };
+        drawWheel(rWx, rWy); drawWheel(fWx, fWy);
 
-        drawWheel(fwx); drawWheel(bwx);
-
-        // ── Diamond frame ──
-        // Key points: BB (bottom bracket), rear hub, front hub, head tube top, seat tube top
-        const bb   = [0, 4];       // bottom bracket
-        const rear = [bwx, wy];    // rear axle
-        const front= [fwx, wy];    // front axle
-        const htt  = [14, -10];    // head tube top (fork crown)
-        const htb  = [16, -2];     // head tube bottom
-        const stt  = [-4, -16];    // seat tube top
-
-        ctx.strokeStyle = frameCol; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        // Main triangle: BB → seat tube → rear axle stay
-        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(...stt); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(...stt); ctx.lineTo(...rear); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(...rear); ctx.stroke();
-        // Down tube + top tube: BB → head tube, seat → head tube
-        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(...htb); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(...stt); ctx.lineTo(...htt); ctx.stroke();
-        // Head tube
-        ctx.beginPath(); ctx.moveTo(...htt); ctx.lineTo(...htb); ctx.stroke();
-        // Fork
-        ctx.beginPath(); ctx.moveTo(...htb); ctx.lineTo(...front); ctx.stroke();
-
-        // Chain stays (seat tube to rear axle — second pair for realism)
-        ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(bb[0], bb[1]+1); ctx.lineTo(rear[0], rear[1]); ctx.stroke();
-
-        // Crank arm + pedals (rotating)
-        const crankLen = 6;
-        const pedLx = bb[0] + Math.cos(cadence) * crankLen;
-        const pedLy = bb[1] + Math.sin(cadence) * crankLen;
-        const pedRx = bb[0] - Math.cos(cadence) * crankLen;
-        const pedRy = bb[1] - Math.sin(cadence) * crankLen;
-
-        ctx.strokeStyle = rimCol; ctx.lineWidth = 1.8;
-        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(pedLx, pedLy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(pedRx, pedRy); ctx.stroke();
-        // Pedal blocks
-        ctx.fillStyle = '#cbd5e1'; ctx.lineWidth = 0;
-        [[pedLx, pedLy], [pedRx, pedRy]].forEach(([px,py]) => {
-            ctx.save(); ctx.translate(px, py);
-            ctx.fillRect(-3, -1, 6, 2);
-            ctx.restore();
-        });
-
-        // Chainring
-        ctx.beginPath(); ctx.arc(...bb, 5, 0, Math.PI*2);
-        ctx.strokeStyle = rimCol; ctx.lineWidth = 1.2; ctx.stroke();
-
-        // ── Rider (aero tuck — back ~40° forward) ──
-        // 3-segment legs: hip→knee→ankle→pedal (IK following crank)
-        const hipL = [-2, -3], hipR = [2, -3];
-
-        const drawLeg = (hipPt, pedalPt, phase) => {
-            // Simple 2-joint IK: place knee between hip and pedal
-            const hx=hipPt[0], hy=hipPt[1], px=pedalPt[0], py=pedalPt[1];
-            const thighLen=10, shinLen=10;
-            const dist = Math.hypot(px-hx, py-hy);
-            const d = Math.min(dist, thighLen + shinLen - 0.5);
-            const a0 = Math.atan2(py-hy, px-hx);
-            const cos_a = (d*d + thighLen*thighLen - shinLen*shinLen) / (2*d*thighLen);
-            const a1 = a0 - Math.acos(Math.max(-1, Math.min(1, cos_a))) * Math.sign(phase);
-            const kx = hx + Math.cos(a1)*thighLen, ky = hy + Math.sin(a1)*thighLen;
-            ctx.strokeStyle = isDark ? '#94a3b8' : '#475569'; ctx.lineWidth = 3; ctx.lineCap='round';
-            ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(kx,ky); ctx.lineTo(px,py); ctx.stroke();
-        };
-
-        drawLeg(hipL, [pedLx, pedLy],  1);
-        drawLeg(hipR, [pedRx, pedRy], -1);
-
-        // Handlebar reach
-        const barX = 12, barY = -13;
+        // ── Frame ──
+        ctx.strokeStyle=frameCol; ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.lineJoin='round';
+        const seg=(x1,y1,x2,y2,w=2.2)=>{ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();};
+        seg(bbX,bbY2,seatX,seatY);     // seat tube
+        seg(seatX,seatY,rWx,rWy);      // seat stay
+        seg(rWx,rWy,bbX,bbY2,1.5);     // chain stay
+        seg(bbX,bbY2,hbX,hbY);         // down tube
+        seg(seatX,seatY,htX,htY);      // top tube
+        seg(htX,htY,hbX,hbY);          // head tube
+        seg(hbX,hbY,fWx,fWy);          // fork
 
         // Saddle
-        ctx.strokeStyle = frameCol; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(-8, -17); ctx.lineTo(-2, -17); ctx.stroke();
-        // Seat post
-        ctx.beginPath(); ctx.moveTo(-4, -17); ctx.lineTo(stt[0]+1, stt[1]); ctx.stroke();
+        seg(seatX-5,seatY,seatX+3,seatY,2.8);
 
-        // Body (aero tuck — back at 40°)
-        ctx.fillStyle = accentCol;
+        // ── Drivetrain ──
+        const crankR=6;
+        const pedFx=bbX+Math.cos(cadence)*crankR,        pedFy=bbY2+Math.sin(cadence)*crankR;
+        const pedBx=bbX+Math.cos(cadence+Math.PI)*crankR, pedBy=bbY2+Math.sin(cadence+Math.PI)*crankR;
+        ctx.strokeStyle=rimCol; ctx.lineWidth=1.6;
+        seg(bbX,bbY2,pedFx,pedFy,1.6); seg(bbX,bbY2,pedBx,pedBy,1.6);
+        ctx.beginPath(); ctx.arc(bbX,bbY2,4.5,0,Math.PI*2); ctx.strokeStyle=rimCol; ctx.lineWidth=1; ctx.stroke();
+        ctx.fillStyle='#cbd5e1';
+        [[pedFx,pedFy],[pedBx,pedBy]].forEach(([px,py])=>{
+            ctx.save(); ctx.translate(px,py); ctx.fillRect(-3,-1,6,2); ctx.restore();
+        });
+
+        // ── Rider (aero tuck, side view) ──
+        // 2-joint IK legs, hip at saddle
+        const hipX=seatX+1, hipY=seatY+2;
+        const drawLeg=(hx,hy,px,py,kDir)=>{
+            const tL=10,sL=10, d=Math.min(Math.hypot(px-hx,py-hy),tL+sL-0.5);
+            const a0=Math.atan2(py-hy,px-hx);
+            const ca=(d*d+tL*tL-sL*sL)/(2*d*tL);
+            const a1=a0-Math.acos(Math.max(-1,Math.min(1,ca)))*kDir;
+            const kx=hx+Math.cos(a1)*tL, ky=hy+Math.sin(a1)*tL;
+            ctx.strokeStyle=isDark?'#94a3b8':'#475569'; ctx.lineWidth=3.5; ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(kx,ky); ctx.lineTo(px,py); ctx.stroke();
+        };
+        // Front leg follows front pedal, rear leg follows rear pedal
+        drawLeg(hipX,hipY,pedFx,pedFy, 1);
+        drawLeg(hipX+1,hipY,pedBx,pedBy,-1);
+
+        // Bars & handlebar stem
+        const barX=htX+2, barY=htY-2;
+        seg(htX,htY,barX+4,barY-2,1.8); // stem
+        seg(barX+2,barY-4,barX+7,barY,1.8); // drop bars
+
+        // Torso (aero angle)
+        const shlX=barX+1, shlY=barY+1;
+        ctx.fillStyle=accentCol;
         ctx.beginPath();
-        ctx.moveTo(-3, -4);               // hip
-        ctx.lineTo(barX - 2, barY + 2);  // shoulder
-        ctx.lineTo(barX, barY - 1);       // top
-        ctx.lineTo(barX - 4, barY - 5);  // back of jersey
-        ctx.lineTo(-3, -7);               // seat
+        ctx.moveTo(hipX,hipY); ctx.lineTo(hipX-2,hipY-3);
+        ctx.lineTo(shlX-1,shlY-2); ctx.lineTo(shlX+2,shlY+1);
         ctx.closePath(); ctx.fill();
 
-        // Arms (tucked forward on bars)
-        ctx.strokeStyle = accentCol; ctx.lineWidth = 2.5;
-        ctx.beginPath();
-        ctx.moveTo(barX - 2, barY + 2);   // shoulder
-        ctx.lineTo(barX + 2, barY + 1);   // elbow
-        ctx.lineTo(barX + 4, barY - 2);   // hands on bar
-        ctx.stroke();
+        // Arm
+        ctx.strokeStyle=accentCol; ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(shlX,shlY); ctx.lineTo(barX+4,barY); ctx.stroke();
 
-        // Handlebar
-        ctx.strokeStyle = frameCol; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(htt[0]-1, htt[1]+2); ctx.lineTo(barX+5, barY-2); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(barX+2, barY-4); ctx.lineTo(barX+6, barY-1); ctx.stroke();
-
-        // Helmet
-        ctx.fillStyle = accentCol;
-        ctx.beginPath(); ctx.ellipse(barX - 5, barY - 7, 5, 4, -0.4, 0, Math.PI*2); ctx.fill();
-        // Visor
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath(); ctx.ellipse(barX - 2, barY - 4, 3, 1.5, -0.4, 0, Math.PI); ctx.fill();
-        // Face
-        ctx.fillStyle = skinCol;
-        ctx.beginPath(); ctx.ellipse(barX - 3, barY - 5, 3, 2.5, -0.3, 0, Math.PI*2); ctx.fill();
+        // Helmet (aero teardrop)
+        ctx.fillStyle=accentCol;
+        ctx.beginPath(); ctx.ellipse(shlX-3,shlY-5,5,3.5,-0.35,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#1e293b';
+        ctx.beginPath(); ctx.ellipse(shlX,shlY-3,3.5,1.5,-0.35,0,Math.PI); ctx.fill();
+        ctx.fillStyle=skinCol;
+        ctx.beginPath(); ctx.ellipse(shlX-1,shlY-3.5,3,2.5,-0.3,0,Math.PI*2); ctx.fill();
 
         ctx.restore();
     },
@@ -2517,32 +2486,8 @@ const Graphics = {
 
         // In AR mode: camera IS the world. Skip SVS rotation/grid/sky/ground.
         if (AR.active) {
-            if (STATE.windSpeed > 0) {
-                const downwind = STATE.windDir + 180;
-                const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
-                const edgeDist = Math.min(STATE.cx, STATE.cy) * 0.88;
-                const wx = STATE.cx + Math.cos(wRel) * edgeDist;
-                const wy = STATE.cy + Math.sin(wRel) * edgeDist;
-                const pulse = Math.sin(Date.now() / 600) * 0.12 + 0.88;
-                const arrowLen = Math.max(10, Math.min(28, STATE.windSpeed * 1.1)) * pulse;
-                const headSz = arrowLen * 0.38;
-                ctx.save();
-                ctx.translate(wx, wy);
-                ctx.rotate(wRel + Math.PI / 2);
-                ctx.shadowColor = '#ff6b00'; ctx.shadowBlur = 7;
-                ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-                ctx.beginPath(); ctx.moveTo(0, -arrowLen*0.5); ctx.lineTo(0, arrowLen*0.4); ctx.stroke();
-                ctx.fillStyle = '#ff6b00';
-                ctx.beginPath(); ctx.moveTo(0,arrowLen*0.5+headSz*0.6); ctx.lineTo(-headSz*0.5,arrowLen*0.5-headSz*0.1); ctx.lineTo(headSz*0.5,arrowLen*0.5-headSz*0.1); ctx.closePath(); ctx.fill();
-                ctx.shadowBlur = 0; ctx.restore();
-                ctx.save(); ctx.fillStyle='#ff6b00'; ctx.font='bold 9px monospace'; ctx.textAlign='center';
-                const lblR = edgeDist - arrowLen - 3;
-                ctx.fillText(`${Math.round(STATE.windSpeed)}`, STATE.cx+Math.cos(wRel)*lblR, STATE.cy+Math.sin(wRel)*lblR+3);
-                ctx.restore();
-            }
             AR.drawOverlays(ctx, 0, FOV, CAM_H);
             ctx.restore(); // un-clip
-            // PiP
             if (Recorder.active && Recorder.pipVid && Recorder.pipVid.readyState >= 2) {
                 const pw=120, ph=90, px=STATE.w-pw-10, py=STATE.h-ph-10;
                 ctx.save(); ctx.drawImage(Recorder.pipVid,px,py,pw,ph);
@@ -2854,38 +2799,102 @@ const Graphics = {
             }
         } // end if (STATE.lat && STATE.active) — nav overlay
 
-        // ── Animated wind vector — pulsing arrow on bezel edge pointing downwind ──
-        if (STATE.windSpeed > 0 && STATE.lat) {
-            const downwind = STATE.windDir + 180;
-            const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
-            const edgeDist = STATE.r - 18;
-            const wx = STATE.cx + Math.cos(wRel) * edgeDist;
-            const wy = STATE.cy + Math.sin(wRel) * edgeDist;
-            const pulse = Math.sin(Date.now() / 600) * 0.12 + 0.88;
-            const arrowLen = Math.max(10, Math.min(28, STATE.windSpeed * 1.1)) * pulse;
-            const headSz = arrowLen * 0.38;
-            ctx.save();
-            ctx.translate(wx, wy);
-            ctx.rotate(wRel + Math.PI / 2);
-            ctx.shadowColor = '#ff6b00'; ctx.shadowBlur = 7;
-            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-            ctx.beginPath(); ctx.moveTo(0, -arrowLen * 0.5); ctx.lineTo(0, arrowLen * 0.4); ctx.stroke();
-            ctx.fillStyle = '#ff6b00';
-            ctx.beginPath();
-            ctx.moveTo(0, arrowLen * 0.5 + headSz * 0.6);
-            ctx.lineTo(-headSz * 0.5, arrowLen * 0.5 - headSz * 0.1);
-            ctx.lineTo( headSz * 0.5, arrowLen * 0.5 - headSz * 0.1);
-            ctx.closePath(); ctx.fill();
-            if (STATE.windSpeed > 15) { // barb for strong wind
-                ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.moveTo(0, -arrowLen * 0.1); ctx.lineTo(headSz * 0.7, -headSz * 0.4); ctx.stroke();
+        // ── Aerodynamic Vector Display ──
+        // Three vectors drawn from craft center (screen-space, not rotated):
+        //   V = vehicle velocity (forward = up in HUD = canvas -y)
+        //   W = wind (relative to heading, orange)
+        //   R = resultant apparent wind V+W (cyan/magenta — the force the rider feels)
+        // Wind position: headwind above craft, tailwind below, crosswind to side
+        if (STATE.lat) {
+            const cx = STATE.cx + craftShiftX, cy = STATE.cy + craftShiftY;
+            const maxLen = STATE.r * 0.45; // max vector length in pixels
+            const toRad  = CFG.TO_RAD;
+
+            // ── Vehicle velocity vector (always forward = screen up) ──
+            const vLen = Math.min(maxLen, STATE.spdMph * 0.55);
+            if (vLen > 4) {
+                const vColor = STATE.craftMode === 1 ? '#39ff14' : STATE.clrNav;
+                ctx.save(); ctx.translate(cx, cy);
+                ctx.strokeStyle = vColor; ctx.lineWidth = 2; ctx.globalAlpha = 0.85; ctx.lineCap = 'round';
+                ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, -vLen); ctx.stroke();
+                // Arrowhead
+                ctx.fillStyle = vColor;
+                ctx.beginPath(); ctx.moveTo(0,-vLen-6); ctx.lineTo(-4,-vLen); ctx.lineTo(4,-vLen); ctx.closePath(); ctx.fill();
+                ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = vColor;
+                ctx.globalAlpha = 0.7;
+                ctx.fillText('V', 6, -vLen - 2);
+                ctx.globalAlpha = 1; ctx.restore();
             }
-            ctx.shadowBlur = 0; ctx.restore();
-            ctx.save();
-            ctx.fillStyle = '#ff6b00'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
-            const lblR = edgeDist - arrowLen - 3;
-            ctx.fillText(`${Math.round(STATE.windSpeed)}`, STATE.cx + Math.cos(wRel)*lblR, STATE.cy + Math.sin(wRel)*lblR + 3);
-            ctx.restore();
+
+            // ── Wind vector (relative to heading) ──
+            if (STATE.windSpeed > 1) {
+                // Wind FROM windDir → subtract 180 to get wind direction relative to heading
+                // Then convert to canvas angle: heading=up, so canvas angle = relative bearing - 90°
+                const wRelDeg = STATE.windDir - STATE.hdg; // relative bearing of wind source
+                // Wind blows FROM windDir, so the force vector points FROM that direction TOWARD us
+                // Aerodynamically: wind FROM north means air pushes you south = vector points south
+                const wCanvasAngle = (wRelDeg - 90) * toRad; // +180 to reverse: wind pushes, not blows
+                const wLen = Math.min(maxLen, STATE.windSpeed * 1.4);
+
+                // Position: headwind (from front) = above craft; tailwind = below; crosswind = side
+                // Place wind tail at offset from craft, arrow points toward craft (wind is pushing)
+                const wTailDist = Math.max(22, vLen + 8); // just beyond velocity vector
+                // Wind comes FROM the compass direction wRelDeg → it PUSHES in the opposite direction
+                const pushAngle = (wRelDeg + 180 - 90) * toRad; // direction wind pushes craft
+                const wStartX = cx + Math.cos(wCanvasAngle) * wTailDist;
+                const wStartY = cy + Math.sin(wCanvasAngle) * wTailDist;
+                const wEndX = wStartX - Math.cos(wCanvasAngle) * wLen;
+                const wEndY = wStartY - Math.sin(wCanvasAngle) * wLen;
+
+                ctx.save();
+                ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 2.2; ctx.globalAlpha = 0.9; ctx.lineCap = 'round';
+                ctx.beginPath(); ctx.moveTo(wStartX, wStartY); ctx.lineTo(wEndX, wEndY); ctx.stroke();
+                // Arrowhead at end
+                const wHA = Math.atan2(wEndY-wStartY, wEndX-wStartX);
+                ctx.fillStyle = '#ff6b00';
+                ctx.beginPath();
+                ctx.moveTo(wEndX, wEndY);
+                ctx.lineTo(wEndX - Math.cos(wHA-0.4)*7, wEndY - Math.sin(wHA-0.4)*7);
+                ctx.lineTo(wEndX - Math.cos(wHA+0.4)*7, wEndY - Math.sin(wHA+0.4)*7);
+                ctx.closePath(); ctx.fill();
+                // Speed label
+                ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center'; ctx.fillStyle = '#ff6b00';
+                ctx.globalAlpha = 0.8;
+                ctx.fillText(`${Math.round(STATE.windSpeed)}`, (wStartX+wEndX)/2 + 8, (wStartY+wEndY)/2);
+                ctx.globalAlpha = 1; ctx.restore();
+            }
+
+            // ── Resultant vector (apparent wind = V + W) ──
+            // In vector math: apparent wind = vehicle velocity vector + wind vector
+            // V is forward (+y canvas = down, so V points -y), W points in wind direction
+            const vx_v = 0,        vy_v = -vLen;  // velocity vector components (canvas coords)
+            const wRelDeg2 = STATE.windDir - STATE.hdg;
+            const wCA2 = (wRelDeg2 - 90) * toRad;
+            const wLen2 = Math.min(maxLen, STATE.windSpeed * 1.4);
+            // Wind pushes FROM windDir, aerodynamic force = opposite direction
+            const vx_w = -Math.cos(wCA2) * wLen2;
+            const vy_w = -Math.sin(wCA2) * wLen2;
+
+            const rx = vx_v + vx_w, ry = vy_v + vy_w;
+            const rLen = Math.hypot(rx, ry);
+
+            if (rLen > 5) {
+                const rColor = STATE.craftMode === 1 ? '#ff00ff' : '#00ffff';
+                ctx.save(); ctx.translate(cx, cy);
+                ctx.strokeStyle = rColor; ctx.lineWidth = 2.5; ctx.globalAlpha = 0.9;
+                ctx.setLineDash([4, 3]);
+                ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rx, ry); ctx.stroke();
+                ctx.setLineDash([]);
+                const rA = Math.atan2(ry, rx);
+                ctx.fillStyle = rColor;
+                ctx.beginPath();
+                ctx.moveTo(rx, ry);
+                ctx.lineTo(rx - Math.cos(rA-0.4)*7, ry - Math.sin(rA-0.4)*7);
+                ctx.lineTo(rx - Math.cos(rA+0.4)*7, ry - Math.sin(rA+0.4)*7);
+                ctx.closePath(); ctx.fill();
+                ctx.font = 'bold 8px monospace'; ctx.fillText('R', rx+8, ry);
+                ctx.globalAlpha = 1; ctx.restore();
+            }
         }
 
         if (STATE.lat && STATE.active) {
@@ -2910,13 +2919,14 @@ const Graphics = {
             }
         }
 
-        // ── Craft sprite — roll = +leanAngle cancels the -leanAngle world rotation ──
+        // ── Craft sprite — fixed upright, world tilts around it ──
         const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
         const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
         if (!AR.active) {
-            if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, STATE.leanAngle);
-            else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, STATE.leanAngle, isDark);
-            else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, STATE.leanAngle, isDark);
+            const sx = STATE.cx + craftShiftX, sy = STATE.cy + craftShiftY;
+            if (STATE.craftMode === 1) Graphics.drawUFO(sx, sy, 0);
+            else if (STATE.craftMode === 2) Graphics.drawBike(sx, sy, 0, isDark);
+            else Graphics.drawCessna(sx, sy, 0, isDark);
         }
 
         // ── AR windshield overlays (horizon, speed tape, reticles) ──
