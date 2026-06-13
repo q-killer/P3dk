@@ -564,17 +564,10 @@
         </div>
 
         <div id="station-picker">
-            <button onclick="Radio.playStation('https://ice1.somafm.com/dronezone-128-mp3','DRONE ZONE');Radio.closePicker()">🌀 DRONE ZONE</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SPACE STATION');Radio.closePicker()">🚀 SPACE STATION</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/deepspaceone-128-mp3','DEEP SPACE ONE');Radio.closePicker()">🌌 DEEP SPACE ONE</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD');Radio.closePicker()">🥗 GROOVE SALAD</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/lush-128-mp3','LUSH');Radio.closePicker()">🌿 LUSH</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/illstreet-128-mp3','ILL STREET BLUES');Radio.closePicker()">🎷 ILL STREET</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/thistle-128-mp3','THISTLE RADIO');Radio.closePicker()">🏴󠁧󠁢󠁳󠁣󠁴󠁿 THISTLE</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/metal-128-mp3','METAL DETECTOR');Radio.closePicker()">🤘 METAL</button>
-            <button onclick="Radio.playStation('https://ice3.somafm.com/brfm-128-mp3','BAY AREA RADIO');Radio.closePicker()">📻 BAY AREA</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/bootliquor-128-mp3','BOOT LIQUOR');Radio.closePicker()">🤠 BOOT LIQUOR</button>
-            <button style="color:var(--danger);border-top:1px solid rgba(128,128,128,0.2);margin-top:4px;padding-top:10px;" onclick="Radio.closePicker()">✕ CLOSE</button>
+            <p style="margin:0 0 8px 0;font-size:10px;color:var(--secondary);font-weight:900;text-align:center;">LONG-PRESS DOT TO CYCLE GENRE</p>
+            <button onclick="Radio.cycleGenre();Radio._updateModalGenre();Radio.closePicker()">🔀 NEXT GENRE</button>
+            <button onclick="Radio.openModal();Radio.closePicker()">📻 ALL STATIONS</button>
+            <button style="color:var(--danger);" onclick="Radio.closePicker()">✕ CLOSE</button>
         </div>
     </div>
 
@@ -595,11 +588,11 @@
 
 <!-- Fullscreen station bar — only visible in fullscreen mode -->
 <div id="fs-station-bar">
-    <button class="fs-station-btn" id="fs-s0" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1]);highlightBezelStation(0)">🌀 DRONE ZONE</button>
-    <button class="fs-station-btn" id="fs-s1" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1]);highlightBezelStation(1)">🚀 SPACE STN</button>
-    <button class="fs-station-btn" id="fs-s2" onclick="Radio.playStation(Radio.PRESETS[2][0],Radio.PRESETS[2][1]);highlightBezelStation(2)">🌌 DEEP SPACE</button>
-    <button class="fs-station-btn" id="fs-s3" onclick="Radio.playStation(Radio.PRESETS[3][0],Radio.PRESETS[3][1]);highlightBezelStation(3)">🥗 GROOVE</button>
-    <button class="fs-station-btn" onclick="Radio.openModal()" style="border-color:var(--wind);color:var(--wind);flex:0.5;">⋯</button>
+    <button class="fs-station-btn" id="fs-s0" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1])">DEF CON</button>
+    <button class="fs-station-btn" id="fs-s1" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1])">CLIQHOP</button>
+    <button class="fs-station-btn" id="fs-s2" onclick="Radio.playStation(Radio.PRESETS[2][0],Radio.PRESETS[2][1])">DRONE</button>
+    <button class="fs-station-btn" id="fs-s3" onclick="Radio.playStation(Radio.PRESETS[3][0],Radio.PRESETS[3][1])">GROOVE</button>
+    <button class="fs-station-btn" onclick="Radio.cycleGenre();Radio._updateModalGenre()" style="border-color:var(--wind);color:var(--wind);flex:0.6;">🔀</button>
 </div>
 
 <!-- PiP front camera (shown during recording) -->
@@ -632,13 +625,15 @@
     <div class="modal-content">
         <h3 class="squad-color">📻 COMMS ARRAY</h3>
 
-        <!-- Station grid — tap = play immediately -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/dronezone-128-mp3','DRONE ZONE')">🌀 DRONE ZONE</button>
-            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SPACE STATION')">🚀 SPACE STN</button>
-            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/deepspaceone-128-mp3','DEEP SPACE ONE')">🌌 DEEP SPACE</button>
-            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD')">🥗 GROOVE SALAD</button>
+        <!-- Station grid — from active genre -->
+        <p id="radio-genre-label" style="text-align:center;color:var(--squad);font-size:11px;margin:0 0 10px 0;font-weight:900;">⚡ ELECTRONIC</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;" id="radio-station-grid">
+            <button class="station-btn" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1])">🎵 <span id="rg-s0">DEF CON RADIO</span></button>
+            <button class="station-btn" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1])">🎵 <span id="rg-s1">CLIQHOP IDM</span></button>
+            <button class="station-btn" onclick="Radio.playStation(Radio.PRESETS[2][0],Radio.PRESETS[2][1])">🎵 <span id="rg-s2">DRONE ZONE</span></button>
+            <button class="station-btn" onclick="Radio.playStation(Radio.PRESETS[3][0],Radio.PRESETS[3][1])">🎵 <span id="rg-s3">GROOVE SALAD</span></button>
         </div>
+        <button onclick="Radio.cycleGenre();Radio._updateModalGenre()" style="width:100%;background:transparent;border:1.5px solid var(--wind);color:var(--wind);font-family:inherit;font-size:11px;font-weight:900;padding:8px;border-radius:8px;cursor:pointer;margin-bottom:10px;">🔀 NEXT GENRE</button>
 
         <!-- Now playing bar -->
         <div style="background:rgba(0,0,0,0.08);border-radius:8px;padding:10px 12px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
@@ -1455,26 +1450,63 @@ window.Radio = {
     audioEl: document.getElementById('squad-music'),
     currentStation: null, currentStationName: null,
     isBroadcasting: false, broadcastStartTime: 0,
-    _longPressTimer: null,
-    PRESETS: [
-        ['https://ice1.somafm.com/dronezone-128-mp3',    'DRONE ZONE'],
-        ['https://ice1.somafm.com/spacestation-128-mp3', 'SPACE STATION'],
-        ['https://ice1.somafm.com/deepspaceone-128-mp3', 'DEEP SPACE ONE'],
-        ['https://ice1.somafm.com/groovesalad-128-mp3',  'GROOVE SALAD'],
+    // GENRES — long-press music strip dots to cycle genre set
+    GENRES: [
+        {name:'⚡ ELECTRONIC', presets:[
+            ['https://ice2.somafm.com/defcon-128-mp3',          'DEF CON RADIO'],
+            ['https://ice1.somafm.com/cliqhop-128-mp3',         'CLIQHOP IDM'],
+            ['https://ice1.somafm.com/dronezone-128-mp3',       'DRONE ZONE'],
+            ['https://ice1.somafm.com/groovesalad-128-mp3',     'GROOVE SALAD'],
+        ]},
+        {name:'🎵 TRANCE/EDM', presets:[
+            ['https://streams.ilovemusic.de/iloveradio16.mp3',  'VOCAL TRANCE'],
+            ['https://streams.ilovemusic.de/iloveradio2.mp3',   'DANCE/EDM'],
+            ['https://streams.ilovemusic.de/iloveradio17.mp3',  'TRANCE'],
+            ['https://streams.ilovemusic.de/iloveradio14.mp3',  'HARD DANCE'],
+        ]},
+        {name:'🎸 80s CLASSIC', presets:[
+            ['https://ice1.somafm.com/u80s-128-mp3',            'UNDERGROUND 80s'],
+            ['https://streams.ilovemusic.de/iloveradio6.mp3',   '80s HITS'],
+            ['https://ice1.somafm.com/seventies-128-mp3',       '70s SOMA'],
+            ['https://ice1.somafm.com/80s-128-mp3',             '80s SOMA'],
+        ]},
+        {name:'🎻 CLASSICAL', presets:[
+            ['https://live.musopen.org/mp3',                    'MUSOPEN CLASSICAL'],
+            ['https://ice1.somafm.com/classicrock-128-mp3',     'CLASSIC ROCK'],
+            ['https://streams.ilovemusic.de/iloveradio19.mp3',  'CLASSICAL'],
+            ['https://ice1.somafm.com/lush-128-mp3',            'LUSH'],
+        ]},
+        {name:'🤠 COUNTRY', presets:[
+            ['https://streams.ilovemusic.de/iloveradio23.mp3',  'COUNTRY'],
+            ['https://streams.ilovemusic.de/iloveradio40.mp3',  'COUNTRY HITS'],
+            ['https://ice1.somafm.com/bootliquor-128-mp3',      'BOOT LIQUOR'],
+            ['https://ice1.somafm.com/thistle-128-mp3',         'THISTLE RADIO'],
+        ]},
+        {name:'🎺 OLDIES', presets:[
+            ['https://streams.ilovemusic.de/iloveradio7.mp3',   'OLDIES'],
+            ['https://streams.ilovemusic.de/iloveradio28.mp3',  '60s'],
+            ['https://ice1.somafm.com/illstreet-128-mp3',       'ILL STREET BLUES'],
+            ['https://ice1.somafm.com/folkfwd-128-mp3',         'FOLK FORWARD'],
+        ]},
     ],
+    currentGenre: 0,
+    PRESETS: [], // filled from GENRES[0].presets on init
 
     initDots() {
+        // Initialize PRESETS from first genre
+        this.PRESETS = this.GENRES[0].presets;
         this.PRESETS.forEach(([url, name], i) => {
             const btn = document.getElementById('mdot-' + i);
             if (!btn) return;
+            btn.title = name;
+            // Short tap: play station
             btn.addEventListener('click', () => this.playStation(url, name));
-            btn.addEventListener('touchstart', (e) => {
-                this._longPressTimer = setTimeout(() => { this.openPicker(); }, 600);
-            }, {passive: true});
-            btn.addEventListener('touchend', () => clearTimeout(this._longPressTimer));
-            btn.addEventListener('touchmove', () => clearTimeout(this._longPressTimer));
-            btn.addEventListener('mousedown', () => { this._longPressTimer = setTimeout(() => this.openPicker(), 600); });
-            btn.addEventListener('mouseup', () => clearTimeout(this._longPressTimer));
+            // Long press (600ms): cycle genre
+            let lt = null;
+            btn.addEventListener('touchstart', () => { lt = setTimeout(() => this.cycleGenre(), 600); }, {passive:true});
+            btn.addEventListener('touchend',   () => clearTimeout(lt));
+            btn.addEventListener('mousedown',  () => { lt = setTimeout(() => this.cycleGenre(), 600); });
+            btn.addEventListener('mouseup',    () => clearTimeout(lt));
         });
     },
 
@@ -1489,6 +1521,32 @@ window.Radio = {
 
     closePicker() { const p = document.getElementById('station-picker'); if (p) p.style.display='none'; },
 
+    _updateModalGenre() {
+        const genre = this.GENRES[this.currentGenre];
+        const lbl = document.getElementById('radio-genre-label');
+        if (lbl) lbl.textContent = genre.name;
+        genre.presets.forEach(([,name], i) => {
+            const el = document.getElementById('rg-s' + i);
+            if (el) el.textContent = name;
+        });
+    },
+    cycleGenre() {
+        this.currentGenre = (this.currentGenre + 1) % this.GENRES.length;
+        const genre = this.GENRES[this.currentGenre];
+        this.PRESETS = genre.presets;
+        HazardEngine.showToast(genre.name);
+        vibrate([50, 50, 100]);
+        this._rebuildDotTitles();
+        this._refreshUI();
+    },
+    _rebuildDotTitles() {
+        this.PRESETS.forEach(([,name], i) => {
+            const dot = document.getElementById('mdot-' + i);
+            if (dot) dot.title = name;
+            const fsBtn = document.getElementById('fs-s' + i);
+            if (fsBtn) fsBtn.textContent = this.PRESETS[i]?.[1] || '';
+        });
+    },
     openModal() { document.getElementById('radio-modal').style.display = 'flex'; this._refreshUI(); },
 
     playStation(url, name) {
@@ -1507,7 +1565,7 @@ window.Radio = {
 
     togglePlayPause() {
         if (!this.currentStation) {
-            this.playStation('https://streams.di.fm/di_vocalchillout', 'VOCAL TRANCE');
+            this.playStation(this.PRESETS[0][0], this.PRESETS[0][1]);
             return;
         }
         if (this.audioEl.paused) {
@@ -2204,6 +2262,60 @@ const Graphics = {
         if (ctx.roundRect) { ctx.roundRect(x,y,w,h,r); } else { ctx.rect(x,y,w,h); }
     },
 
+    /* Draw critical HUD data directly onto canvas for AR recording.
+     * DOM overlay elements are not captured by canvas.captureStream().
+     * This mirrors the key instruments onto the canvas in AR mode. */
+    _drawARHUD(ctx) {
+        const W = STATE.w, H = STATE.h;
+        ctx.save();
+        // Semi-transparent dark panel — left side
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.roundRect ? ctx.roundRect(8, H*0.28, 110, 130, 8) : ctx.fillRect(8, H*0.28, 110, 130);
+        ctx.fill();
+        // Semi-transparent dark panel — right side
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.roundRect ? ctx.roundRect(W-118, H*0.18, 110, 160, 8) : ctx.fillRect(W-118, H*0.18, 110, 160);
+        ctx.fill();
+
+        const out = (text, x, y, size, color, align='left') => {
+            ctx.font = `900 ${size}px 'Share Tech Mono', monospace`;
+            ctx.textAlign = align;
+            // Dark outline for readability on any background
+            ctx.fillStyle = 'rgba(0,0,0,0.8)';
+            for(const [dx,dy] of [[-1,-1],[1,-1],[-1,1],[1,1],[0,-2],[0,2],[-2,0],[2,0]])
+                ctx.fillText(text, x+dx, y+dy);
+            ctx.fillStyle = color;
+            ctx.fillText(text, x, y);
+        };
+
+        // Left: ALT, MPG/FPM, FUEL
+        out('⛰ ALT',          18, H*0.30, 10, '#94a3b8');
+        out(`${Math.round(STATE.altFt)} FT`, 18, H*0.30+16, 14, '#f8fafc');
+        out(document.getElementById('vsi')?.innerText||'', 18, H*0.30+30, 10, '#94a3b8');
+        out('⛽ FUEL',         18, H*0.30+44, 10, '#94a3b8');
+        out(`${document.getElementById('fuel-rem')?.innerText||'--'} G`, 18, H*0.30+60, 14, '#f8fafc');
+        out(document.getElementById('time-rem')?.innerText||'', 18, H*0.30+74, 10, '#94a3b8');
+        // Temp/humidity if available
+        if (STATE.tempF) {
+            out(`🌡 ${STATE.tempF}°F`, 18, H*0.30+92, 10, '#38bdf8');
+            out(`💧 ${STATE.humidity}%`, 18, H*0.30+106, 10, '#38bdf8');
+        }
+
+        // Right: speed, dist, time
+        out(`${STATE.spdMph.toFixed(1)}`, W-12, H*0.22, 38, '#00ffcc', 'right');
+        out('MPH', W-12, H*0.22+20, 12, '#00ffcc', 'right');
+        out('📏 DIST', W-12, H*0.22+38, 10, '#94a3b8', 'right');
+        out(`${document.getElementById('distance')?.innerText||'0.0'} MI`, W-12, H*0.22+54, 14, '#f8fafc', 'right');
+        out('⏱ TIME', W-12, H*0.22+72, 10, '#94a3b8', 'right');
+        out(document.getElementById('trip-time')?.innerText||'00:00', W-12, H*0.22+88, 14, '#f8fafc', 'right');
+
+        // Top: heading
+        const hdgText = document.getElementById('heading')?.innerText || '---';
+        out(hdgText, W/2, H*0.07, 22, '#00ffcc', 'center');
+
+        ctx.restore();
+    },
+
     renderHUD() {
         const ctx = Graphics.ctx;
         ctx.clearRect(0, 0, STATE.w, STATE.h);
@@ -2216,6 +2328,8 @@ const Graphics = {
                 ctx.drawImage(vid, 0, 0, STATE.w, STATE.h);
                 ctx.restore();
             }
+            // Draw HUD data overlay onto canvas — DOM elements not captured by recorder
+            Graphics._drawARHUD(ctx);
         }
 
         const isDark = !document.body.classList.contains('day-mode') || STATE.craftMode === 1;
@@ -2595,6 +2709,23 @@ const Graphics = {
 
         // ── AR windshield overlays (horizon, speed tape, reticles) ──
         AR.drawOverlays(ctx, pitchOffset, FOV, CAM_H);
+
+        // ── PiP camera (front cam during recording) — drawn in main loop, no separate rAF ──
+        if (Recorder.active && Recorder.pipVid && Recorder.pipVid.readyState >= 2) {
+            const dpr = window.devicePixelRatio || 1;
+            const pw = 120 * dpr, ph = 90 * dpr;
+            const px = STATE.w * dpr - pw - 10 * dpr;
+            const py = STATE.h * dpr - ph - 10 * dpr;
+            ctx.save();
+            ctx.drawImage(Recorder.pipVid, px/dpr, py/dpr, pw/dpr, ph/dpr);
+            ctx.strokeStyle = '#00ffcc'; ctx.lineWidth = 2;
+            ctx.strokeRect(px/dpr, py/dpr, pw/dpr, ph/dpr);
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect(px/dpr, py/dpr, 50, 13);
+            ctx.fillStyle = '#00ffcc'; ctx.font = 'bold 9px monospace';
+            ctx.fillText('RIDER', px/dpr + 4, py/dpr + 10);
+            ctx.restore();
+        }
 
         // ── Trip clock, fuel, power tick ──
         document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
@@ -3147,38 +3278,14 @@ const Recorder = {
     },
 
     _drawPip() {
-        if (!this.active || !this.pipVid) return;
-        const canvas = document.getElementById('vector-canvas');
-        const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
-        const pw = 120 * dpr, ph = 90 * dpr;
-        const px = canvas.width - pw - 10 * dpr;
-        const py = canvas.height - ph - 10 * dpr;
-
-        const drawFrame = () => {
-            if (!this.active) return;
-            if (this.pipVid.readyState >= 2) {
-                ctx.save();
-                ctx.drawImage(this.pipVid, px, py, pw, ph);
-                ctx.strokeStyle = '#00ffcc';
-                ctx.lineWidth = 2 * dpr;
-                ctx.strokeRect(px, py, pw, ph);
-                ctx.fillStyle = 'rgba(0,0,0,0.6)';
-                ctx.fillRect(px, py, 60*dpr, 14*dpr);
-                ctx.fillStyle = '#00ffcc';
-                ctx.font = `bold ${9*dpr}px monospace`;
-                ctx.fillText('RIDER', px + 4*dpr, py + 10*dpr);
-                ctx.restore();
-            }
-            this._rafId = requestAnimationFrame(drawFrame);
-        };
-        drawFrame();
+        // PiP drawing is now integrated into Graphics.renderHUD() — no separate rAF needed
+        // Kept as stub for backward compatibility
     },
 
     _stop() {
         if (this.recorder && this.recorder.state !== 'inactive') this.recorder.stop();
         if (this.pipStream) { this.pipStream.getTracks().forEach(t => t.stop()); this.pipStream = null; }
-        if (this._rafId) { cancelAnimationFrame(this._rafId); this._rafId = null; }
+        this.pipVid = null;
         document.body.classList.remove('recording');
         this.active = false;
         const btn = document.getElementById('ctrl-rec-btn');
@@ -3211,12 +3318,14 @@ function highlightBezelStation(idx) { /* no-op — sv-s* elements removed */ }
 const Horn = {
     ctx: null, current: 0, _pressTimer: null,
     HORNS: [
-        {label:'🍄 MARIO',   fn:'mario'},
-        {label:'🖖 SCI-FI',  fn:'scifi'},
-        {label:'📯 OL HORN', fn:'oldhorn'},
-        {label:'☎️ RING',    fn:'phone'},
-        {label:'🤡 KRUSTY',  fn:'krusty'},
-        {label:'🚂 TRAIN',   fn:'train'},
+        {label:'🍄 MARIO',    fn:'mario'},
+        {label:'🖖 PHASER',   fn:'phaser'},
+        {label:'📯 AHOOGA',   fn:'oldhorn'},
+        {label:'☎️ RING',     fn:'phone'},
+        {label:'🤡 KRUSTY',   fn:'krusty'},
+        {label:'🚂 TRAIN',    fn:'train'},
+        {label:'🎺 FANFARE',  fn:'fanfare'},
+        {label:'🦆 DUCK',     fn:'duck'},
     ],
     _ac() {
         if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -3229,86 +3338,161 @@ const Horn = {
         const btn = document.getElementById('ctrl-horn-btn');
         if (btn) { btn.style.background='#fbbf24'; btn.style.color='#000'; setTimeout(()=>{btn.style.background='';btn.style.color='#fbbf24';},300); }
     },
+    // ── Mario ascending square-wave power-up ──
     mario() {
         const ac = this._ac();
         [523,659,784,1047].forEach((f,i) => {
             const o=ac.createOscillator(), g=ac.createGain();
             o.type='square'; o.frequency.value=f;
-            g.gain.setValueAtTime(0.3,ac.currentTime+i*0.1);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+i*0.1+0.12);
-            o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+i*0.1); o.stop(ac.currentTime+i*0.1+0.13);
+            g.gain.setValueAtTime(0.28, ac.currentTime+i*0.09);
+            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime+i*0.09+0.11);
+            o.connect(g); g.connect(ac.destination);
+            o.start(ac.currentTime+i*0.09); o.stop(ac.currentTime+i*0.09+0.12);
         });
     },
-    scifi() {
-        const ac=this._ac(), o=ac.createOscillator(), g=ac.createGain(), d=ac.createDelay(0.2);
-        o.type='sawtooth'; d.delayTime.value=0.12;
-        o.frequency.setValueAtTime(200,ac.currentTime);
-        o.frequency.exponentialRampToValueAtTime(1400,ac.currentTime+0.5);
-        g.gain.setValueAtTime(0.25,ac.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.55);
-        o.connect(d); d.connect(g); o.connect(g); g.connect(ac.destination);
-        o.start(); o.stop(ac.currentTime+0.6);
+    // ── Star Trek phaser — FM modulated rapid sweep with reverb decay ──
+    phaser() {
+        const ac = this._ac();
+        const dur = 0.65;
+        // Carrier: swept sine
+        const car = ac.createOscillator();
+        // Modulator: sine at 18 Hz for rapid vibrato
+        const mod = ac.createOscillator();
+        const modGain = ac.createGain();
+        const masterGain = ac.createGain();
+        const filter = ac.createBiquadFilter();
+
+        car.type = 'sine';
+        car.frequency.setValueAtTime(900, ac.currentTime);
+        car.frequency.exponentialRampToValueAtTime(220, ac.currentTime + dur * 0.6);
+        car.frequency.exponentialRampToValueAtTime(500, ac.currentTime + dur);
+
+        mod.type = 'sine'; mod.frequency.value = 22;
+        modGain.gain.value = 280; // FM depth — wide phaser sweep
+        mod.connect(modGain); modGain.connect(car.frequency);
+
+        filter.type = 'bandpass'; filter.frequency.value = 600; filter.Q.value = 3;
+
+        masterGain.gain.setValueAtTime(0, ac.currentTime);
+        masterGain.gain.linearRampToValueAtTime(0.35, ac.currentTime + 0.03);
+        masterGain.gain.setValueAtTime(0.35, ac.currentTime + dur * 0.5);
+        masterGain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + dur + 0.1);
+
+        car.connect(filter); filter.connect(masterGain); masterGain.connect(ac.destination);
+        car.start(); mod.start();
+        car.stop(ac.currentTime + dur + 0.15);
+        mod.stop(ac.currentTime + dur + 0.15);
     },
+    // ── Ahooga — 1930s car horn, AM modulated ──
     oldhorn() {
-        const ac=this._ac(), carrier=ac.createOscillator(), mod=ac.createOscillator(),
-              gain=ac.createGain(), mGain=ac.createGain();
-        carrier.type='sine'; carrier.frequency.value=220;
-        mod.type='sine'; mod.frequency.value=30; mGain.gain.value=80;
-        mod.connect(mGain); mGain.connect(carrier.frequency);
-        gain.gain.setValueAtTime(0.4,ac.currentTime);
-        gain.gain.setValueAtTime(0.4,ac.currentTime+0.35);
-        gain.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5);
-        carrier.connect(gain); gain.connect(ac.destination);
-        carrier.start(); mod.start(); carrier.stop(ac.currentTime+0.55); mod.stop(ac.currentTime+0.55);
+        const ac = this._ac();
+        const car = ac.createOscillator(), mod = ac.createOscillator();
+        const g = ac.createGain(), mg = ac.createGain();
+        car.type = 'sawtooth'; car.frequency.value = 185;
+        mod.type = 'sine'; mod.frequency.value = 32; mg.gain.value = 90;
+        mod.connect(mg); mg.connect(car.frequency);
+        g.gain.setValueAtTime(0, ac.currentTime);
+        g.gain.linearRampToValueAtTime(0.45, ac.currentTime + 0.04);
+        g.gain.setValueAtTime(0.45, ac.currentTime + 0.38);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.55);
+        car.connect(g); g.connect(ac.destination);
+        car.start(); mod.start();
+        car.stop(ac.currentTime + 0.6); mod.stop(ac.currentTime + 0.6);
     },
+    // ── Old rotary phone ring — two sharp bursts ──
     phone() {
-        const ac=this._ac();
-        [[0,0.4],[0.5,0.9]].forEach(([s,e]) => [440,480].forEach(f => {
-            const o=ac.createOscillator(), g=ac.createGain();
-            o.frequency.value=f; o.type='sine';
-            g.gain.setValueAtTime(0.18,ac.currentTime+s);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+e);
-            o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+s); o.stop(ac.currentTime+e+0.05);
-        }));
-    },
-    krusty() {
-        const ac=this._ac(), o=ac.createOscillator(), g=ac.createGain();
-        o.type='sawtooth';
-        o.frequency.setValueAtTime(800,ac.currentTime);
-        o.frequency.exponentialRampToValueAtTime(300,ac.currentTime+0.2);
-        o.frequency.setValueAtTime(700,ac.currentTime+0.25);
-        o.frequency.exponentialRampToValueAtTime(250,ac.currentTime+0.45);
-        g.gain.setValueAtTime(0.3,ac.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5);
-        o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.55);
-        setTimeout(() => MathUtils.say('On your left!'), 400);
-    },
-    train() {
-        const ac=this._ac();
-        [[493.88,0],[392,0.05]].forEach(([f,off]) => {
-            const o=ac.createOscillator(), g=ac.createGain();
-            o.type='sawtooth'; o.frequency.value=f;
-            g.gain.setValueAtTime(0,ac.currentTime+off);
-            g.gain.linearRampToValueAtTime(0.2,ac.currentTime+off+0.05);
-            g.gain.setValueAtTime(0.2,ac.currentTime+0.5);
-            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.7);
-            o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+off); o.stop(ac.currentTime+0.75);
+        const ac = this._ac();
+        [[0, 0.35], [0.45, 0.8]].forEach(([s, e]) => {
+            [1400, 1600].forEach(f => { // higher freq = more authentic
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.frequency.value = f; o.type = 'square';
+                // Sharp attack
+                g.gain.setValueAtTime(0, ac.currentTime + s);
+                g.gain.linearRampToValueAtTime(0.22, ac.currentTime + s + 0.01);
+                g.gain.setValueAtTime(0.22, ac.currentTime + e - 0.02);
+                g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + e);
+                o.connect(g); g.connect(ac.destination);
+                o.start(ac.currentTime + s); o.stop(ac.currentTime + e + 0.02);
+            });
         });
+    },
+    // ── Krusty clownhorn: classic bicycle horn WAAH WAAH + "on your left!" ──
+    krusty() {
+        const ac = this._ac();
+        // Two-tone descending honk pairs — classic bicycle squeeze horn
+        [[0, 523, 349], [0.22, 523, 349], [0.44, 440, 294]].forEach(([t, f1, f2]) => {
+            [f1, f2].forEach((f, fi) => {
+                const o = ac.createOscillator(), g = ac.createGain();
+                o.type = 'sawtooth';
+                o.frequency.setValueAtTime(f, ac.currentTime + t);
+                o.frequency.exponentialRampToValueAtTime(f * 0.88, ac.currentTime + t + 0.12);
+                g.gain.setValueAtTime(0, ac.currentTime + t + fi * 0.06);
+                g.gain.linearRampToValueAtTime(0.28, ac.currentTime + t + fi * 0.06 + 0.01);
+                g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + t + 0.18);
+                o.connect(g); g.connect(ac.destination);
+                o.start(ac.currentTime + t + fi * 0.06);
+                o.stop(ac.currentTime + t + 0.2);
+            });
+        });
+        setTimeout(() => MathUtils.say('On your left!'), 650);
+    },
+    // ── Steam train whistle — two-tone blow with build ──
+    train() {
+        const ac = this._ac();
+        [[493.88, 0], [370, 0.04]].forEach(([f, off]) => {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = 'sawtooth'; o.frequency.value = f;
+            g.gain.setValueAtTime(0, ac.currentTime + off);
+            g.gain.linearRampToValueAtTime(0.22, ac.currentTime + off + 0.06);
+            g.gain.setValueAtTime(0.22, ac.currentTime + 0.55);
+            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.72);
+            o.connect(g); g.connect(ac.destination);
+            o.start(ac.currentTime + off); o.stop(ac.currentTime + 0.78);
+        });
+    },
+    // ── Trumpet fanfare — C major arpeggio ──
+    fanfare() {
+        const ac = this._ac();
+        [[0, 523], [0.12, 659], [0.24, 784], [0.36, 1047], [0.48, 784], [0.6, 1047]].forEach(([t, f]) => {
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = 'sawtooth'; o.frequency.value = f;
+            const dur = t < 0.5 ? 0.14 : 0.28;
+            g.gain.setValueAtTime(0, ac.currentTime + t);
+            g.gain.linearRampToValueAtTime(0.25, ac.currentTime + t + 0.015);
+            g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + t + dur);
+            o.connect(g); g.connect(ac.destination);
+            o.start(ac.currentTime + t); o.stop(ac.currentTime + t + dur + 0.05);
+        });
+    },
+    // ── Rubber duck squeek ──
+    duck() {
+        const ac = this._ac();
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(900, ac.currentTime);
+        o.frequency.linearRampToValueAtTime(600, ac.currentTime + 0.06);
+        o.frequency.linearRampToValueAtTime(820, ac.currentTime + 0.12);
+        o.frequency.exponentialRampToValueAtTime(400, ac.currentTime + 0.22);
+        g.gain.setValueAtTime(0, ac.currentTime);
+        g.gain.linearRampToValueAtTime(0.5, ac.currentTime + 0.015);
+        g.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.25);
+        o.connect(g); g.connect(ac.destination);
+        o.start(); o.stop(ac.currentTime + 0.28);
     },
     cycleNext() {
-        this.current = (this.current+1) % this.HORNS.length;
+        this.current = (this.current + 1) % this.HORNS.length;
         const btn = document.getElementById('ctrl-horn-btn');
         if (btn) btn.title = this.HORNS[this.current].label;
         HazardEngine.showToast(this.HORNS[this.current].label);
-        vibrate([30,30,60]);
+        vibrate([30, 30, 60]);
     },
     init() {
         const btn = document.getElementById('ctrl-horn-btn');
         if (!btn) return;
-        btn.addEventListener('mousedown', ()=>{ this._pressTimer=setTimeout(()=>this.cycleNext(),600); });
-        btn.addEventListener('mouseup',   ()=> clearTimeout(this._pressTimer));
-        btn.addEventListener('touchstart', e=>{ e.preventDefault(); this._pressTimer=setTimeout(()=>this.cycleNext(),600); }, {passive:false});
-        btn.addEventListener('touchend',   e=>{ e.preventDefault(); clearTimeout(this._pressTimer); this.beep(); }, {passive:false});
+        btn.addEventListener('mousedown', () => { this._pressTimer = setTimeout(() => this.cycleNext(), 600); });
+        btn.addEventListener('mouseup',   () => clearTimeout(this._pressTimer));
+        btn.addEventListener('touchstart', e => { e.preventDefault(); this._pressTimer = setTimeout(() => this.cycleNext(), 600); }, {passive:false});
+        btn.addEventListener('touchend',   e => { e.preventDefault(); clearTimeout(this._pressTimer); this.beep(); }, {passive:false});
     }
 };
 
