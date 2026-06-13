@@ -241,21 +241,15 @@
             width: 100vw !important; height: 100vh !important;
         }
 
-        /* In AR: text needs hard dark outlines to read on any background */
+        /* In AR mode — DOM overlays are hidden; canvas _drawARHUD() is the sole renderer */
         body.ar-mode .top-hdg,
-        body.ar-mode .val,
-        body.ar-mode .lbl,
-        body.ar-mode .sub-val,
-        body.ar-mode .speed-value,
-        body.ar-mode .speed-unit {
-            text-shadow: 0 0 3px #000, 0 0 6px #000, 0 0 12px #000,
-                         0 2px 0 #000, 0 -2px 0 #000, 2px 0 0 #000, -2px 0 0 #000 !important;
-            color: #00ffcc !important;
-        }
+        body.ar-mode .left-avionics,
+        body.ar-mode .right-stats,
+        body.ar-mode #trip-btn,
+        body.ar-mode #bottom-bar,
+        body.ar-mode #music-strip,
+        body.ar-mode #wpt-add-btn { display: none !important; }
 
-        /* Speed value extra large in windshield mode — glanceable */
-        body.ar-mode .speed-value { font-size: 72px !important; opacity: 0.92; }
-        body.ar-mode .speed-unit  { font-size: 18px !important; letter-spacing: 3px; }
 
         /* SVG bezel labels — brighter in AR */
         body.ar-mode #svg-bezel text { opacity: 0.7; }
@@ -784,7 +778,8 @@ const STATE = {
     clrSkyTop: 'rgba(14,165,233,0.25)', clrGndTop: 'rgba(15,118,110,0.7)', clrGndBot: 'rgba(2,6,23,0.95)',
     lastSpokenObstacle: null, lastSpokenTs: 0,
     maxAltFt: 0, peakVsiFpm: 0, hazardCount: 0,
-    wxConditionStr: 'Unknown', altBuffer: [],
+    _vsiDisplay: '-- MPG', _tteDisplay: 'TTE: --', _timeDisplay: '00:00',
+    fuelRem: 5.0,
 };
 
 let watchId = null;
@@ -1195,7 +1190,7 @@ const HazardEngine = {
 /* ═══════════════════════════════════════════════════════ MESH ══ */
 window.Mesh = {
     pc: null, dc: null, localStream: null, connected: false,
-    _roomCode: null, _pollTimer: null, _role: null,
+    _roomCode: null, _pollTimer: null, _telTimer: null, _role: null,
 
     _iceConfig: {
         iceServers: [
@@ -1374,9 +1369,11 @@ window.Mesh = {
                 vibrate([100, 100, 300]);
                 setTimeout(() => closeModal('mesh-modal'), 1500);
                 if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
-                setInterval(() => this.sendTelemetry(), 250);
+                if (this._telTimer)  { clearInterval(this._telTimer);  this._telTimer  = null; }
+                this._telTimer = setInterval(() => this.sendTelemetry(), 250);
             } else if (s === 'disconnected' || s === 'failed') {
                 this.connected = false;
+                if (this._telTimer) { clearInterval(this._telTimer); this._telTimer = null; }
                 const atsBadge2 = document.getElementById('ats-badge');
                 if (atsBadge2) { atsBadge2.textContent = '● ATS'; atsBadge2.classList.remove('linked'); }
                 STATE.squadData = null;
@@ -2263,55 +2260,50 @@ const Graphics = {
     },
 
     /* Draw critical HUD data directly onto canvas for AR recording.
-     * DOM overlay elements are not captured by canvas.captureStream().
-     * This mirrors the key instruments onto the canvas in AR mode. */
+     * Uses only STATE values — no getElementById in hot render path. */
     _drawARHUD(ctx) {
         const W = STATE.w, H = STATE.h;
         ctx.save();
-        // Semi-transparent dark panel — left side
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.roundRect ? ctx.roundRect(8, H*0.28, 110, 130, 8) : ctx.fillRect(8, H*0.28, 110, 130);
-        ctx.fill();
-        // Semi-transparent dark panel — right side
-        ctx.fillStyle = 'rgba(0,0,0,0.45)';
-        ctx.roundRect ? ctx.roundRect(W-118, H*0.18, 110, 160, 8) : ctx.fillRect(W-118, H*0.18, 110, 160);
-        ctx.fill();
+        // Semi-transparent panels
+        ctx.fillStyle = 'rgba(0,0,0,0.48)';
+        const rr = (x,y,w,h) => { ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x,y,w,h,8); else ctx.rect(x,y,w,h); ctx.fill(); };
+        rr(8, H*0.25, 115, STATE.tempF ? 150 : 115);
+        rr(W-122, H*0.13, 118, 145);
 
         const out = (text, x, y, size, color, align='left') => {
-            ctx.font = `900 ${size}px 'Share Tech Mono', monospace`;
+            ctx.font = `900 ${size}px 'Share Tech Mono',monospace`;
             ctx.textAlign = align;
-            // Dark outline for readability on any background
-            ctx.fillStyle = 'rgba(0,0,0,0.8)';
-            for(const [dx,dy] of [[-1,-1],[1,-1],[-1,1],[1,1],[0,-2],[0,2],[-2,0],[2,0]])
+            ctx.fillStyle = 'rgba(0,0,0,0.85)';
+            for(const [dx,dy] of [[-1,-1],[1,-1],[-1,1],[1,1],[0,-2],[0,2]])
                 ctx.fillText(text, x+dx, y+dy);
             ctx.fillStyle = color;
             ctx.fillText(text, x, y);
         };
 
-        // Left: ALT, MPG/FPM, FUEL
-        out('⛰ ALT',          18, H*0.30, 10, '#94a3b8');
-        out(`${Math.round(STATE.altFt)} FT`, 18, H*0.30+16, 14, '#f8fafc');
-        out(document.getElementById('vsi')?.innerText||'', 18, H*0.30+30, 10, '#94a3b8');
-        out('⛽ FUEL',         18, H*0.30+44, 10, '#94a3b8');
-        out(`${document.getElementById('fuel-rem')?.innerText||'--'} G`, 18, H*0.30+60, 14, '#f8fafc');
-        out(document.getElementById('time-rem')?.innerText||'', 18, H*0.30+74, 10, '#94a3b8');
-        // Temp/humidity if available
+        const sec = '#94a3b8', pri = '#f8fafc', cyan = '#00ffcc', blue = '#38bdf8';
+        let y = H*0.28;
+        out('⛰ ALT',                    14, y,    10, sec);   y += 16;
+        out(`${Math.round(STATE.altFt)} FT`, 14, y, 15, pri); y += 14;
+        out(STATE._vsiDisplay || '',     14, y,    10, sec);   y += 18;
+        out('⛽ FUEL',                   14, y,    10, sec);   y += 16;
+        out(`${STATE.fuelRem?.toFixed(1)||'5.0'} G`, 14, y, 15, pri); y += 14;
+        out(STATE._tteDisplay || '',     14, y,    10, sec);   y += 18;
         if (STATE.tempF) {
-            out(`🌡 ${STATE.tempF}°F`, 18, H*0.30+92, 10, '#38bdf8');
-            out(`💧 ${STATE.humidity}%`, 18, H*0.30+106, 10, '#38bdf8');
+            out(`🌡 ${STATE.tempF}°`,    14, y, 10, blue); y += 14;
+            out(`💧 ${STATE.humidity}%`, 14, y, 10, blue);
         }
 
-        // Right: speed, dist, time
-        out(`${STATE.spdMph.toFixed(1)}`, W-12, H*0.22, 38, '#00ffcc', 'right');
-        out('MPH', W-12, H*0.22+20, 12, '#00ffcc', 'right');
-        out('📏 DIST', W-12, H*0.22+38, 10, '#94a3b8', 'right');
-        out(`${document.getElementById('distance')?.innerText||'0.0'} MI`, W-12, H*0.22+54, 14, '#f8fafc', 'right');
-        out('⏱ TIME', W-12, H*0.22+72, 10, '#94a3b8', 'right');
-        out(document.getElementById('trip-time')?.innerText||'00:00', W-12, H*0.22+88, 14, '#f8fafc', 'right');
+        // Right panel
+        out(`${STATE.spdMph.toFixed(1)}`, W-14, H*0.16, 40, cyan, 'right');
+        out('MPH',  W-14, H*0.16+22, 12, cyan, 'right');
+        out('📏',   W-14, H*0.16+40, 10, sec, 'right');
+        out(`${STATE.dist?.toFixed(1)||'0.0'} MI`, W-14, H*0.16+55, 15, pri, 'right');
+        out('⏱',   W-14, H*0.16+74, 10, sec, 'right');
+        out(STATE._timeDisplay || '00:00', W-14, H*0.16+89, 15, pri, 'right');
 
-        // Top: heading
-        const hdgText = document.getElementById('heading')?.innerText || '---';
-        out(hdgText, W/2, H*0.07, 22, '#00ffcc', 'center');
+        // Heading — top center
+        out(`${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`,
+            W/2, H*0.065, 22, cyan, 'center');
 
         ctx.restore();
     },
@@ -2416,8 +2408,8 @@ const Graphics = {
             }
         }
 
-        // ── Breadcrumb trail ──
-        if (STATE.crumbs.length >= 2 && STATE.lat) {
+        // ── Breadcrumb trail — skip in AR (camera is the view, trail not useful) ──
+        if (STATE.crumbs.length >= 2 && STATE.lat && !AR.active) {
             ctx.save();
             ctx.strokeStyle = STATE.clrSecondary;
             ctx.lineWidth = 1;
@@ -2440,8 +2432,8 @@ const Graphics = {
             ctx.stroke(); ctx.setLineDash([]); ctx.restore();
         }
 
-        // ── 3D Obstacles ──
-        if (STATE.lat && STATE.active) {
+        // ── 3D Obstacles — skip in AR (SVS obstacles don't map to real camera view) ──
+        if (STATE.lat && STATE.active && !AR.active) {
             const fontFamily = isUFO ? 'Orbitron' : 'monospace';
             for (const obs of STATE.obstacles) {
                 const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, obs.lat, obs.lon);
@@ -2522,11 +2514,8 @@ const Graphics = {
         });
         ctx.globalAlpha = 1;
 
-        // ── Instrument arcs — drawn on canvas for density and 3D feel ──
-        // Speed arc: thin colored arc around inner radius proportional to speed
-        // Compass rose: small heading tick marks around the outer edge
-        // G-meter: small arc showing lateral G at the horizon line
-        ctx.save();
+        // ── Instrument arcs — skipped in AR mode (not visible, wastes GPU) ──
+        if (!AR.active) {
 
         // Speed arc (bottom-right quadrant, 120° sweep, fills with speed)
         {
@@ -2596,6 +2585,7 @@ const Graphics = {
         }
 
         ctx.globalAlpha = 1; ctx.restore();
+        } // end !AR.active instrument arcs
 
         // ── Fixed horizon reference line + slip ball (no rotation — SVS provides tilt) ──
         // The sky/ground already shows attitude. This is just a fixed center crosshair.
@@ -2734,14 +2724,16 @@ const Graphics = {
             const h = Math.floor(elapsed/3600000);
             const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
             const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
-            document.getElementById('trip-time').innerText = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+            STATE._timeDisplay = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+            document.getElementById('trip-time').innerText = STATE._timeDisplay;
 
             const hrs = elapsed/3600000;
-            const fuel = Math.max(0, STATE.fuelCap - hrs*STATE.burnRate);
-            document.getElementById('fuel-rem').innerText = fuel.toFixed(1);
-            if (fuel > 0) {
-                const tte = fuel / STATE.burnRate;
-                document.getElementById('time-rem').innerText = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
+            STATE.fuelRem = Math.max(0, STATE.fuelCap - hrs*STATE.burnRate);
+            document.getElementById('fuel-rem').innerText = STATE.fuelRem.toFixed(1);
+            if (STATE.fuelRem > 0) {
+                const tte = STATE.fuelRem / STATE.burnRate;
+                STATE._tteDisplay = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
+                document.getElementById('time-rem').innerText = STATE._tteDisplay;
                 document.getElementById('time-rem').className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
             }
 
@@ -2882,13 +2874,15 @@ window.Engine = {
 
                 const vsiEl = document.getElementById('vsi');
                 if (STATE._rapidCount >= 3) {
-                    vsiEl.innerText = `${displayVsi > 0 ? '+' : ''}${Math.round(displayVsi)} FPM`;
+                    STATE._vsiDisplay = `${displayVsi > 0 ? '+' : ''}${Math.round(displayVsi)} FPM`;
+                    vsiEl.innerText = STATE._vsiDisplay;
                     vsiEl.className = displayVsi > 100 ? 'sub-val up-green' : displayVsi < -100 ? 'sub-val down-red' : 'sub-val';
                 } else {
                     const tripHrs = (ts - STATE.startTs) / 3600000;
                     const fuelUsed = tripHrs * STATE.burnRate;
                     const mpg = (fuelUsed > 0.001 && STATE.dist > 0.05) ? Math.round(STATE.dist / fuelUsed) : '--';
-                    vsiEl.innerText = `${mpg} MPG`;
+                    STATE._vsiDisplay = `${mpg} MPG`;
+                    vsiEl.innerText = STATE._vsiDisplay;
                     vsiEl.className = 'sub-val';
                 }
             }
