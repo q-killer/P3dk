@@ -2516,6 +2516,7 @@ const Graphics = {
 
         // ── Instrument arcs — skipped in AR mode (not visible, wastes GPU) ──
         if (!AR.active) {
+        ctx.save();
 
         // Speed arc (bottom-right quadrant, 120° sweep, fills with speed)
         {
@@ -2584,7 +2585,7 @@ const Graphics = {
             ctx.strokeStyle = gFrac > 0 ? '#f59e0b' : STATE.clrWind; ctx.lineWidth = 3; ctx.stroke();
         }
 
-        ctx.globalAlpha = 1; ctx.restore();
+            ctx.globalAlpha = 1; ctx.restore();
         } // end !AR.active instrument arcs
 
         // ── Fixed horizon reference line + slip ball (no rotation — SVS provides tilt) ──
