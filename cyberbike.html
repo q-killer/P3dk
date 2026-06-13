@@ -53,6 +53,67 @@
             --ground-top: rgba(57, 255, 20, 0.25);
             --ground-bot: rgba(0, 0, 0, 0.95);
         }
+        /* UFO mode HUD enhancements — futuristic design language */
+        body.ufo-mode #hud-pod {
+            border-color: #39ff14;
+            box-shadow: 0 0 0 1px rgba(57,255,20,0.3),
+                        0 0 20px rgba(57,255,20,0.2),
+                        0 0 60px rgba(57,255,20,0.1),
+                        inset 0 0 40px rgba(0,0,0,0.9);
+        }
+        /* CRT scanline overlay */
+        body.ufo-mode #hud-pod::after {
+            content: ''; position: absolute; inset: 0; border-radius: 50%;
+            background: repeating-linear-gradient(
+                0deg, transparent, transparent 2px,
+                rgba(0,0,0,0.08) 2px, rgba(0,0,0,0.08) 4px
+            );
+            pointer-events: none; z-index: 5;
+        }
+        /* Hexagonal label style — clip-path hex shape on data labels */
+        body.ufo-mode .lbl {
+            color: #b026ff !important;
+            letter-spacing: 2px;
+            font-size: 9px !important;
+            text-transform: uppercase;
+        }
+        body.ufo-mode .val {
+            color: #39ff14 !important;
+            text-shadow: 0 0 6px #39ff14, 0 0 14px #39ff14, 0 0 0 #000 !important;
+            letter-spacing: 1px;
+        }
+        body.ufo-mode .sub-val {
+            color: #00ffff !important;
+            text-shadow: 0 0 4px #00ffff !important;
+        }
+        body.ufo-mode .speed-value {
+            color: #39ff14 !important;
+            text-shadow: 0 0 10px #39ff14, 0 0 25px #39ff14, 0 0 50px rgba(57,255,20,0.4) !important;
+        }
+        body.ufo-mode .speed-unit { color: #00ffff !important; letter-spacing: 4px; }
+        body.ufo-mode .top-hdg {
+            color: #00ffff !important;
+            text-shadow: 0 0 8px #00ffff, 0 0 20px #00ffff, 0 0 0 #000 !important;
+            letter-spacing: 4px;
+        }
+        /* Data panel framing — left/right side strips */
+        body.ufo-mode .left-avionics::before,
+        body.ufo-mode .right-stats::before {
+            content: '';
+            position: absolute; top: -4px; bottom: -4px;
+            border: 1px solid rgba(57,255,20,0.2);
+            border-radius: 4px;
+        }
+        body.ufo-mode .left-avionics::before { right: -8px; left: -8px; }
+        body.ufo-mode .right-stats::before   { right: -8px; left: -8px; }
+        /* Animated pod border ring — rotates in UFO mode */
+        @keyframes ufo-ring-spin {
+            from { stroke-dashoffset: 0; }
+            to   { stroke-dashoffset: -314; }
+        }
+        body.ufo-mode #svg-bezel > circle.ufo-ring {
+            animation: ufo-ring-spin 3s linear infinite;
+        }
         body {
             margin: 0; padding: 0; background: transparent;
             font-family: var(--font-main); color: var(--primary);
@@ -817,7 +878,6 @@ const MathUtils = {
         window.speechSynthesis.speak(u);
     },
     sayQueue(text) {
-        // Queue after current speech without interrupting (for auto-announcements)
         if (!('speechSynthesis' in window)) return;
         const u = new SpeechSynthesisUtterance(text);
         u.rate = 1.05;
@@ -825,7 +885,26 @@ const MathUtils = {
     }
 };
 
-/* ═══════════════════════════════════════════════════════ THEME CACHE ══ */
+/* ═══════════════════════════════════════════════════════ DOM CACHE ══ */
+// All element references cached here at init — zero getElementById in hot paths
+const DOM = {
+    init() {
+        const g = id => document.getElementById(id);
+        this.speed     = g('speed');     this.heading   = g('heading');
+        this.altitude  = g('altitude');  this.distance  = g('distance');
+        this.vsi       = g('vsi');       this.tripTime  = g('trip-time');
+        this.fuelRem   = g('fuel-rem');  this.timeRem   = g('time-rem');
+        this.destId    = g('dest-id');   this.destEta   = g('dest-eta');
+        this.wptBlock  = g('wpt-block'); this.wptAdd    = g('wpt-add-btn');
+        this.wxBlock   = g('wx-block');  this.wxTemp    = g('wx-temp');
+        this.wxFeels   = g('wx-feels');  this.wxHum     = g('wx-hum');
+        this.tripBtn   = g('trip-btn');  this.powerBlk  = g('power-block');
+        this.wattsNow  = g('watts-now'); this.vo2Disp   = g('vo2-display');
+        this.svgGps    = g('svg-gps');   this.svgWx     = g('svg-wx');
+        this.arVideo   = g('ar-video');  this.atsBadge  = g('ats-badge');
+        this.ctrlCraft = g('ctrl-craft-btn'); this.ctrlTheme = g('ctrl-theme-btn');
+    }
+};
 const ThemeCache = {
     update() {
         const s = getComputedStyle(document.body);
@@ -856,7 +935,7 @@ const TripLogger = {
         trips.unshift({
             id: Date.now(), date: new Date().toLocaleDateString(),
             distance: STATE.dist.toFixed(1),
-            duration: document.getElementById('trip-time').innerText,
+            duration: DOM.tripTime.innerText,
             maxSpeed: Math.round(STATE.maxSpd),
             maxAlt: Math.round(STATE.maxAltFt),
             avgWatts, hazards: STATE.hazardCount,
@@ -950,7 +1029,7 @@ const GPX = {
         if (STATE.gpxWaypoints.length > 0) {
             const last = STATE.gpxWaypoints[STATE.gpxWaypoints.length - 1];
             STATE.activeDest = { lat: last.lat, lon: last.lon, name: 'GPX END' };
-            document.getElementById('dest-id').innerText = 'GPX END';
+            DOM.destId.innerText = 'GPX END';
         }
 
         document.getElementById('gpx-status').innerText = `✓ ${STATE.gpxWaypoints.length} pts loaded: ${name}`;
@@ -1069,11 +1148,11 @@ const PowerCalc = {
 
         const avgW = STATE.wattsHistory.length
             ? Math.round(STATE.wattsHistory.reduce((a,b)=>a+b,0) / STATE.wattsHistory.length) : 0;
-        document.getElementById('watts-now').innerText = watts || '--';
+        DOM.wattsNow.innerText = watts || '--';
         const vo2 = this.estimateVO2(avgW);
-        document.getElementById('vo2-display').innerText = vo2 ? `VO₂≈${vo2} · HW:${hw>=0?'+':''}${hw}` : `HW:${hw>=0?'+':''}${hw}`;
+        DOM.vo2Disp.innerText = vo2 ? `VO₂≈${vo2} · HW:${hw>=0?'+':''}${hw}` : `HW:${hw>=0?'+':''}${hw}`;
 
-        document.getElementById('power-block').style.display = STATE.craftMode === 2 ? 'block' : 'none';
+        DOM.powerBlk.style.display = STATE.craftMode === 2 ? 'block' : 'none';
     }
 };
 
@@ -1096,7 +1175,6 @@ const Hardware = {
     handleOrientation(e) {
         if (e.beta === null) return;
         const k = 0.08;
-        // gamma * 0.5: halves raw tilt for natural-feeling horizon response
         const rawLean = Math.max(-45, Math.min(45, (e.gamma || 0) * 0.5));
         STATE.leanAngle  = STATE.leanAngle  * (1-k) + rawLean * k;
         STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 90) * k;
@@ -1110,7 +1188,7 @@ const DeadReckoning = {
         STATE.drStartTs = 0;
         STATE.drLat = STATE.lat;
         STATE.drLon = STATE.lon;
-        const el = document.getElementById('svg-gps');
+        const el = DOM.svgGps;
         el.textContent = '🛰️ 3D';
         el.setAttribute('fill', 'var(--primary)');
     },
@@ -1121,7 +1199,7 @@ const DeadReckoning = {
         STATE.drStartTs = Date.now();
         STATE.drLat = STATE.lat;
         STATE.drLon = STATE.lon;
-        const el = document.getElementById('svg-gps');
+        const el = DOM.svgGps;
         el.textContent = '⚠ DR';
         el.setAttribute('fill', '#f59e0b');
     },
@@ -1167,7 +1245,6 @@ const HazardEngine = {
             }
         }
 
-        // Speak closest — throttled 30s, count unique encounters only
         if (closest && (now - STATE.lastSpokenTs > 30000 || STATE.lastSpokenObstacle !== closest.obs)) {
             const clock = Math.round(closest.rel / 30 + 12) % 12 || 12;
             const typeStr = closest.obs.type === 'aerodrome' ? 'airport' : closest.obs.type;
@@ -1364,7 +1441,7 @@ window.Mesh = {
                 this.connected = true;
                 document.getElementById('mesh-status').innerText = '✅ SQUAD LINKED!';
                 document.getElementById('mesh-status').style.color = 'var(--nav)';
-                const atsBadge = document.getElementById('ats-badge');
+                const atsBadge = DOM.atsBadge;
                 if (atsBadge) { atsBadge.textContent = '● ATS'; atsBadge.classList.add('linked'); }
                 vibrate([100, 100, 300]);
                 setTimeout(() => closeModal('mesh-modal'), 1500);
@@ -1374,7 +1451,7 @@ window.Mesh = {
             } else if (s === 'disconnected' || s === 'failed') {
                 this.connected = false;
                 if (this._telTimer) { clearInterval(this._telTimer); this._telTimer = null; }
-                const atsBadge2 = document.getElementById('ats-badge');
+                const atsBadge2 = DOM.atsBadge;
                 if (atsBadge2) { atsBadge2.textContent = '● ATS'; atsBadge2.classList.remove('linked'); }
                 STATE.squadData = null;
             }
@@ -1447,7 +1524,6 @@ window.Radio = {
     audioEl: document.getElementById('squad-music'),
     currentStation: null, currentStationName: null,
     isBroadcasting: false, broadcastStartTime: 0,
-    // GENRES — long-press music strip dots to cycle genre set
     GENRES: [
         {name:'⚡ ELECTRONIC', presets:[
             ['https://ice2.somafm.com/defcon-128-mp3',          'DEF CON RADIO'],
@@ -1490,15 +1566,12 @@ window.Radio = {
     PRESETS: [], // filled from GENRES[0].presets on init
 
     initDots() {
-        // Initialize PRESETS from first genre
         this.PRESETS = this.GENRES[0].presets;
         this.PRESETS.forEach(([url, name], i) => {
             const btn = document.getElementById('mdot-' + i);
             if (!btn) return;
             btn.title = name;
-            // Short tap: play station
             btn.addEventListener('click', () => this.playStation(url, name));
-            // Long press (600ms): cycle genre
             let lt = null;
             btn.addEventListener('touchstart', () => { lt = setTimeout(() => this.cycleGenre(), 600); }, {passive:true});
             btn.addEventListener('touchend',   () => clearTimeout(lt));
@@ -1605,7 +1678,6 @@ window.Radio = {
             else { bcBtn.style.background='transparent'; bcBtn.style.color='var(--squad)'; bcBtn.innerText='📡 BROADCAST TO SQUAD'; }
         }
 
-        // Sync dots, fullscreen bar, and bezel labels from PRESETS
         this.PRESETS.forEach(([url], i) => {
             const dot = document.getElementById('mdot-' + i);
             const fsBtn = document.getElementById('fs-s' + i);
@@ -1837,7 +1909,6 @@ const API = {
             const res = await fetch(url);
             const d = await res.json();
             const cw = d.current ?? d.current_weather ?? {};
-            // New API returns fields directly on cw
             STATE.windSpeed = cw.windspeed_10m ?? cw.windspeed ?? 0;
             STATE.windDir   = cw.winddirection_10m ?? cw.winddirection ?? 0;
             STATE.wxCode    = cw.weathercode ?? 0;
@@ -1871,7 +1942,6 @@ const API = {
             const lookaheadText = lookaheadWarning ? ` ${lookaheadWarning}` : '';
             const rideScore = score <= 2 ? 'Excellent riding conditions.' : score <= 4 ? 'Good riding conditions.' : score <= 6 ? 'Fair conditions, ride with care.' : 'Poor conditions, ride cautiously.';
             const wxSpeech = `${conditionText}, ${temp} degrees${windText}. ${rideScore}${lookaheadText}`;
-            // Store for deferred playback — speak on next user interaction if not yet spoken
             if (!STATE._wxSpoken) {
                 STATE._pendingWxSpeech = wxSpeech;
                 const speakOnce = () => {
@@ -1889,7 +1959,7 @@ const API = {
                 MathUtils.sayQueue(wxSpeech);
             }
 
-            const wxSvg = document.getElementById('svg-wx');
+            const wxSvg = DOM.svgWx;
             if (score >= 6) {
                 wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan fill="var(--danger)"> ⚡${score}/10</tspan>`;
             } else if (score >= 3) {
@@ -1901,13 +1971,12 @@ const API = {
                 wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan> H:${high}° L:${low}°</tspan>`;
             }
 
-            // Update on-screen temp/humidity block
-            const wxBlock = document.getElementById('wx-block');
+            const wxBlock = DOM.wxBlock;
             if (wxBlock) {
                 wxBlock.style.display = 'block';
-                document.getElementById('wx-temp').innerText = STATE.tempF;
-                document.getElementById('wx-feels').innerText = `FEELS ${STATE.feelsLike}°`;
-                document.getElementById('wx-hum').innerText = `💧 ${STATE.humidity}%`;
+                DOM.wxTemp.innerText = STATE.tempF;
+                DOM.wxFeels.innerText = `FEELS ${STATE.feelsLike}°`;
+                DOM.wxHum.innerText = `💧 ${STATE.humidity}%`;
             }
             const baseTheme = (STATE.wxIsDay && STATE.wxCode < 45) ? 'day-mode' : '';
             STATE.baseTheme = baseTheme;
@@ -1923,7 +1992,7 @@ const API = {
                 STATE.lastTemp = Math.round(cw.temperature);
             }
         } catch(e) {
-            document.getElementById('svg-wx').textContent = '☁️ WX: ERR';
+            DOM.svgWx.textContent = '☁️ WX: ERR';
         }
         // Kick off radar fetch (non-blocking, 5-min cache)
         this.fetchRadar(lat, lon);
@@ -1939,11 +2008,9 @@ const API = {
         if (Date.now() < STATE.radarNextFetch) return;
         STATE.radarNextFetch = Date.now() + 300000; // refresh every 5 min
         try {
-            // Get latest frame timestamps
             const meta = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json());
             const frame = meta.radar?.past?.slice(-1)[0];
             if (!frame) return;
-            // Convert lat/lon to tile coordinates at zoom 5 (~600mi coverage)
             const z = 5;
             const x = Math.floor((lon + 180) / 360 * Math.pow(2, z));
             const yRad = lat * Math.PI / 180;
@@ -1985,13 +2052,13 @@ window.Avionics = {
     toggleCraft() {
         STATE.craftMode = (STATE.craftMode + 1) % 3;
         const svgEl = document.getElementById('svg-craft'); // may be null — element removed from bezel
-        const ctrlBtn = document.getElementById('ctrl-craft-btn');
+        const ctrlBtn = DOM.ctrlCraft;
         const icons = ['🛩️','🛸','🚴'];
         const names = ['avionics','alien technology','cyber bike'];
         if (svgEl) svgEl.textContent = icons[STATE.craftMode];
         if (ctrlBtn) ctrlBtn.innerText = icons[STATE.craftMode];
         MathUtils.say(names[STATE.craftMode] + ' engaged');
-        document.getElementById('power-block').style.display = STATE.craftMode === 2 ? 'block' : 'none';
+        DOM.powerBlk.style.display = STATE.craftMode === 2 ? 'block' : 'none';
         API.applyTheme();
     },
 
@@ -2001,7 +2068,7 @@ window.Avionics = {
         const icons = ['🌤️','☀️','🌙'];
         STATE.themeOverride = modes[(modes.indexOf(STATE.themeOverride) + 1) % modes.length];
         const idx = modes.indexOf(STATE.themeOverride);
-        const ctrlBtn = document.getElementById('ctrl-theme-btn');
+        const ctrlBtn = DOM.ctrlTheme;
         if (ctrlBtn) ctrlBtn.innerText = icons[idx];
         MathUtils.say(labels[idx] + ' mode');
         API.applyTheme();
@@ -2019,7 +2086,7 @@ window.Avionics = {
         STATE.burnRate = parseFloat(document.getElementById('input-burn-rate').value) || 2.0;
         STATE.riderWeightLbs = parseFloat(document.getElementById('input-weight').value) || 165;
         CFG.RIDER_WEIGHT_LBS = STATE.riderWeightLbs;
-        document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
+        DOM.fuelRem.innerText = STATE.fuelCap.toFixed(1);
         closeModal('fuel-modal');
     },
 
@@ -2044,17 +2111,17 @@ window.Avionics = {
     },
 
     setDest(lat, lon, name) {
-        const wptBlock = document.getElementById('wpt-block');
-        const wptAdd   = document.getElementById('wpt-add-btn');
+        const wptBlock = DOM.wptBlock;
+        const wptAdd   = DOM.wptAdd;
         if (lat === -1) {
             STATE.activeDest = null;
-            document.getElementById('dest-id').innerText = '--';
-            document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
+            DOM.destId.innerText = '--';
+            DOM.destEta.innerText = '-- MI | ETA --:--';
             if (wptBlock) wptBlock.style.display = 'none';
             if (wptAdd)   wptAdd.style.display   = 'block';
         } else {
             STATE.activeDest = { lat, lon, name };
-            document.getElementById('dest-id').innerText = (name||'WPT').substring(0,8).toUpperCase();
+            DOM.destId.innerText = (name||'WPT').substring(0,8).toUpperCase();
             if (wptBlock) wptBlock.style.display = 'block';
             if (wptAdd)   wptAdd.style.display   = 'none';
             MathUtils.say('Waypoint entered');
@@ -2082,10 +2149,7 @@ const Graphics = {
         const glassColor = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
 
         const invRoll = -roll * CFG.TO_RAD;
-        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
-        ctx.shadowOffsetX = 8*Math.cos(invRoll) - 15*Math.sin(invRoll);
-        ctx.shadowOffsetY = 8*Math.sin(invRoll) + 15*Math.cos(invRoll);
-
+        
         ctx.fillStyle = shadeColor;
         ctx.beginPath(); this._rr(ctx, -12, 12, 24, 4, 2); ctx.fill();
         ctx.fillStyle = baseColor;
@@ -2098,7 +2162,7 @@ const Graphics = {
 
         let fg = ctx.createLinearGradient(-5, 0, 5, 0);
         fg.addColorStop(0, shadeColor); fg.addColorStop(0.3, highlightColor); fg.addColorStop(1, shadeColor);
-        ctx.fillStyle = fg; ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+        ctx.fillStyle = fg;
         ctx.beginPath();
         ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
         ctx.fill();
@@ -2138,56 +2202,81 @@ const Graphics = {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
-        ctx.scale(1.1, 1.1);
+        ctx.scale(1.15, 1.15);
         ctx.rotate(roll * CFG.TO_RAD);
 
-        const isDark = !document.body.classList.contains('day-mode') || document.body.classList.contains('ufo-mode');
-        const hullMid = isDark ? '#222' : '#94a3b8';
-        const hullBase = isDark ? '#050505' : '#334155';
-        const hullLight = isDark ? '#555' : '#cbd5e1';
-        const hullDark = isDark ? '#0a0a0a' : '#475569';
-        const primColor = STATE.clrPrimary;
-        const secColor = STATE.clrSecondary;
+        const t = Date.now();
+        const spin = t / Math.max(80, 200 - STATE.spdMph * 1.5);
+        const pulse = Math.sin(t / 400) * 0.5 + 0.5;          // 0–1 pulsing
+        const glow  = `rgba(${pulse<0.5?'57,255,20':'0,255,255'},${0.5+pulse*0.5})`;
+        const c1 = STATE.clrPrimary;   // green in ufo-mode
+        const c2 = STATE.clrSecondary; // magenta
 
-        const invRoll = -roll * CFG.TO_RAD;
-        ctx.shadowColor = 'rgba(57,255,20,0.25)'; ctx.shadowBlur = 15;
-        ctx.shadowOffsetX = 8*Math.cos(invRoll)-15*Math.sin(invRoll);
-        ctx.shadowOffsetY = 8*Math.sin(invRoll)+15*Math.cos(invRoll);
-
-        let lg = ctx.createRadialGradient(0,0,2,0,0,26);
-        lg.addColorStop(0, hullMid); lg.addColorStop(1, hullBase);
-        ctx.fillStyle = lg; ctx.beginPath(); ctx.ellipse(0,0,26,8,0,0,Math.PI*2); ctx.fill();
-        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-
-        const time = Date.now() / (150 - Math.min(STATE.spdMph, 120));
-        for (let i=0; i<8; i++) {
-            const a = time + i*Math.PI/4;
-            const lx = Math.cos(a)*25, ly = Math.sin(a)*7.5;
-            if (ly > -1) {
-                ctx.fillStyle = secColor;
-                ctx.beginPath(); ctx.ellipse(lx,ly,3,1.5,0,0,Math.PI*2);
-                ctx.shadowColor = secColor; ctx.shadowBlur = 8; ctx.fill();
-                ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-            }
-        }
-
-        let ug = ctx.createLinearGradient(-10,-15,10,5);
-        ug.addColorStop(0, hullLight); ug.addColorStop(0.5, hullMid); ug.addColorStop(1, hullDark);
-        ctx.fillStyle = ug; ctx.beginPath(); ctx.ellipse(0,-2,16,6,0,0,Math.PI*2); ctx.fill();
-
-        let dg = ctx.createRadialGradient(0,-6,1,0,-4,10);
-        dg.addColorStop(0, '#ffffff'); dg.addColorStop(0.3, '#00eeff'); dg.addColorStop(1, '#003344');
-        ctx.fillStyle = dg; ctx.beginPath(); ctx.ellipse(0,-5,10,5,0,0,Math.PI*2); ctx.fill();
-
-        ctx.shadowColor = secColor; ctx.shadowBlur = 15;
-        ctx.fillStyle = '#fff';
-        [[0,7,8,2],[- 12,5,4,1],[12,5,4,1]].forEach(([ex,ey,rx,ry]) => {
-            ctx.beginPath(); ctx.ellipse(ex,ey,rx,ry,0,0,Math.PI*2); ctx.fill();
+        // ── Tractor beam (below saucer) ──
+        const beam = ctx.createLinearGradient(0, 4, 0, 30);
+        beam.addColorStop(0, `rgba(0,255,255,${0.3 + pulse*0.2})`);
+        beam.addColorStop(1, 'rgba(0,255,255,0)');
+        ctx.fillStyle = beam;
+        ctx.beginPath(); ctx.moveTo(-6,4); ctx.lineTo(-18,30); ctx.lineTo(18,30); ctx.lineTo(6,4); ctx.closePath(); ctx.fill();
+        // Tractor beam reticle rings
+        [0.4, 0.7, 1.0].forEach((f, i) => {
+            const ry = 4 + f * 26, rw = 6 + f * 12;
+            const alpha = (0.6 - f * 0.4) * (0.5 + 0.5 * Math.sin(t/300 + i));
+            ctx.beginPath(); ctx.ellipse(0, ry, rw, rw * 0.3, 0, 0, Math.PI*2);
+            ctx.strokeStyle = `rgba(0,255,255,${alpha})`; ctx.lineWidth = 1; ctx.stroke();
         });
-        ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
 
-        ctx.beginPath(); ctx.ellipse(0,-7,4,1.5,0,0,Math.PI*2);
-        ctx.fillStyle = '#ffffff'; ctx.globalAlpha = 0.5; ctx.fill(); ctx.globalAlpha = 1;
+        // ── Rotating outer energy ring ──
+        ctx.save();
+        ctx.rotate(spin);
+        for (let i = 0; i < 12; i++) {
+            const a = i * Math.PI / 6;
+            const ex = Math.cos(a) * 27, ey = Math.sin(a) * 8;
+            const bright = 0.3 + 0.7 * Math.pow(Math.sin(spin * 3 + i * 0.5) * 0.5 + 0.5, 2);
+            ctx.fillStyle = i % 3 === 0 ? `rgba(57,255,20,${bright})` : `rgba(0,255,255,${bright * 0.6})`;
+            ctx.beginPath(); ctx.arc(ex, ey, i % 3 === 0 ? 2.5 : 1.5, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+
+        // ── Hull lower disc ──
+        const hullGrad = ctx.createRadialGradient(0, 2, 2, 0, 2, 28);
+        hullGrad.addColorStop(0, '#1a1a2e');
+        hullGrad.addColorStop(0.6, '#16213e');
+        hullGrad.addColorStop(1, '#0f3460');
+        ctx.fillStyle = hullGrad;
+        ctx.beginPath(); ctx.ellipse(0, 2, 27, 8.5, 0, 0, Math.PI * 2); ctx.fill();
+        // Hull rim highlight
+        ctx.beginPath(); ctx.ellipse(0, 2, 27, 8.5, 0, 0, Math.PI*2);
+        ctx.strokeStyle = glow; ctx.lineWidth = 1.2; ctx.stroke();
+
+        // ── Raised dome ──
+        const domeGrad = ctx.createRadialGradient(-4, -10, 1, 0, -6, 14);
+        domeGrad.addColorStop(0, 'rgba(180,255,255,0.9)');
+        domeGrad.addColorStop(0.4, 'rgba(0,200,200,0.6)');
+        domeGrad.addColorStop(1, 'rgba(0,50,80,0.8)');
+        ctx.fillStyle = domeGrad;
+        ctx.beginPath(); ctx.ellipse(0, -4, 13, 10, 0, Math.PI, Math.PI*2); ctx.fill();
+        // Dome rim
+        ctx.beginPath(); ctx.ellipse(0, -4, 13, 3.5, 0, 0, Math.PI*2);
+        ctx.strokeStyle = `rgba(0,255,255,0.4)`; ctx.lineWidth = 1; ctx.stroke();
+        // Dome scanline highlight
+        ctx.beginPath(); ctx.ellipse(-3, -8, 5, 2.5, -0.4, 0, Math.PI);
+        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
+
+        // ── Under-hull panel lines ──
+        ctx.strokeStyle = 'rgba(0,255,200,0.2)'; ctx.lineWidth = 0.8;
+        [-15, -7, 0, 7, 15].forEach(px => {
+            ctx.beginPath(); ctx.moveTo(px, -1); ctx.lineTo(px * 0.7, 6); ctx.stroke();
+        });
+
+        // ── Central landing light ──
+        const lGrad = ctx.createRadialGradient(0, 5, 0, 0, 5, 5);
+        lGrad.addColorStop(0, `rgba(255,255,255,${0.8 + pulse * 0.2})`);
+        lGrad.addColorStop(0.5, `rgba(0,255,200,${0.5 + pulse * 0.3})`);
+        lGrad.addColorStop(1, 'rgba(0,255,200,0)');
+        ctx.fillStyle = lGrad;
+        ctx.beginPath(); ctx.arc(0, 5, 5, 0, Math.PI*2); ctx.fill();
+
         ctx.restore();
     },
 
@@ -2195,60 +2284,156 @@ const Graphics = {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
-        ctx.scale(1.2, 1.2);
+        ctx.scale(1.25, 1.25);
         ctx.rotate(roll * CFG.TO_RAD);
 
-        const invRoll = -roll * CFG.TO_RAD;
-        ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 10;
-        ctx.shadowOffsetX = 8*Math.cos(invRoll)-15*Math.sin(invRoll);
-        ctx.shadowOffsetY = 8*Math.sin(invRoll)+15*Math.cos(invRoll);
+        const frameCol  = isDark ? '#64748b' : '#334155';
+        const accentCol = STATE.clrWind;         // rider jersey
+        const skinCol   = '#f5c5a3';
+        const tyreCol   = isDark ? '#334155' : '#1e293b';
+        const rimCol    = isDark ? '#94a3b8' : '#64748b';
 
-        const shirtCol = STATE.clrWind;
-        const bikeCol = isDark ? '#475569' : '#94a3b8';
+        // Crank cycle — speed-proportional pedal cadence
+        const cadence = STATE.active ? Date.now() / Math.max(60, 260 - STATE.spdMph * 2) : 0;
 
-        ctx.fillStyle = isDark ? '#64748b' : '#111';
-        ctx.beginPath(); this._rr(ctx, -1.5, -28, 3, 14, 1.5); ctx.fill();
+        // ── Wheels (behind frame) ──
+        const wheelR = 14;
+        const fwx = 18, bwx = -18, wy = 8; // front/rear wheel centers
 
-        ctx.strokeStyle = bikeCol; ctx.lineWidth = 3; ctx.lineCap = 'round';
-        ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(0,-22); ctx.stroke();
+        const drawWheel = (wx) => {
+            // Tyre
+            ctx.beginPath(); ctx.arc(wx, wy, wheelR, 0, Math.PI*2);
+            ctx.strokeStyle = tyreCol; ctx.lineWidth = 3; ctx.stroke();
+            // Rim
+            ctx.beginPath(); ctx.arc(wx, wy, wheelR - 2, 0, Math.PI*2);
+            ctx.strokeStyle = rimCol; ctx.lineWidth = 1; ctx.stroke();
+            // Hub
+            ctx.beginPath(); ctx.arc(wx, wy, 2, 0, Math.PI*2);
+            ctx.fillStyle = rimCol; ctx.fill();
+            // Spokes (4 rotating with cadence for rear, independent for front)
+            const spinPhase = wx > 0 ? cadence * 0.7 : cadence;
+            ctx.strokeStyle = rimCol; ctx.lineWidth = 0.8;
+            for (let i = 0; i < 6; i++) {
+                const a = spinPhase + i * Math.PI / 3;
+                ctx.beginPath();
+                ctx.moveTo(wx, wy);
+                ctx.lineTo(wx + Math.cos(a) * (wheelR - 2), wy + Math.sin(a) * (wheelR - 2));
+                ctx.stroke();
+            }
+        };
 
-        ctx.strokeStyle = bikeCol; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(-13,-20); ctx.lineTo(13,-20); ctx.stroke();
+        drawWheel(fwx); drawWheel(bwx);
 
-        ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+        // ── Diamond frame ──
+        // Key points: BB (bottom bracket), rear hub, front hub, head tube top, seat tube top
+        const bb   = [0, 4];       // bottom bracket
+        const rear = [bwx, wy];    // rear axle
+        const front= [fwx, wy];    // front axle
+        const htt  = [14, -10];    // head tube top (fork crown)
+        const htb  = [16, -2];     // head tube bottom
+        const stt  = [-4, -16];    // seat tube top
 
-        ctx.strokeStyle = shirtCol; ctx.lineWidth = 3.5;
-        ctx.beginPath(); ctx.moveTo(-9,-9); ctx.lineTo(-11,-20); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(9,-9); ctx.lineTo(11,-20); ctx.stroke();
+        ctx.strokeStyle = frameCol; ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        // Main triangle: BB → seat tube → rear axle stay
+        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(...stt); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...stt); ctx.lineTo(...rear); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(...rear); ctx.stroke();
+        // Down tube + top tube: BB → head tube, seat → head tube
+        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(...htb); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...stt); ctx.lineTo(...htt); ctx.stroke();
+        // Head tube
+        ctx.beginPath(); ctx.moveTo(...htt); ctx.lineTo(...htb); ctx.stroke();
+        // Fork
+        ctx.beginPath(); ctx.moveTo(...htb); ctx.lineTo(...front); ctx.stroke();
 
-        ctx.fillStyle = shirtCol;
+        // Chain stays (seat tube to rear axle — second pair for realism)
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(bb[0], bb[1]+1); ctx.lineTo(rear[0], rear[1]); ctx.stroke();
+
+        // Crank arm + pedals (rotating)
+        const crankLen = 6;
+        const pedLx = bb[0] + Math.cos(cadence) * crankLen;
+        const pedLy = bb[1] + Math.sin(cadence) * crankLen;
+        const pedRx = bb[0] - Math.cos(cadence) * crankLen;
+        const pedRy = bb[1] - Math.sin(cadence) * crankLen;
+
+        ctx.strokeStyle = rimCol; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(pedLx, pedLy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(...bb); ctx.lineTo(pedRx, pedRy); ctx.stroke();
+        // Pedal blocks
+        ctx.fillStyle = '#cbd5e1'; ctx.lineWidth = 0;
+        [[pedLx, pedLy], [pedRx, pedRy]].forEach(([px,py]) => {
+            ctx.save(); ctx.translate(px, py);
+            ctx.fillRect(-3, -1, 6, 2);
+            ctx.restore();
+        });
+
+        // Chainring
+        ctx.beginPath(); ctx.arc(...bb, 5, 0, Math.PI*2);
+        ctx.strokeStyle = rimCol; ctx.lineWidth = 1.2; ctx.stroke();
+
+        // ── Rider (aero tuck — back ~40° forward) ──
+        // 3-segment legs: hip→knee→ankle→pedal (IK following crank)
+        const hipL = [-2, -3], hipR = [2, -3];
+
+        const drawLeg = (hipPt, pedalPt, phase) => {
+            // Simple 2-joint IK: place knee between hip and pedal
+            const hx=hipPt[0], hy=hipPt[1], px=pedalPt[0], py=pedalPt[1];
+            const thighLen=10, shinLen=10;
+            const dist = Math.hypot(px-hx, py-hy);
+            const d = Math.min(dist, thighLen + shinLen - 0.5);
+            const a0 = Math.atan2(py-hy, px-hx);
+            const cos_a = (d*d + thighLen*thighLen - shinLen*shinLen) / (2*d*thighLen);
+            const a1 = a0 - Math.acos(Math.max(-1, Math.min(1, cos_a))) * Math.sign(phase);
+            const kx = hx + Math.cos(a1)*thighLen, ky = hy + Math.sin(a1)*thighLen;
+            ctx.strokeStyle = isDark ? '#94a3b8' : '#475569'; ctx.lineWidth = 3; ctx.lineCap='round';
+            ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(kx,ky); ctx.lineTo(px,py); ctx.stroke();
+        };
+
+        drawLeg(hipL, [pedLx, pedLy],  1);
+        drawLeg(hipR, [pedRx, pedRy], -1);
+
+        // Handlebar reach
+        const barX = 12, barY = -13;
+
+        // Saddle
+        ctx.strokeStyle = frameCol; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-8, -17); ctx.lineTo(-2, -17); ctx.stroke();
+        // Seat post
+        ctx.beginPath(); ctx.moveTo(-4, -17); ctx.lineTo(stt[0]+1, stt[1]); ctx.stroke();
+
+        // Body (aero tuck — back at 40°)
+        ctx.fillStyle = accentCol;
         ctx.beginPath();
-        ctx.moveTo(-5.5,5); ctx.lineTo(-9,-9); ctx.quadraticCurveTo(0,-12,9,-9); ctx.lineTo(5.5,5);
-        ctx.fill();
+        ctx.moveTo(-3, -4);               // hip
+        ctx.lineTo(barX - 2, barY + 2);  // shoulder
+        ctx.lineTo(barX, barY - 1);       // top
+        ctx.lineTo(barX - 4, barY - 5);  // back of jersey
+        ctx.lineTo(-3, -7);               // seat
+        ctx.closePath(); ctx.fill();
 
-        let hg = ctx.createRadialGradient(0,-13,1,0,-10,6);
-        hg.addColorStop(0, '#cbd5e1'); hg.addColorStop(1, '#475569');
-        ctx.fillStyle = hg; ctx.beginPath(); ctx.ellipse(0,-12,5.5,6.5,0,0,Math.PI*2); ctx.fill();
+        // Arms (tucked forward on bars)
+        ctx.strokeStyle = accentCol; ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(barX - 2, barY + 2);   // shoulder
+        ctx.lineTo(barX + 2, barY + 1);   // elbow
+        ctx.lineTo(barX + 4, barY - 2);   // hands on bar
+        ctx.stroke();
 
-        const cycle = STATE.active ? Date.now() / (300 - Math.min(STATE.spdMph*2, 250)) : 0;
-        const lpY = 3 + Math.cos(cycle)*6;
-        const rpY = 3 + Math.cos(cycle+Math.PI)*6;
-        const lkY = 6 + Math.cos(cycle-0.5)*4;
-        const rkY = 6 + Math.cos(cycle+Math.PI-0.5)*4;
+        // Handlebar
+        ctx.strokeStyle = frameCol; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(htt[0]-1, htt[1]+2); ctx.lineTo(barX+5, barY-2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(barX+2, barY-4); ctx.lineTo(barX+6, barY-1); ctx.stroke();
 
-        ctx.fillStyle = '#ddd';
-        ctx.fillRect(-6, lpY-2, 3, 4);
-        ctx.fillRect(3, rpY-2, 3, 4);
-
-        ctx.strokeStyle = isDark ? '#94a3b8' : '#1e293b'; ctx.lineWidth = 4.5; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(-4,4); ctx.lineTo(-7,lkY); ctx.lineTo(-4.5,lpY); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(4,4); ctx.lineTo(7,rkY); ctx.lineTo(4.5,rpY); ctx.stroke();
-
-        ctx.fillStyle = isDark ? '#334155' : '#0f172a';
-        ctx.beginPath(); this._rr(ctx, -4, 3, 8, 6, 2.5); ctx.fill();
-
-        ctx.fillStyle = isDark ? '#475569' : '#111';
-        ctx.beginPath(); this._rr(ctx, -2.5, 7, 5, 20, 2); ctx.fill();
+        // Helmet
+        ctx.fillStyle = accentCol;
+        ctx.beginPath(); ctx.ellipse(barX - 5, barY - 7, 5, 4, -0.4, 0, Math.PI*2); ctx.fill();
+        // Visor
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath(); ctx.ellipse(barX - 2, barY - 4, 3, 1.5, -0.4, 0, Math.PI); ctx.fill();
+        // Face
+        ctx.fillStyle = skinCol;
+        ctx.beginPath(); ctx.ellipse(barX - 3, barY - 5, 3, 2.5, -0.3, 0, Math.PI*2); ctx.fill();
 
         ctx.restore();
     },
@@ -2263,7 +2448,6 @@ const Graphics = {
     _drawARHUD(ctx) {
         const W = STATE.w, H = STATE.h;
         ctx.save();
-        // Semi-transparent panels
         ctx.fillStyle = 'rgba(0,0,0,0.48)';
         const rr = (x,y,w,h) => { ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x,y,w,h,8); else ctx.rect(x,y,w,h); ctx.fill(); };
         rr(8, H*0.25, 115, STATE.tempF ? 150 : 115);
@@ -2292,7 +2476,6 @@ const Graphics = {
             out(`💧 ${STATE.humidity}%`, 14, y, 10, blue);
         }
 
-        // Right panel
         out(`${STATE.spdMph.toFixed(1)}`, W-14, H*0.16, 40, cyan, 'right');
         out('MPH',  W-14, H*0.16+22, 12, cyan, 'right');
         out('📏',   W-14, H*0.16+40, 10, sec, 'right');
@@ -2300,7 +2483,6 @@ const Graphics = {
         out('⏱',   W-14, H*0.16+74, 10, sec, 'right');
         out(STATE._timeDisplay || '00:00', W-14, H*0.16+89, 15, pri, 'right');
 
-        // Heading — top center
         out(`${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`,
             W/2, H*0.065, 22, cyan, 'center');
 
@@ -2313,13 +2495,12 @@ const Graphics = {
 
         // ── AR: draw camera frame onto canvas FIRST so recorder captures it ──
         if (AR.active) {
-            const vid = document.getElementById('ar-video');
+            const vid = DOM.arVideo;
             if (vid && vid.readyState >= 2) {
                 ctx.save();
                 ctx.drawImage(vid, 0, 0, STATE.w, STATE.h);
                 ctx.restore();
             }
-            // Draw HUD data overlay onto canvas — DOM elements not captured by recorder
             Graphics._drawARHUD(ctx);
         }
 
@@ -2335,9 +2516,7 @@ const Graphics = {
         ctx.clip();
 
         // In AR mode: camera IS the world. Skip SVS rotation/grid/sky/ground.
-        // _drawARHUD already drew the instrument panels. Just draw nav overlays and exit.
         if (AR.active) {
-            // Wind vector in AR (screen space, no rotation)
             if (STATE.windSpeed > 0) {
                 const downwind = STATE.windDir + 180;
                 const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
@@ -2544,7 +2723,26 @@ const Graphics = {
         ctx.restore(); // un-roll pitch/lean
         ctx.restore(); // un-clip
 
-        // ── Radar rings ──
+        // ── UFO mode: animated energy ring on pod border ──
+        if (isUFO) {
+            const t = Date.now();
+            const ringR = STATE.r - 2;
+            ctx.save();
+            // Primary rotating dash ring
+            ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, ringR, 0, Math.PI*2);
+            ctx.setLineDash([8, 12]);
+            ctx.lineDashOffset = -(t / 30) % 20;
+            ctx.strokeStyle = `rgba(57,255,20,${0.5 + Math.sin(t/600)*0.3})`;
+            ctx.lineWidth = 1.5; ctx.stroke();
+            // Secondary counter-rotating ring
+            ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, ringR - 4, 0, Math.PI*2);
+            ctx.setLineDash([4, 20]);
+            ctx.lineDashOffset = (t / 50) % 24;
+            ctx.strokeStyle = `rgba(176,38,255,${0.4 + Math.sin(t/400+1)*0.2})`;
+            ctx.lineWidth = 1; ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }
         ctx.strokeStyle = STATE.clrSecondary;
         ctx.globalAlpha = 0.18; ctx.lineWidth = 1;
         [0.33, 0.66, 0.98].forEach(f => {
@@ -2556,25 +2754,21 @@ const Graphics = {
         if (!AR.active) {
         ctx.save();
 
-        // Speed arc (bottom-right quadrant, 120° sweep, fills with speed)
         {
             const arcR = STATE.r * 0.88;
             const startA = 0.35 * Math.PI; // ~63° from right
             const endA   = 1.15 * Math.PI; // ~207° from right — 144° total
             const maxSpd = 120; // mph full scale
             const frac   = Math.min(1, STATE.spdMph / maxSpd);
-            // Background track
             ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, arcR, startA, endA);
             ctx.strokeStyle = 'rgba(148,163,184,0.12)'; ctx.lineWidth = 3; ctx.globalAlpha = 1;
             ctx.stroke();
-            // Speed fill — colour shifts green→yellow→red
             if (frac > 0) {
                 const hue = Math.round(120 - frac * 120); // 120=green → 0=red
                 ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, arcR, startA, startA + frac * (endA - startA));
                 ctx.strokeStyle = `hsl(${hue},100%,55%)`; ctx.lineWidth = 3;
                 ctx.globalAlpha = 0.65; ctx.stroke();
             }
-            // Speed number tick at 30/60/90 mph
             ctx.globalAlpha = 0.4; ctx.fillStyle = STATE.clrSecondary;
             ctx.font = `bold 7px monospace`; ctx.textAlign = 'center';
             [30, 60, 90].forEach(s => {
@@ -2586,7 +2780,6 @@ const Graphics = {
             });
         }
 
-        // Compass rose — small tick marks at 45° intervals around bezel inner edge
         {
             const tickR = STATE.r - 6;
             const cardinals = [['N',0],['NE',45],['E',90],['SE',135],['S',180],['SW',225],['W',270],['NW',315]];
@@ -2602,7 +2795,6 @@ const Graphics = {
                 ctx.lineTo(STATE.cx + Math.cos(a) * (tickR - tickLen), STATE.cy + Math.sin(a) * (tickR - tickLen));
                 ctx.stroke();
             }
-            // Cardinal letters
             ctx.globalAlpha = 0.5; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
             cardinals.forEach(([lbl, deg]) => {
                 const a = (deg - STATE.hdg - 90) * CFG.TO_RAD;
@@ -2612,7 +2804,6 @@ const Graphics = {
             });
         }
 
-        // G-meter arc — left side, short arc showing lateral G load
         if (Math.abs(STATE.gX) > 0.05) {
             const gR = STATE.r * 0.72;
             const gBase = Math.PI; // left side
@@ -2670,7 +2861,6 @@ const Graphics = {
             const edgeDist = STATE.r - 18;
             const wx = STATE.cx + Math.cos(wRel) * edgeDist;
             const wy = STATE.cy + Math.sin(wRel) * edgeDist;
-            // Arrow length breathes at 1.2s period, scaled by wind speed
             const pulse = Math.sin(Date.now() / 600) * 0.12 + 0.88;
             const arrowLen = Math.max(10, Math.min(28, STATE.windSpeed * 1.1)) * pulse;
             const headSz = arrowLen * 0.38;
@@ -2691,7 +2881,6 @@ const Graphics = {
                 ctx.beginPath(); ctx.moveTo(0, -arrowLen * 0.1); ctx.lineTo(headSz * 0.7, -headSz * 0.4); ctx.stroke();
             }
             ctx.shadowBlur = 0; ctx.restore();
-            // Speed label next to arrow, not rotated
             ctx.save();
             ctx.fillStyle = '#ff6b00'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
             const lblR = edgeDist - arrowLen - 3;
@@ -2751,23 +2940,23 @@ const Graphics = {
         }
 
         // ── Trip clock, fuel, power tick ──
-        document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
+        DOM.speed.innerText = STATE.spdMph.toFixed(1);
         if (STATE.active && STATE.startTs > 0) {
             const elapsed = Date.now() - STATE.startTs;
             const h = Math.floor(elapsed/3600000);
             const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
             const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
             STATE._timeDisplay = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
-            document.getElementById('trip-time').innerText = STATE._timeDisplay;
+            DOM.tripTime.innerText = STATE._timeDisplay;
 
             const hrs = elapsed/3600000;
             STATE.fuelRem = Math.max(0, STATE.fuelCap - hrs*STATE.burnRate);
-            document.getElementById('fuel-rem').innerText = STATE.fuelRem.toFixed(1);
+            DOM.fuelRem.innerText = STATE.fuelRem.toFixed(1);
             if (STATE.fuelRem > 0) {
                 const tte = STATE.fuelRem / STATE.burnRate;
                 STATE._tteDisplay = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
-                document.getElementById('time-rem').innerText = STATE._tteDisplay;
-                document.getElementById('time-rem').className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
+                DOM.timeRem.innerText = STATE._tteDisplay;
+                DOM.timeRem.className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
             }
 
             PowerCalc.tick(STATE.spdMph);
@@ -2783,7 +2972,7 @@ const Graphics = {
 /* ═══════════════════════════════════════════════════════ ENGINE ══ */
 window.Engine = {
     async toggleTrip() {
-        const btn = document.getElementById('trip-btn');
+        const btn = DOM.tripBtn;
         if (!STATE.active) {
             STATE.dist = 0; STATE.maxSpd = 0; STATE.maxAltFt = 0; STATE.peakVsiFpm = 0;
             STATE.hazardCount = 0; STATE.tcasAudioPlayed = false;
@@ -2794,7 +2983,6 @@ window.Engine = {
             btn.innerText = 'END TRIP';
             btn.style.borderColor = 'var(--danger)';
             btn.style.color = 'var(--danger)';
-            // Speak pending weather first, then trip start — clear deferred listeners
             if (STATE._pendingWxSpeech) {
                 MathUtils.sayQueue(STATE._pendingWxSpeech);
                 STATE._pendingWxSpeech = null;
@@ -2822,13 +3010,13 @@ window.Engine = {
             STATE.tripElapsed = STATE.startTs > 0 ? Date.now() - STATE.startTs : 0;
 
             STATE.activeDest = null;
-            document.getElementById('dest-id').innerText = '--';
-            document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
-            const wb = document.getElementById('wpt-block');
-            const wa = document.getElementById('wpt-add-btn');
+            DOM.destId.innerText = '--';
+            DOM.destEta.innerText = '-- MI | ETA --:--';
+            const wb = DOM.wptBlock;
+            const wa = DOM.wptAdd;
             if (wb) wb.style.display = 'none';
             if (wa) wa.style.display = 'block';
-            document.getElementById('trip-time').innerText = '00:00';
+            DOM.tripTime.innerText = '00:00';
 
             API.applyTheme();
             Graphics.renderHUD();
@@ -2873,9 +3061,9 @@ window.Engine = {
         if (STATE.spdMph > STATE.maxSpd) STATE.maxSpd = STATE.spdMph;
         if (STATE.altFt > STATE.maxAltFt) STATE.maxAltFt = STATE.altFt;
 
-        document.getElementById('speed').innerText = STATE.spdMph.toFixed(1);
-        document.getElementById('heading').innerText = `${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`;
-        document.getElementById('altitude').innerText = Math.round(STATE.altFt);
+        DOM.speed.innerText = STATE.spdMph.toFixed(1);
+        DOM.heading.innerText = `${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`;
+        DOM.altitude.innerText = Math.round(STATE.altFt);
 
         if (!STATE.active) {
             if (STATE.spdMph > CFG.AUTO_START_MPH) { STATE._moveCount = (STATE._moveCount||0)+1; if (STATE._moveCount >= 3) Engine.toggleTrip(); }
@@ -2887,7 +3075,7 @@ window.Engine = {
             if (STATE.lastLat != null) {
                 const seg = MathUtils.getDistAndBearing(STATE.lastLat, STATE.lastLon, STATE.lat, STATE.lon);
                 STATE.dist += seg.dist;
-                document.getElementById('distance').innerText = STATE.dist.toFixed(1);
+                DOM.distance.innerText = STATE.dist.toFixed(1);
             }
 
             if (dtHrs > 0) {
@@ -2905,7 +3093,7 @@ window.Engine = {
                 if (Math.abs(smoothVsi) > 200) STATE._rapidCount = Math.min(5, STATE._rapidCount + 1);
                 else STATE._rapidCount = Math.max(0, STATE._rapidCount - 1);
 
-                const vsiEl = document.getElementById('vsi');
+                const vsiEl = DOM.vsi;
                 if (STATE._rapidCount >= 3) {
                     STATE._vsiDisplay = `${displayVsi > 0 ? '+' : ''}${Math.round(displayVsi)} FPM`;
                     vsiEl.innerText = STATE._vsiDisplay;
@@ -2935,7 +3123,7 @@ window.Engine = {
                     const etaDate = new Date(Date.now() + (dist/STATE.spdMph)*3600000);
                     etaStr = `${etaDate.getHours().toString().padStart(2,'0')}:${etaDate.getMinutes().toString().padStart(2,'0')}`;
                 }
-                document.getElementById('dest-eta').innerText = `${dist.toFixed(1)} MI | ETA ${etaStr}`;
+                DOM.destEta.innerText = `${dist.toFixed(1)} MI | ETA ${etaStr}`;
             }
         }
 
@@ -2944,7 +3132,6 @@ window.Engine = {
 
         if (Mesh.connected) Mesh.sendTelemetry();
 
-        // Throttled environment refresh: >1.5 miles or >15 min
         const now = Date.now();
         if (STATE.apiLat == null ||
             MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.apiLat, STATE.apiLon).dist > 1.5 ||
@@ -2960,6 +3147,7 @@ window.Engine = {
     },
 
     init() {
+        DOM.init();
         UX.initDrag();
         UX.handleResize();
         window.addEventListener('resize', () => {
@@ -2993,7 +3181,7 @@ window.Engine = {
             }
         });
 
-        document.getElementById('fuel-rem').innerText = STATE.fuelCap.toFixed(1);
+        DOM.fuelRem.innerText = STATE.fuelCap.toFixed(1);
 
         const hr = new Date().getHours();
         const isNight = hr >= 19 || hr < 7;
@@ -3002,13 +3190,12 @@ window.Engine = {
 
         const icons = ['🛩️','🛸','🚴'];
         const themeIcons = ['🌤️','☀️','🌙'];
-        const ctrlCraft = document.getElementById('ctrl-craft-btn');
-        const ctrlTheme = document.getElementById('ctrl-theme-btn');
+        const ctrlCraft = DOM.ctrlCraft;
+        const ctrlTheme = DOM.ctrlTheme;
         if (ctrlCraft) ctrlCraft.innerText = icons[STATE.craftMode];
         if (ctrlTheme) ctrlTheme.innerText = themeIcons[['auto','day','night'].indexOf(STATE.themeOverride)];
-        document.getElementById('power-block').style.display = 'none';
-        // ats-badge starts dim (no squad link)
-        const atsBadge0 = document.getElementById('ats-badge');
+        DOM.powerBlk.style.display = 'none';
+        const atsBadge0 = DOM.atsBadge;
         if (atsBadge0) atsBadge0.classList.remove('linked');
 
         API.applyTheme();
@@ -3036,7 +3223,7 @@ window.Engine = {
             );
         }
 
-        setInterval(() => { if (STATE.gpsLost && STATE.active) DeadReckoning.tick(); }, 1000);
+        STATE._drTimer = setInterval(() => { if (STATE.gpsLost && STATE.active) DeadReckoning.tick(); }, 1000);
     }
 };
 
@@ -3049,7 +3236,7 @@ const AR = {
 
     async toggle() {
         const btn = document.getElementById('ar-btn');
-        const vid = document.getElementById('ar-video');
+        const vid = DOM.arVideo;
 
         if (!this.active) {
             try {
@@ -3075,7 +3262,6 @@ const AR = {
                 STATE.isFullscreen = true;
                 UX.handleResize();
 
-                // Log camera track info for debug
                 const track = this.stream.getVideoTracks()[0];
                 const settings = track.getSettings();
                 console.log(`AR camera: ${settings.width}×${settings.height} @ ${settings.frameRate}fps`);
@@ -3090,7 +3276,7 @@ const AR = {
 
     _deactivate() {
         const btn = document.getElementById('ar-btn');
-        const vid = document.getElementById('ar-video');
+        const vid = DOM.arVideo;
         if (this.stream) this.stream.getTracks().forEach(t => t.stop());
         this.stream = null;
         vid.srcObject = null;
@@ -3235,9 +3421,9 @@ const AR = {
 
         // ── Speed warning ──
         if (this.speedWarnMph > 0 && spdMph >= this.speedWarnMph) {
-            document.getElementById('speed').classList.add('ar-warn');
+            DOM.speed.classList.add('ar-warn');
         } else {
-            document.getElementById('speed').classList.remove('ar-warn');
+            DOM.speed.classList.remove('ar-warn');
         }
     }
 };
@@ -3303,13 +3489,6 @@ const Recorder = {
         ind.innerText = `⏺ REC ${this.TIMELAPSE_FPS}fps`;
         vibrate([200, 100, 200]);
         MathUtils.say('Recording started');
-
-        if (this.pipStream) this._drawPip();
-    },
-
-    _drawPip() {
-        // PiP drawing is now integrated into Graphics.renderHUD() — no separate rAF needed
-        // Kept as stub for backward compatibility
     },
 
     _stop() {
@@ -3384,9 +3563,7 @@ const Horn = {
     phaser() {
         const ac = this._ac();
         const dur = 0.65;
-        // Carrier: swept sine
         const car = ac.createOscillator();
-        // Modulator: sine at 18 Hz for rapid vibrato
         const mod = ac.createOscillator();
         const modGain = ac.createGain();
         const masterGain = ac.createGain();
@@ -3436,7 +3613,6 @@ const Horn = {
             [1400, 1600].forEach(f => { // higher freq = more authentic
                 const o = ac.createOscillator(), g = ac.createGain();
                 o.frequency.value = f; o.type = 'square';
-                // Sharp attack
                 g.gain.setValueAtTime(0, ac.currentTime + s);
                 g.gain.linearRampToValueAtTime(0.22, ac.currentTime + s + 0.01);
                 g.gain.setValueAtTime(0.22, ac.currentTime + e - 0.02);
@@ -3449,7 +3625,6 @@ const Horn = {
     // ── Krusty clownhorn: classic bicycle horn WAAH WAAH + "on your left!" ──
     krusty() {
         const ac = this._ac();
-        // Two-tone descending honk pairs — classic bicycle squeeze horn
         [[0, 523, 349], [0.22, 523, 349], [0.44, 440, 294]].forEach(([t, f1, f2]) => {
             [f1, f2].forEach((f, fi) => {
                 const o = ac.createOscillator(), g = ac.createGain();
@@ -3544,6 +3719,3 @@ Engine.init();
 </script>
 </body>
 </html>
-
-
-
