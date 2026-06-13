@@ -104,16 +104,47 @@
 
         .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; }
 
+        /* ptt-btn is now inside #bottom-bar — no absolute positioning needed */
         #ptt-btn {
-            position: absolute; bottom: 15px; left: 50%; transform: translateX(-50%);
-            background: transparent; border: 1px solid var(--secondary); color: var(--secondary);
+            background: rgba(0,0,0,0.3); border: 1px solid var(--secondary); color: var(--secondary);
             padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
-            cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15;
-            pointer-events: auto; text-shadow: var(--text-outline);
+            cursor: pointer; border-radius: 12px; transition: 0.2s;
+            pointer-events: auto; backdrop-filter: blur(2px);
         }
-        #ptt-btn.recording { color: var(--bg); background: var(--danger); border-color: var(--danger); text-shadow: none; box-shadow: 0 0 15px var(--danger); }
+        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 15px var(--danger); }
+        #bottom-bar {
+            position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 8px; align-items: center; z-index: 15; pointer-events: auto;
+        }
+        #ats-badge {
+            font-family: var(--font-main); font-size: 10px; font-weight: 900;
+            color: var(--secondary); opacity: 0.4; padding: 5px 8px;
+            border: 1px solid var(--secondary); border-radius: 10px;
+            cursor: pointer; transition: 0.3s; white-space: nowrap;
+            background: rgba(0,0,0,0.3); backdrop-filter: blur(2px);
+        }
+        #ats-badge.linked { color: var(--squad); border-color: var(--squad); opacity: 1; box-shadow: 0 0 8px rgba(0,255,255,0.4); }
+        body.fullscreen #bottom-bar { bottom: max(85px, 11vh); }
+
+        /* Fullscreen: station bar at BOTTOM, below music strip */
+        body.fullscreen #svg-bezel text:first-of-type { opacity: 0.45; }
+        #fs-station-bar {
+            display: none; position: fixed; bottom: 110px; left: 0; right: 0; z-index: 30;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(6px);
+            padding: 7px 10px; gap: 4px; justify-content: space-around; align-items: center;
+        }
+        body.fullscreen #fs-station-bar { display: flex; }
+        .fs-station-btn {
+            flex: 1; background: transparent; border: 1px solid rgba(255,255,255,0.18);
+            color: var(--secondary); font-family: var(--font-main); font-size: 10px;
+            font-weight: 900; padding: 6px 4px; border-radius: 8px; cursor: pointer;
+            transition: 0.2s; text-align: center; white-space: nowrap;
+        }
+        .fs-station-btn.active { background: var(--squad); color: #000; border-color: var(--squad); }
+        /* Station picker in fullscreen: opens upward from bottom bar */
+        body.fullscreen #station-picker { position: fixed; bottom: 168px; top: auto; left: 50%; transform: translateX(-50%); }
         #trip-btn {
-            position: absolute; top: calc(50% + 52px); left: 50%; transform: translateX(-50%);
+            position: absolute; top: calc(50% + 42px); left: 50%; transform: translateX(-50%);
             background: var(--bg); color: var(--primary); border: 2px solid var(--primary);
             padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
             cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px;
@@ -142,9 +173,9 @@
         .ctrl-btn.ctrl-craft { border-color: var(--nav); color: var(--nav); font-size: 18px; padding: 6px 12px; }
         .ctrl-btn.ctrl-theme { font-size: 16px; padding: 6px 12px; }
 
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(8px); }
-        .modal-content { background: var(--modal-bg); border: 2px solid var(--primary); border-radius: 15px; padding: 20px; width: 85%; max-height: 85%; overflow-y: auto; text-align: left; box-shadow: 0 10px 40px rgba(0,0,0,0.4); pointer-events: auto; }
-        .modal-content h3 { text-align: center; margin-top: 0; letter-spacing: 2px; color: var(--secondary); font-weight: 900; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.82); z-index: 100; justify-content: center; align-items: center; backdrop-filter: blur(10px); }
+        .modal-content { background: var(--modal-bg); border: 1.5px solid rgba(148,163,184,0.3); border-radius: 18px; padding: 22px; width: 85%; max-width: 400px; max-height: 85%; overflow-y: auto; text-align: left; box-shadow: 0 20px 60px rgba(0,0,0,0.6); pointer-events: auto; }
+        .modal-content h3 { text-align: center; margin-top: 0; letter-spacing: 2px; color: var(--secondary); font-weight: 900; text-transform: uppercase; border-bottom: 1px solid rgba(148,163,184,0.15); padding-bottom: 10px; }
         .dest-item { padding: 12px; border-bottom: 1px solid rgba(128,128,128,0.2); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
         .dest-item:hover { background: rgba(128,128,128,0.1); }
         .dest-name { font-weight: 900; font-size: 14px; color: var(--primary); }
@@ -319,26 +350,20 @@
         }
         /* Trip and PTT buttons reposition in fullscreen */
         body.fullscreen #trip-btn {
-            top: auto !important;
-            bottom: max(24px, 3vh) !important;
-            left: 50% !important;
-            transform: translateX(-50%) !important;
-            font-size: 13px !important;
-            padding: 10px 22px !important;
-        }
-        body.fullscreen #ptt-btn {
-            bottom: max(80px, 10vh) !important;
+            top: auto !important; bottom: max(24px, 3vh) !important;
+            left: 50% !important; transform: translateX(-50%) !important;
+            font-size: 13px !important; padding: 10px 22px !important;
         }
 
         #music-strip {
-            position: absolute; bottom: 68px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 8px; align-items: center; z-index: 15;
-            pointer-events: auto; background: rgba(0,0,0,0.35); border-radius: 16px; padding: 5px 8px;
+            position: absolute; bottom: 42px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 6px; align-items: center; z-index: 15;
+            pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 14px; padding: 4px 8px;
         }
         body.fullscreen #music-strip {
-            position: fixed; top: 12px; bottom: auto; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.55); border-radius: 20px; padding: 6px 12px;
-            backdrop-filter: blur(4px); z-index: 30;
+            position: fixed; bottom: 70px; top: auto; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); border-radius: 20px; padding: 6px 12px;
+            backdrop-filter: blur(5px); z-index: 30;
         }
         .music-dot {
             width: 8px; height: 8px; border-radius: 50%;
@@ -450,6 +475,14 @@
                 <div class="val"><span id="watts-now">0</span><span class="unit">W</span></div>
                 <div class="sub-val" id="vo2-display">VO₂: --</div>
             </div>
+
+            <!-- Weather block — shown once wx data arrives -->
+            <div id="wx-block" style="display:none;">
+                <div class="lbl" style="margin-top:6px;">🌡️ TEMP</div>
+                <div class="val"><span id="wx-temp">--</span><span class="unit">°F</span></div>
+                <div class="sub-val" id="wx-feels">FEELS --°</div>
+                <div class="sub-val" id="wx-hum">💧 --%</div>
+            </div>
         </div>
 
         <div class="overlay right-stats">
@@ -462,10 +495,14 @@
             <div class="lbl">⏱️ TIME</div>
             <div class="val" id="trip-time">00:00</div>
 
-            <!-- WPT: tappable → open waypoint picker -->
-            <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="margin-top:6px;cursor:pointer;">🎯 WPT</div>
-            <div class="val clickable nav-color" onclick="Avionics.openDest()" style="cursor:pointer;"><span id="dest-id">NONE</span></div>
-            <div class="sub-val nav-color" id="dest-eta" style="line-height:1.0;">-- MI | ETA --:--</div>
+            <!-- WPT: tappable → open waypoint picker. Hidden when no waypoint set. -->
+            <div id="wpt-block" style="display:none;">
+                <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="margin-top:6px;cursor:pointer;">🎯 WPT</div>
+                <div class="val clickable nav-color" onclick="Avionics.openDest()" style="cursor:pointer;"><span id="dest-id">--</span></div>
+                <div class="sub-val nav-color" id="dest-eta" style="line-height:1.0;">-- MI | ETA --:--</div>
+            </div>
+            <!-- Tap target even when wpt-block hidden, to open picker -->
+            <div class="lbl clickable nav-color" id="wpt-add-btn" onclick="Avionics.openDest()" style="margin-top:6px;cursor:pointer;opacity:0.5;">+ WPT</div>
         </div>
 
         <!-- Dual-concentric bezel -->
@@ -480,22 +517,23 @@
                     <feDropShadow dx="0" dy="0" stdDeviation="5" flood-color="var(--halo)"/>
                 </filter>
             </defs>
-            <text font-family="var(--font-main)" font-size="10" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
+            <text font-family="var(--font-main)" font-size="10" font-weight="900" letter-spacing="0.8" filter="url(#svg-halo)">
                 <textPath href="#outer-top-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📜 LOGS ]</textPath>
-                <textPath href="#outer-bot-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📻 COMMS ]</textPath>
-                <textPath href="#outer-bot-curve" startOffset="78%" text-anchor="middle" fill="var(--secondary)">[ 📡 MESH ]</textPath>
+                <textPath href="#outer-top-curve" startOffset="78%" text-anchor="middle" fill="var(--secondary)">[ 📻 RADIO ]</textPath>
+                <textPath href="#outer-bot-curve" startOffset="22%" text-anchor="middle" fill="var(--secondary)">[ 📡 MESH ]</textPath>
+                <textPath href="#outer-bot-curve" startOffset="78%" text-anchor="middle" fill="var(--secondary)">[ ⚙️ MORE ]</textPath>
             </text>
             <text font-family="var(--font-main)" font-size="12" font-weight="900" letter-spacing="1" filter="url(#svg-halo)">
-                <textPath href="#inner-top-curve" startOffset="50%" text-anchor="middle" id="svg-ats" fill="var(--secondary)">● ATS</textPath>
-                <textPath href="#inner-bot-curve" startOffset="26%" text-anchor="middle" id="svg-gps"   fill="var(--secondary)">🛰️ SRCH</textPath>
-                <textPath href="#inner-bot-curve" startOffset="74%" text-anchor="middle" id="svg-wx"    fill="var(--secondary)">☁️ WX</textPath>
+                <textPath href="#inner-bot-curve" startOffset="26%" text-anchor="middle" id="svg-gps" fill="var(--secondary)">🛰️ SRCH</textPath>
+                <textPath href="#inner-bot-curve" startOffset="74%" text-anchor="middle" id="svg-wx"  fill="var(--secondary)">☁️ WX</textPath>
             </text>
         </svg>
 
-        <!-- Hit zones: outer orbit -->
+        <!-- Hit zones: outer arc — LOGS, RADIO, MESH, MORE -->
         <div class="hit-zone" id="hit-logs"  onclick="TripLogger.openModal()"  title="Logs"></div>
-        <div class="hit-zone" id="hit-comms" onclick="Radio.openModal()"        title="Comms"></div>
+        <div class="hit-zone" id="hit-radio" onclick="Radio.openModal()"        title="Radio"></div>
         <div class="hit-zone" id="hit-mesh"  onclick="Mesh.openModal()"         title="Mesh"></div>
+        <div class="hit-zone" id="hit-more"  onclick="Avionics.openFuel()"      title="Settings"></div>
         <!-- Hit zones: inner orbit -->
         <div class="hit-zone" id="hit-ats"   onclick="Avionics.openDest()"      title="Waypoint"></div>
         <div class="hit-zone" id="hit-gps"   title="GPS Status"></div>
@@ -507,9 +545,14 @@
                     background:transparent;cursor:pointer;z-index:20;pointer-events:auto;"></div>
 
         <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
-        <button id="ptt-btn"
-            onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
-            ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
+
+        <!-- Bottom row: ATS status badge + PTT side by side -->
+        <div id="bottom-bar">
+            <span id="ats-badge" onclick="Mesh.openModal()" title="Squad link status">● ATS</span>
+            <button id="ptt-btn"
+                onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
+                ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
+        </div>
 
         <!-- Mini music strip — tap to cycle station, long-press for picker, ▶ to play/pause -->
         <div id="music-strip">
@@ -521,16 +564,16 @@
         </div>
 
         <div id="station-picker">
-            <button onclick="Radio.playStation('https://streams.di.fm/di_vocalchillout','VOCAL TRANCE');Radio.closePicker()">🎤 VOCAL TRANCE</button>
-            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE STATION');Radio.closePicker()">🚀 SOMA SPACE STN</button>
-            <button onclick="Radio.playStation('https://streams.di.fm/di_drumnbass','DRUM & BASS');Radio.closePicker()">🥁 DRUM &amp; BASS</button>
-            <button onclick="Radio.playStation('https://streams.di.fm/di_goatrance','GOA TRANCE');Radio.closePicker()">🌀 GOA TRANCE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/dronezone-128-mp3','DRONE ZONE');Radio.closePicker()">🌀 DRONE ZONE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SPACE STATION');Radio.closePicker()">🚀 SPACE STATION</button>
             <button onclick="Radio.playStation('https://ice1.somafm.com/deepspaceone-128-mp3','DEEP SPACE ONE');Radio.closePicker()">🌌 DEEP SPACE ONE</button>
-            <button onclick="Radio.playStation('https://streams.di.fm/di_soulfulhouse','SOULFUL HOUSE');Radio.closePicker()">🏠 SOULFUL HOUSE</button>
-            <button onclick="Radio.playStation('https://streams.di.fm/di_progressive','PROGRESSIVE');Radio.closePicker()">⚡ PROGRESSIVE</button>
             <button onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD');Radio.closePicker()">🥗 GROOVE SALAD</button>
-            <button onclick="Radio.playStation('https://streams.di.fm/di_psytrance','PSY TRANCE');Radio.closePicker()">🌈 PSY TRANCE</button>
-            <button onclick="Radio.playStation('https://streams.di.fm/di_liquiddnb','LIQUID DnB');Radio.closePicker()">💧 LIQUID DnB</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/lush-128-mp3','LUSH');Radio.closePicker()">🌿 LUSH</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/illstreet-128-mp3','ILL STREET BLUES');Radio.closePicker()">🎷 ILL STREET</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/thistle-128-mp3','THISTLE RADIO');Radio.closePicker()">🏴󠁧󠁢󠁳󠁣󠁴󠁿 THISTLE</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/metal-128-mp3','METAL DETECTOR');Radio.closePicker()">🤘 METAL</button>
+            <button onclick="Radio.playStation('https://ice3.somafm.com/brfm-128-mp3','BAY AREA RADIO');Radio.closePicker()">📻 BAY AREA</button>
+            <button onclick="Radio.playStation('https://ice1.somafm.com/bootliquor-128-mp3','BOOT LIQUOR');Radio.closePicker()">🤠 BOOT LIQUOR</button>
             <button style="color:var(--danger);border-top:1px solid rgba(128,128,128,0.2);margin-top:4px;padding-top:10px;" onclick="Radio.closePicker()">✕ CLOSE</button>
         </div>
     </div>
@@ -541,10 +584,23 @@
         <button class="ctrl-btn ctrl-fs"    onclick="UX.toggleFullscreen()"    title="Fullscreen">⛶ FULL</button>
         <button class="ctrl-btn ctrl-theme" id="ctrl-theme-btn" onclick="Avionics.cycleTheme()" title="Day/Night/Auto">☀️</button>
         <button class="ctrl-btn" id="ctrl-rec-btn" onclick="Recorder.toggle()" title="Record montage" style="border-color:var(--danger);color:var(--danger);">⏺ REC</button>
+        <button class="ctrl-btn" id="ctrl-horn-btn"
+            onclick="Horn.beep()"
+            title="Horn — long-press to change"
+            style="border-color:#fbbf24;color:#fbbf24;font-size:16px;padding:6px 10px;">📯</button>
     </div><!-- /ctrl-bar -->
     <button id="ar-btn" onclick="AR.toggle()" title="Augmented Reality windshield mode">📷 AR</button>
     <button id="ar-nv-btn" onclick="AR.toggleNightVision()" title="Night vision boost" style="display:none;">🌙 NV</button>
 </div><!-- /hud-wrapper -->
+
+<!-- Fullscreen station bar — only visible in fullscreen mode -->
+<div id="fs-station-bar">
+    <button class="fs-station-btn" id="fs-s0" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1]);highlightBezelStation(0)">🌀 DRONE ZONE</button>
+    <button class="fs-station-btn" id="fs-s1" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1]);highlightBezelStation(1)">🚀 SPACE STN</button>
+    <button class="fs-station-btn" id="fs-s2" onclick="Radio.playStation(Radio.PRESETS[2][0],Radio.PRESETS[2][1]);highlightBezelStation(2)">🌌 DEEP SPACE</button>
+    <button class="fs-station-btn" id="fs-s3" onclick="Radio.playStation(Radio.PRESETS[3][0],Radio.PRESETS[3][1]);highlightBezelStation(3)">🥗 GROOVE</button>
+    <button class="fs-station-btn" onclick="Radio.openModal()" style="border-color:var(--wind);color:var(--wind);flex:0.5;">⋯</button>
+</div>
 
 <!-- PiP front camera (shown during recording) -->
 <video id="pip-video" autoplay playsinline muted></video>
@@ -578,10 +634,10 @@
 
         <!-- Station grid — tap = play immediately -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_vocalchillout','VOCAL TRANCE')">🎤 VOCAL TRANCE</button>
-            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE STATION')">🚀 SOMA SPACE</button>
-            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_drumnbass','DRUM & BASS')">🥁 DRUM &amp; BASS</button>
-            <button class="station-btn" onclick="Radio.playStation('https://streams.di.fm/di_goatrance','GOA TRANCE')">🌀 GOA TRANCE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/dronezone-128-mp3','DRONE ZONE')">🌀 DRONE ZONE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/spacestation-128-mp3','SPACE STATION')">🚀 SPACE STN</button>
+            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/deepspaceone-128-mp3','DEEP SPACE ONE')">🌌 DEEP SPACE</button>
+            <button class="station-btn" onclick="Radio.playStation('https://ice1.somafm.com/groovesalad-128-mp3','GROOVE SALAD')">🥗 GROOVE SALAD</button>
         </div>
 
         <!-- Now playing bar -->
@@ -717,6 +773,8 @@ const STATE = {
     dist: 0, startTs: 0, tripElapsed: 0, fuelCap: 5.0, burnRate: 2.0, riderWeightLbs: 165,
     airports: [], obstacles: [], activeDest: null,
     windSpeed: 0, windDir: 0, wxCode: 0, wxIsDay: true,
+    tempF: 0, humidity: 0, feelsLike: 0,
+    radarImg: null, radarNextFetch: 0, // Rainviewer radar tile
     _wxSpoken: false, _pendingWxSpeech: null,
     gX: 0, gY: 0, gZ: 0, leanAngle: 0, pitchAngle: 0,
     gridScroll: 0, tcasAudioPlayed: false,
@@ -1316,18 +1374,16 @@ window.Mesh = {
                 this.connected = true;
                 document.getElementById('mesh-status').innerText = '✅ SQUAD LINKED!';
                 document.getElementById('mesh-status').style.color = 'var(--nav)';
-                document.getElementById('svg-ats').textContent = '● ATS';
-                document.getElementById('svg-ats').setAttribute('fill', 'var(--squad)');
-                document.getElementById('svg-ats').style.fontWeight = '900';
+                const atsBadge = document.getElementById('ats-badge');
+                if (atsBadge) { atsBadge.textContent = '● ATS'; atsBadge.classList.add('linked'); }
                 vibrate([100, 100, 300]);
                 setTimeout(() => closeModal('mesh-modal'), 1500);
                 if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
                 setInterval(() => this.sendTelemetry(), 250);
             } else if (s === 'disconnected' || s === 'failed') {
                 this.connected = false;
-                document.getElementById('svg-ats').textContent = '● ATS';
-                document.getElementById('svg-ats').setAttribute('fill', 'var(--secondary)');
-                document.getElementById('svg-ats').style.opacity = '0.4';
+                const atsBadge2 = document.getElementById('ats-badge');
+                if (atsBadge2) { atsBadge2.textContent = '● ATS'; atsBadge2.classList.remove('linked'); }
                 STATE.squadData = null;
             }
         };
@@ -1378,6 +1434,10 @@ window.Mesh = {
 window.Comms = {
     startTx(e) {
         if (e?.preventDefault) e.preventDefault();
+        if (!Mesh.connected) {
+            Mesh.openModal(); // not paired yet — show pairing screen
+            return;
+        }
         document.getElementById('ptt-btn').classList.add('recording');
         document.getElementById('ptt-btn').innerText = '🔴 TX';
         if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true;
@@ -1397,10 +1457,10 @@ window.Radio = {
     isBroadcasting: false, broadcastStartTime: 0,
     _longPressTimer: null,
     PRESETS: [
-        ['https://streams.di.fm/di_vocalchillout','VOCAL TRANCE'],
-        ['https://ice1.somafm.com/spacestation-128-mp3','SOMA SPACE'],
-        ['https://streams.di.fm/di_drumnbass','DRUM & BASS'],
-        ['https://streams.di.fm/di_goatrance','GOA TRANCE'],
+        ['https://ice1.somafm.com/dronezone-128-mp3',    'DRONE ZONE'],
+        ['https://ice1.somafm.com/spacestation-128-mp3', 'SPACE STATION'],
+        ['https://ice1.somafm.com/deepspaceone-128-mp3', 'DEEP SPACE ONE'],
+        ['https://ice1.somafm.com/groovesalad-128-mp3',  'GROOVE SALAD'],
     ],
 
     initDots() {
@@ -1490,20 +1550,19 @@ window.Radio = {
             else { bcBtn.style.background='transparent'; bcBtn.style.color='var(--squad)'; bcBtn.innerText='📡 BROADCAST TO SQUAD'; }
         }
 
-        const stationUrls = [
-            'https://stream.nightride.fm/nightride.m4a',
-            'https://stream.nightride.fm/chillsynth.m4a',
-            'https://listen.moe/stream',
-            'https://radio.plaza.one/mp3'
-        ];
-        stationUrls.forEach((url, i) => {
+        // Sync dots, fullscreen bar, and bezel labels from PRESETS
+        this.PRESETS.forEach(([url], i) => {
             const dot = document.getElementById('mdot-' + i);
-            if (dot) dot.classList.toggle('active', this.currentStation === url && !this.audioEl.paused);
+            const fsBtn = document.getElementById('fs-s' + i);
+            const active = this.currentStation === url && !this.audioEl.paused;
+            if (dot) dot.classList.toggle('active', active);
+            if (fsBtn) fsBtn.classList.toggle('active', active);
         });
+        const activeIdx = this.PRESETS.findIndex(([url]) => url === this.currentStation);
+        if (activeIdx >= 0 && typeof highlightBezelStation !== 'undefined') highlightBezelStation(activeIdx);
 
-        document.querySelectorAll('.station-btn').forEach(btn => btn.classList.remove('playing'));
         document.querySelectorAll('.station-btn').forEach(btn => {
-            if (this.currentStation && btn.getAttribute('onclick')?.includes(this.currentStation)) btn.classList.add('playing');
+            btn.classList.toggle('playing', !!(this.currentStation && btn.getAttribute('onclick')?.includes(this.currentStation)));
         });
     },
 
@@ -1672,8 +1731,9 @@ window.UX = {
         };
 
         posTop('hit-logs',  rOuter, 0.22);
-        posBot('hit-comms', rOuter, 0.22);
-        posBot('hit-mesh',  rOuter, 0.78);
+        posTop('hit-radio', rOuter, 0.78);
+        posBot('hit-mesh',  rOuter, 0.22);
+        posBot('hit-more',  rOuter, 0.78);
         posTop('hit-ats',   rInner, 0.24);
         posBot('hit-gps',   rInner, 0.26);
         posBot('hit-wx',    rInner, 0.50);
@@ -1718,18 +1778,21 @@ const API = {
         } catch(e) {}
 
         try {
-            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=weathercode,windspeed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&windspeed_unit=mph&forecast_days=1`;
+            const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,weathercode,windspeed_10m,winddirection_10m,is_day&hourly=weathercode,windspeed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&temperature_unit=fahrenheit&windspeed_unit=mph&forecast_days=1`;
             const res = await fetch(url);
             const d = await res.json();
-            const cw = d.current_weather;
-            STATE.windSpeed = cw.windspeed;
-            STATE.windDir = cw.winddirection;
-            STATE.wxCode = cw.weathercode;
-            STATE.wxIsDay = cw.is_day === 1;
+            const cw = d.current ?? d.current_weather ?? {};
+            // New API returns fields directly on cw
+            STATE.windSpeed = cw.windspeed_10m ?? cw.windspeed ?? 0;
+            STATE.windDir   = cw.winddirection_10m ?? cw.winddirection ?? 0;
+            STATE.wxCode    = cw.weathercode ?? 0;
+            STATE.wxIsDay   = (cw.is_day ?? 1) === 1;
+            STATE.tempF     = Math.round(cw.temperature_2m ?? cw.temperature ?? 0);
+            STATE.humidity  = Math.round(cw.relative_humidity_2m ?? 0);
+            STATE.feelsLike = Math.round(cw.apparent_temperature ?? STATE.tempF);
 
-            const icon = this._wxIcon(cw.weathercode, STATE.wxIsDay);
-            const isNight = !STATE.wxIsDay;
-            const temp = Math.round(cw.temperature);
+            const icon = this._wxIcon(STATE.wxCode, STATE.wxIsDay);
+            const temp = STATE.tempF;
 
             STATE.wxConditionStr = `${icon} ${temp}°F ${STATE.windSpeed}mph wind`;
 
@@ -1783,7 +1846,15 @@ const API = {
                 wxSvg.innerHTML = `<tspan>${icon} ${temp}°</tspan><tspan> H:${high}° L:${low}°</tspan>`;
             }
 
-            let baseTheme = (STATE.wxIsDay && cw.weathercode < 45) ? 'day-mode' : '';
+            // Update on-screen temp/humidity block
+            const wxBlock = document.getElementById('wx-block');
+            if (wxBlock) {
+                wxBlock.style.display = 'block';
+                document.getElementById('wx-temp').innerText = STATE.tempF;
+                document.getElementById('wx-feels').innerText = `FEELS ${STATE.feelsLike}°`;
+                document.getElementById('wx-hum').innerText = `💧 ${STATE.humidity}%`;
+            }
+            const baseTheme = (STATE.wxIsDay && STATE.wxCode < 45) ? 'day-mode' : '';
             STATE.baseTheme = baseTheme;
             API.applyTheme();
 
@@ -1799,6 +1870,35 @@ const API = {
         } catch(e) {
             document.getElementById('svg-wx').textContent = '☁️ WX: ERR';
         }
+        // Kick off radar fetch (non-blocking, 5-min cache)
+        this.fetchRadar(lat, lon);
+    },
+
+    /**
+     * Fetch latest Rainviewer radar tile for current position.
+     * Rainviewer API is free and CORS-open. We fetch zoom=6 tile covering ~200mi radius.
+     * The tile is drawn onto the SVS canvas at low opacity as a radar background.
+     * Refreshes every 5 minutes.
+     */
+    async fetchRadar(lat, lon) {
+        if (Date.now() < STATE.radarNextFetch) return;
+        STATE.radarNextFetch = Date.now() + 300000; // refresh every 5 min
+        try {
+            // Get latest frame timestamps
+            const meta = await fetch('https://api.rainviewer.com/public/weather-maps.json').then(r=>r.json());
+            const frame = meta.radar?.past?.slice(-1)[0];
+            if (!frame) return;
+            // Convert lat/lon to tile coordinates at zoom 5 (~600mi coverage)
+            const z = 5;
+            const x = Math.floor((lon + 180) / 360 * Math.pow(2, z));
+            const yRad = lat * Math.PI / 180;
+            const y = Math.floor((1 - Math.log(Math.tan(yRad) + 1 / Math.cos(yRad)) / Math.PI) / 2 * Math.pow(2, z));
+            const tileUrl = `https://tilecache.rainviewer.com/v2/radar/${frame.path}/256/${z}/${x}/${y}/2/1_1.png`;
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.src = tileUrl;
+            img.onload = () => { STATE.radarImg = img; };
+        } catch(e) { /* radar unavailable — non-critical */ }
     },
 
     _wxIcon(code, isDay) {
@@ -1890,13 +1990,19 @@ window.Avionics = {
     },
 
     setDest(lat, lon, name) {
+        const wptBlock = document.getElementById('wpt-block');
+        const wptAdd   = document.getElementById('wpt-add-btn');
         if (lat === -1) {
             STATE.activeDest = null;
-            document.getElementById('dest-id').innerText = 'NONE';
+            document.getElementById('dest-id').innerText = '--';
             document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
+            if (wptBlock) wptBlock.style.display = 'none';
+            if (wptAdd)   wptAdd.style.display   = 'block';
         } else {
             STATE.activeDest = { lat, lon, name };
             document.getElementById('dest-id').innerText = (name||'WPT').substring(0,8).toUpperCase();
+            if (wptBlock) wptBlock.style.display = 'block';
+            if (wptAdd)   wptAdd.style.display   = 'none';
             MathUtils.say('Waypoint entered');
             vibrate([100, 50, 100]);
         }
@@ -1970,7 +2076,7 @@ const Graphics = {
 
         ctx.beginPath(); ctx.arc(0,15,1.5,0,Math.PI*2);
         ctx.fillStyle = isDark ? '#ff0000' : '#ef4444';
-        ctx.shadowBlur = 6; ctx.shadowColor = ctx.fillStyle; ctx.fill();
+        ctx.fill(); // no shadow — prevents the dot artifact below aircraft
         ctx.restore();
     },
 
@@ -2129,6 +2235,15 @@ const Graphics = {
         ctx.translate(STATE.cx, STATE.cy);
         ctx.rotate(-STATE.leanAngle * CFG.TO_RAD);
         const pitchOffset = STATE.pitchAngle * 2;
+
+        // ── Radar tile underlay (Rainviewer, refreshes every 5 min) ──
+        if (STATE.radarImg && !AR.active) {
+            ctx.save();
+            ctx.globalAlpha = 0.18;
+            ctx.drawImage(STATE.radarImg, 0, 0, STATE.w, STATE.h);
+            ctx.globalAlpha = 1;
+            ctx.restore();
+        }
 
         // ── Sky + Ground — suppressed in AR mode (camera is the background) ──
         if (!AR.active) {
@@ -2293,6 +2408,81 @@ const Graphics = {
         });
         ctx.globalAlpha = 1;
 
+        // ── Instrument arcs — drawn on canvas for density and 3D feel ──
+        // Speed arc: thin colored arc around inner radius proportional to speed
+        // Compass rose: small heading tick marks around the outer edge
+        // G-meter: small arc showing lateral G at the horizon line
+        ctx.save();
+
+        // Speed arc (bottom-right quadrant, 120° sweep, fills with speed)
+        {
+            const arcR = STATE.r * 0.88;
+            const startA = 0.35 * Math.PI; // ~63° from right
+            const endA   = 1.15 * Math.PI; // ~207° from right — 144° total
+            const maxSpd = 120; // mph full scale
+            const frac   = Math.min(1, STATE.spdMph / maxSpd);
+            // Background track
+            ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, arcR, startA, endA);
+            ctx.strokeStyle = 'rgba(148,163,184,0.12)'; ctx.lineWidth = 3; ctx.globalAlpha = 1;
+            ctx.stroke();
+            // Speed fill — colour shifts green→yellow→red
+            if (frac > 0) {
+                const hue = Math.round(120 - frac * 120); // 120=green → 0=red
+                ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, arcR, startA, startA + frac * (endA - startA));
+                ctx.strokeStyle = `hsl(${hue},100%,55%)`; ctx.lineWidth = 3;
+                ctx.globalAlpha = 0.65; ctx.stroke();
+            }
+            // Speed number tick at 30/60/90 mph
+            ctx.globalAlpha = 0.4; ctx.fillStyle = STATE.clrSecondary;
+            ctx.font = `bold 7px monospace`; ctx.textAlign = 'center';
+            [30, 60, 90].forEach(s => {
+                const f = s / maxSpd;
+                const a = startA + f * (endA - startA);
+                const tx = STATE.cx + Math.cos(a) * (arcR + 8);
+                const ty = STATE.cy + Math.sin(a) * (arcR + 8) + 3;
+                ctx.fillText(s, tx, ty);
+            });
+        }
+
+        // Compass rose — small tick marks at 45° intervals around bezel inner edge
+        {
+            const tickR = STATE.r - 6;
+            const cardinals = [['N',0],['NE',45],['E',90],['SE',135],['S',180],['SW',225],['W',270],['NW',315]];
+            ctx.globalAlpha = 0.3; ctx.lineWidth = 1.5;
+            for (let deg = 0; deg < 360; deg += 10) {
+                const a = (deg - STATE.hdg - 90) * CFG.TO_RAD;
+                const major = deg % 45 === 0;
+                const tickLen = major ? 8 : 4;
+                ctx.strokeStyle = major ? STATE.clrPrimary : STATE.clrSecondary;
+                ctx.globalAlpha = major ? 0.5 : 0.18;
+                ctx.beginPath();
+                ctx.moveTo(STATE.cx + Math.cos(a) * tickR, STATE.cy + Math.sin(a) * tickR);
+                ctx.lineTo(STATE.cx + Math.cos(a) * (tickR - tickLen), STATE.cy + Math.sin(a) * (tickR - tickLen));
+                ctx.stroke();
+            }
+            // Cardinal letters
+            ctx.globalAlpha = 0.5; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
+            cardinals.forEach(([lbl, deg]) => {
+                const a = (deg - STATE.hdg - 90) * CFG.TO_RAD;
+                const lr = tickR - 13;
+                ctx.fillStyle = deg % 90 === 0 ? STATE.clrPrimary : STATE.clrSecondary;
+                ctx.fillText(lbl, STATE.cx + Math.cos(a) * lr, STATE.cy + Math.sin(a) * lr + 3);
+            });
+        }
+
+        // G-meter arc — left side, short arc showing lateral G load
+        if (Math.abs(STATE.gX) > 0.05) {
+            const gR = STATE.r * 0.72;
+            const gBase = Math.PI; // left side
+            const gFrac = Math.max(-1, Math.min(1, STATE.gX / CFG.MAX_G));
+            const gEnd  = gBase + gFrac * 0.5; // ±0.5 rad = ±28°
+            ctx.globalAlpha = 0.55;
+            ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, gR, Math.min(gBase, gEnd), Math.max(gBase, gEnd));
+            ctx.strokeStyle = gFrac > 0 ? '#f59e0b' : STATE.clrWind; ctx.lineWidth = 3; ctx.stroke();
+        }
+
+        ctx.globalAlpha = 1; ctx.restore();
+
         // ── Fixed horizon reference line + slip ball (no rotation — SVS provides tilt) ──
         // The sky/ground already shows attitude. This is just a fixed center crosshair.
         ctx.save();
@@ -2330,31 +2520,39 @@ const Graphics = {
             }
         } // end if (STATE.lat && STATE.active) — nav overlay
 
-        // ── Windsock — shows always when wind data available, not just during trip ──
+        // ── Animated wind vector — pulsing arrow on bezel edge pointing downwind ──
         if (STATE.windSpeed > 0 && STATE.lat) {
-            const downwind = STATE.windDir + 180; // direction wind blows TO
+            const downwind = STATE.windDir + 180;
             const wRel = (downwind - STATE.hdg - 90) * CFG.TO_RAD;
-            const sockX = STATE.cx + Math.cos(wRel) * (STATE.r - 14);
-            const sockY = STATE.cy + Math.sin(wRel) * (STATE.r - 14);
-            const fill = Math.min(1, STATE.windSpeed / 25);
+            const edgeDist = STATE.r - 18;
+            const wx = STATE.cx + Math.cos(wRel) * edgeDist;
+            const wy = STATE.cy + Math.sin(wRel) * edgeDist;
+            // Arrow length breathes at 1.2s period, scaled by wind speed
+            const pulse = Math.sin(Date.now() / 600) * 0.12 + 0.88;
+            const arrowLen = Math.max(10, Math.min(28, STATE.windSpeed * 1.1)) * pulse;
+            const headSz = arrowLen * 0.38;
             ctx.save();
-            ctx.translate(sockX, sockY);
+            ctx.translate(wx, wy);
             ctx.rotate(wRel + Math.PI / 2);
-            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(0, -10); ctx.lineTo(0, 6); ctx.stroke();
-            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(0,-10); ctx.lineTo(-5,6); ctx.lineTo(5,6); ctx.closePath(); ctx.stroke();
-            if (fill > 0) {
-                const fillH = 16 * fill;
-                ctx.fillStyle = `rgba(255,107,0,${0.35 + fill * 0.55})`;
-                ctx.beginPath();
-                ctx.moveTo(0, -10);
-                ctx.lineTo(-5 * fill, -10 + fillH);
-                ctx.lineTo( 5 * fill, -10 + fillH);
-                ctx.closePath(); ctx.fill();
+            ctx.shadowColor = '#ff6b00'; ctx.shadowBlur = 7;
+            ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(0, -arrowLen * 0.5); ctx.lineTo(0, arrowLen * 0.4); ctx.stroke();
+            ctx.fillStyle = '#ff6b00';
+            ctx.beginPath();
+            ctx.moveTo(0, arrowLen * 0.5 + headSz * 0.6);
+            ctx.lineTo(-headSz * 0.5, arrowLen * 0.5 - headSz * 0.1);
+            ctx.lineTo( headSz * 0.5, arrowLen * 0.5 - headSz * 0.1);
+            ctx.closePath(); ctx.fill();
+            if (STATE.windSpeed > 15) { // barb for strong wind
+                ctx.strokeStyle = '#ff6b00'; ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.moveTo(0, -arrowLen * 0.1); ctx.lineTo(headSz * 0.7, -headSz * 0.4); ctx.stroke();
             }
-            ctx.fillStyle = '#ff6b00'; ctx.font = 'bold 8px monospace';
-            ctx.textAlign = 'center'; ctx.fillText(`${Math.round(STATE.windSpeed)}`, 0, 16);
+            ctx.shadowBlur = 0; ctx.restore();
+            // Speed label next to arrow, not rotated
+            ctx.save();
+            ctx.fillStyle = '#ff6b00'; ctx.font = 'bold 9px monospace'; ctx.textAlign = 'center';
+            const lblR = edgeDist - arrowLen - 3;
+            ctx.fillText(`${Math.round(STATE.windSpeed)}`, STATE.cx + Math.cos(wRel)*lblR, STATE.cy + Math.sin(wRel)*lblR + 3);
             ctx.restore();
         }
 
@@ -2380,15 +2578,19 @@ const Graphics = {
             }
         }
 
-        // ── Craft sprite — always centered, always nose-forward ──
-        // craftBank = 0: world tilts around fixed sprite (correct attitude indicator behavior)
-        // Small G-force shift gives subtle physical feel without double-rotation
+        // ── Craft sprite — counter-rotated so nose always points forward ──
+        // World canvas is rotated by -leanAngle; counter-rotate sprite by +leanAngle to cancel it
         const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
         const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
         if (!AR.active) {
+            ctx.save();
+            ctx.translate(STATE.cx, STATE.cy);
+            ctx.rotate(STATE.leanAngle * CFG.TO_RAD); // cancel the world rotation
+            ctx.translate(-STATE.cx, -STATE.cy);
             if (STATE.craftMode === 1) Graphics.drawUFO(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0);
             else if (STATE.craftMode === 2) Graphics.drawBike(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
             else Graphics.drawCessna(STATE.cx + craftShiftX, STATE.cy + craftShiftY, 0, isDark);
+            ctx.restore();
         }
 
         // ── AR windshield overlays (horizon, speed tape, reticles) ──
@@ -2436,6 +2638,12 @@ window.Engine = {
             btn.innerText = 'END TRIP';
             btn.style.borderColor = 'var(--danger)';
             btn.style.color = 'var(--danger)';
+            // Speak pending weather first, then trip start — clear deferred listeners
+            if (STATE._pendingWxSpeech) {
+                MathUtils.sayQueue(STATE._pendingWxSpeech);
+                STATE._pendingWxSpeech = null;
+                STATE._wxSpoken = true;
+            }
             MathUtils.sayQueue('Flight log started');
             vibrate([200]);
 
@@ -2458,8 +2666,12 @@ window.Engine = {
             STATE.tripElapsed = STATE.startTs > 0 ? Date.now() - STATE.startTs : 0;
 
             STATE.activeDest = null;
-            document.getElementById('dest-id').innerText = 'NONE';
+            document.getElementById('dest-id').innerText = '--';
             document.getElementById('dest-eta').innerText = '-- MI | ETA --:--';
+            const wb = document.getElementById('wpt-block');
+            const wa = document.getElementById('wpt-add-btn');
+            if (wb) wb.style.display = 'none';
+            if (wa) wa.style.display = 'block';
             document.getElementById('trip-time').innerText = '00:00';
 
             API.applyTheme();
@@ -2634,9 +2846,9 @@ window.Engine = {
         if (ctrlCraft) ctrlCraft.innerText = icons[STATE.craftMode];
         if (ctrlTheme) ctrlTheme.innerText = themeIcons[['auto','day','night'].indexOf(STATE.themeOverride)];
         document.getElementById('power-block').style.display = 'none';
-
-        const atsEl = document.getElementById('svg-ats');
-        if (atsEl) { atsEl.textContent = '● ATS'; atsEl.setAttribute('fill', 'var(--secondary)'); atsEl.style.opacity = '0.4'; }
+        // ats-badge starts dim (no squad link)
+        const atsBadge0 = document.getElementById('ats-badge');
+        if (atsBadge0) atsBadge0.classList.remove('linked');
 
         API.applyTheme();
         ThemeCache.update();   // populate color cache before first paint
@@ -2646,6 +2858,7 @@ window.Engine = {
         document.getElementById('squad-music').addEventListener('pause',  () => Radio._refreshUI());
         document.getElementById('squad-music').addEventListener('play',   () => Radio._refreshUI());
         Radio.initDots();
+        Horn.init();
         document.addEventListener('click', (e) => {
             const p = document.getElementById('station-picker');
             const strip = document.getElementById('music-strip');
@@ -2914,7 +3127,7 @@ const Recorder = {
         this.chunks = [];
         this.recorder = new MediaRecorder(stream, {
             mimeType,
-            videoBitsPerSecond: 1_500_000   // 1.5 Mbps — good quality, reasonable file size
+            videoBitsPerSecond: 1500000
         });
 
         this.recorder.ondataavailable = e => { if (e.data.size > 0) this.chunks.push(e.data); };
@@ -2990,6 +3203,115 @@ const Recorder = {
         MathUtils.say('Video saved. Ready to upload.');
     }
 };
+/* Highlight active station label on bezel arc */
+/* Station bezel labels removed — now in bottom music bar */
+function highlightBezelStation(idx) { /* no-op — sv-s* elements removed */ }
+
+/* ═══════════════════════════════════════════════════════ HORN ══ */
+const Horn = {
+    ctx: null, current: 0, _pressTimer: null,
+    HORNS: [
+        {label:'🍄 MARIO',   fn:'mario'},
+        {label:'🖖 SCI-FI',  fn:'scifi'},
+        {label:'📯 OL HORN', fn:'oldhorn'},
+        {label:'☎️ RING',    fn:'phone'},
+        {label:'🤡 KRUSTY',  fn:'krusty'},
+        {label:'🚂 TRAIN',   fn:'train'},
+    ],
+    _ac() {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        return this.ctx;
+    },
+    beep() {
+        this[this.HORNS[this.current].fn]?.();
+        vibrate([80]);
+        const btn = document.getElementById('ctrl-horn-btn');
+        if (btn) { btn.style.background='#fbbf24'; btn.style.color='#000'; setTimeout(()=>{btn.style.background='';btn.style.color='#fbbf24';},300); }
+    },
+    mario() {
+        const ac = this._ac();
+        [523,659,784,1047].forEach((f,i) => {
+            const o=ac.createOscillator(), g=ac.createGain();
+            o.type='square'; o.frequency.value=f;
+            g.gain.setValueAtTime(0.3,ac.currentTime+i*0.1);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+i*0.1+0.12);
+            o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+i*0.1); o.stop(ac.currentTime+i*0.1+0.13);
+        });
+    },
+    scifi() {
+        const ac=this._ac(), o=ac.createOscillator(), g=ac.createGain(), d=ac.createDelay(0.2);
+        o.type='sawtooth'; d.delayTime.value=0.12;
+        o.frequency.setValueAtTime(200,ac.currentTime);
+        o.frequency.exponentialRampToValueAtTime(1400,ac.currentTime+0.5);
+        g.gain.setValueAtTime(0.25,ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.55);
+        o.connect(d); d.connect(g); o.connect(g); g.connect(ac.destination);
+        o.start(); o.stop(ac.currentTime+0.6);
+    },
+    oldhorn() {
+        const ac=this._ac(), carrier=ac.createOscillator(), mod=ac.createOscillator(),
+              gain=ac.createGain(), mGain=ac.createGain();
+        carrier.type='sine'; carrier.frequency.value=220;
+        mod.type='sine'; mod.frequency.value=30; mGain.gain.value=80;
+        mod.connect(mGain); mGain.connect(carrier.frequency);
+        gain.gain.setValueAtTime(0.4,ac.currentTime);
+        gain.gain.setValueAtTime(0.4,ac.currentTime+0.35);
+        gain.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5);
+        carrier.connect(gain); gain.connect(ac.destination);
+        carrier.start(); mod.start(); carrier.stop(ac.currentTime+0.55); mod.stop(ac.currentTime+0.55);
+    },
+    phone() {
+        const ac=this._ac();
+        [[0,0.4],[0.5,0.9]].forEach(([s,e]) => [440,480].forEach(f => {
+            const o=ac.createOscillator(), g=ac.createGain();
+            o.frequency.value=f; o.type='sine';
+            g.gain.setValueAtTime(0.18,ac.currentTime+s);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+e);
+            o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+s); o.stop(ac.currentTime+e+0.05);
+        }));
+    },
+    krusty() {
+        const ac=this._ac(), o=ac.createOscillator(), g=ac.createGain();
+        o.type='sawtooth';
+        o.frequency.setValueAtTime(800,ac.currentTime);
+        o.frequency.exponentialRampToValueAtTime(300,ac.currentTime+0.2);
+        o.frequency.setValueAtTime(700,ac.currentTime+0.25);
+        o.frequency.exponentialRampToValueAtTime(250,ac.currentTime+0.45);
+        g.gain.setValueAtTime(0.3,ac.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.5);
+        o.connect(g); g.connect(ac.destination); o.start(); o.stop(ac.currentTime+0.55);
+        setTimeout(() => MathUtils.say('On your left!'), 400);
+    },
+    train() {
+        const ac=this._ac();
+        [[493.88,0],[392,0.05]].forEach(([f,off]) => {
+            const o=ac.createOscillator(), g=ac.createGain();
+            o.type='sawtooth'; o.frequency.value=f;
+            g.gain.setValueAtTime(0,ac.currentTime+off);
+            g.gain.linearRampToValueAtTime(0.2,ac.currentTime+off+0.05);
+            g.gain.setValueAtTime(0.2,ac.currentTime+0.5);
+            g.gain.exponentialRampToValueAtTime(0.001,ac.currentTime+0.7);
+            o.connect(g); g.connect(ac.destination); o.start(ac.currentTime+off); o.stop(ac.currentTime+0.75);
+        });
+    },
+    cycleNext() {
+        this.current = (this.current+1) % this.HORNS.length;
+        const btn = document.getElementById('ctrl-horn-btn');
+        if (btn) btn.title = this.HORNS[this.current].label;
+        HazardEngine.showToast(this.HORNS[this.current].label);
+        vibrate([30,30,60]);
+    },
+    init() {
+        const btn = document.getElementById('ctrl-horn-btn');
+        if (!btn) return;
+        btn.addEventListener('mousedown', ()=>{ this._pressTimer=setTimeout(()=>this.cycleNext(),600); });
+        btn.addEventListener('mouseup',   ()=> clearTimeout(this._pressTimer));
+        btn.addEventListener('touchstart', e=>{ e.preventDefault(); this._pressTimer=setTimeout(()=>this.cycleNext(),600); }, {passive:false});
+        btn.addEventListener('touchend',   e=>{ e.preventDefault(); clearTimeout(this._pressTimer); this.beep(); }, {passive:false});
+    }
+};
+
 (function initEmojiSelects() {
     const EMOJIS = ['🔥','🦄','🐺','⚡','🦅','🚴','🛸','💀','🌊','🎯','🏔️','🌙','⭐','🦊','🐉','🎸'];
     ['emoji-a','emoji-b','join-emoji-a','join-emoji-b'].forEach((id, i) => {
