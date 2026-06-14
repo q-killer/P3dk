@@ -449,6 +449,20 @@
             background: var(--squad); color: #000;
         }
         body.fullscreen #station-picker { position: fixed; top: 55px; bottom: auto; }
+        /* ── COORDINATE BAR — fullscreen + AR only ── */
+        #coord-bar {
+            display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 35;
+            background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
+            padding: 6px 16px; font-family: 'Share Tech Mono',monospace;
+            font-size: 11px; font-weight: 900; color: #34d399; letter-spacing: 1px;
+            text-align: center; cursor: pointer; user-select: all;
+            border-top: 1px solid rgba(52,211,153,0.2);
+        }
+        #coord-bar:active { background: rgba(52,211,153,0.12); color: #fff; }
+        body.fullscreen #coord-bar, body.ar-mode #coord-bar { display: block; }
+        body.fullscreen #trip-btn  { bottom: max(44px, 6vh) !important; }
+        body.fullscreen #bottom-bar { bottom: max(100px, 13vh); }
+
         #rec-indicator {
             position: fixed; top: 12px; right: 12px;
             background: rgba(0,0,0,0.6); border: 1.5px solid var(--danger);
@@ -641,7 +655,11 @@
     <button id="ar-nv-btn" onclick="AR.toggleNightVision()" title="Night vision boost" style="display:none;">🌙 NV</button>
 </div><!-- /hud-wrapper -->
 
-<!-- Fullscreen station bar — only visible in fullscreen mode -->
+<!-- Fullscreen/AR coordinate bar — geocaching precision -->
+<div id="coord-bar" onclick="navigator.clipboard?.writeText(document.getElementById('coord-text').textContent).then(()=>HazardEngine.showToast('📋 Copied!'))" title="Tap to copy coordinates">
+    <span id="coord-text">-- ° N, -- ° W</span>
+    <span id="coord-acc" style="opacity:0.5;margin-left:8px;font-size:9px;"></span>
+</div>
 <div id="fs-station-bar">
     <button class="fs-station-btn" id="fs-s0" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1])">DEF CON</button>
     <button class="fs-station-btn" id="fs-s1" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1])">CLIQHOP</button>
@@ -2294,115 +2312,82 @@ const Graphics = {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
-        ctx.scale(0.88, 0.88); // side-elevation — no tilt
+        ctx.scale(1.1, 1.1); // bird's-eye plan view
 
-        const t = Date.now();
-        const cadence = STATE.active ? t / Math.max(55, 240 - STATE.spdMph * 2) : 0;
+        const cadence = STATE.active ? Date.now() / Math.max(55, 240 - STATE.spdMph * 2) : 0;
+        const frameCol = isDark ? '#64748b' : '#334155';
+        const tyreCol  = isDark ? '#1e293b' : '#0f172a';
+        const rimCol   = isDark ? '#94a3b8' : '#475569';
+        const accent   = STATE.clrWind;
+        const skin     = '#f5c5a3';
 
-        const frameCol  = isDark ? '#64748b' : '#334155';
-        const accentCol = STATE.clrWind;
-        const skinCol   = '#f5c5a3';
-        const tyreCol   = isDark ? '#1e293b' : '#0f172a';
-        const rimCol    = isDark ? '#94a3b8' : '#475569';
+        // Plan-view: y=forward(up), x=lateral. Wheelbase half = 18px.
+        const WB = 18;
 
-        // Side-elevation geometry: x=left/right, y=up/down, rider faces RIGHT (+x)
-        const RW=16, rWx=-20, rWy=8, fWx=20, fWy=8;
-        const bbX=-4, bbY2=rWy-RW*0.35;  // bottom bracket height
-        const seatX=-14, seatY=bbY2-16;  // seat tube top
-        const htX=16,    htY=bbY2-13;    // head tube top
-        const hbX=18,    hbY=bbY2-4;     // head tube bottom (fork)
-
-        // ── Ground shadow — ellipse under bike (shape, not blob) ──
-        ctx.save(); ctx.translate(0, 30); ctx.globalAlpha = 0.2;
-        ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.ellipse(0, 0, 24, 4, 0, 0, Math.PI*2); ctx.fill(); // bike shadow
-        ctx.beginPath(); ctx.ellipse(-6, -3, 9, 3, -0.15, 0, Math.PI*2); ctx.fill(); // rider shadow
+        // Shadow
+        ctx.save(); ctx.globalAlpha = isDark ? 0.2 : 0.1; ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.ellipse(2, 2, 9, 21, 0, 0, Math.PI*2); ctx.fill();
         ctx.globalAlpha = 1; ctx.restore();
 
-        // ── Wheels ──
-        const drawWheel = (wx, wy) => {
-            ctx.beginPath(); ctx.arc(wx, wy, RW, 0, Math.PI*2);
+        // Wheels (foreshortened top-down: narrow ellipses)
+        const dw = (cy) => {
+            ctx.beginPath(); ctx.ellipse(0, cy, 4, 8, 0, 0, Math.PI*2);
             ctx.fillStyle = tyreCol; ctx.fill();
-            ctx.beginPath(); ctx.arc(wx, wy, RW-2.5, 0, Math.PI*2);
-            ctx.fillStyle = isDark ? '#334155' : '#64748b'; ctx.fill();
-            ctx.strokeStyle = rimCol; ctx.lineWidth = 0.8;
-            for (let i=0; i<6; i++) {
-                const a = cadence + i*Math.PI/3;
-                ctx.beginPath();
-                ctx.moveTo(wx+Math.cos(a)*2, wy+Math.sin(a)*2);
-                ctx.lineTo(wx+Math.cos(a)*(RW-3), wy+Math.sin(a)*(RW-3));
-                ctx.stroke();
-            }
-            ctx.beginPath(); ctx.arc(wx, wy, 2.5, 0, Math.PI*2); ctx.fillStyle=rimCol; ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0, cy, 1.5, 6, 0, 0, Math.PI*2);
+            ctx.fillStyle = rimCol; ctx.fill();
         };
-        drawWheel(rWx, rWy); drawWheel(fWx, fWy);
+        dw(-WB); dw(WB);
 
-        // ── Frame ──
-        ctx.strokeStyle=frameCol; ctx.lineWidth=2.2; ctx.lineCap='round'; ctx.lineJoin='round';
-        const seg=(x1,y1,x2,y2,w=2.2)=>{ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();};
-        seg(bbX,bbY2,seatX,seatY);     // seat tube
-        seg(seatX,seatY,rWx,rWy);      // seat stay
-        seg(rWx,rWy,bbX,bbY2,1.5);     // chain stay
-        seg(bbX,bbY2,hbX,hbY);         // down tube
-        seg(seatX,seatY,htX,htY);      // top tube
-        seg(htX,htY,hbX,hbY);          // head tube
-        seg(hbX,hbY,fWx,fWy);          // fork
+        // Frame from above — centerline tube + stays fanning out
+        ctx.strokeStyle = frameCol; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        // Main tube (seat to head)
+        ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0,-WB+4); ctx.lineTo(0,WB-4); ctx.stroke();
+        // Rear chain/seat stays
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo( 3,0); ctx.lineTo( 2,-WB); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-3,0); ctx.lineTo(-2,-WB); ctx.stroke();
+        // Front fork
+        ctx.beginPath(); ctx.moveTo( 2,WB-3); ctx.lineTo( 1,WB); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-2,WB-3); ctx.lineTo(-1,WB); ctx.stroke();
 
-        // Saddle
-        seg(seatX-5,seatY,seatX+3,seatY,2.8);
-
-        // ── Drivetrain ──
-        const crankR=6;
-        const pedFx=bbX+Math.cos(cadence)*crankR,        pedFy=bbY2+Math.sin(cadence)*crankR;
-        const pedBx=bbX+Math.cos(cadence+Math.PI)*crankR, pedBy=bbY2+Math.sin(cadence+Math.PI)*crankR;
-        ctx.strokeStyle=rimCol; ctx.lineWidth=1.6;
-        seg(bbX,bbY2,pedFx,pedFy,1.6); seg(bbX,bbY2,pedBx,pedBy,1.6);
-        ctx.beginPath(); ctx.arc(bbX,bbY2,4.5,0,Math.PI*2); ctx.strokeStyle=rimCol; ctx.lineWidth=1; ctx.stroke();
-        ctx.fillStyle='#cbd5e1';
-        [[pedFx,pedFy],[pedBx,pedBy]].forEach(([px,py])=>{
-            ctx.save(); ctx.translate(px,py); ctx.fillRect(-3,-1,6,2); ctx.restore();
+        // Crank arms (rotate in plan — side-to-side sweep)
+        const crankR = 5;
+        const plx = Math.sin(cadence)*crankR, pry = Math.cos(cadence)*1.5;
+        const prx = -Math.sin(cadence)*crankR;
+        ctx.strokeStyle = rimCol; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(plx, pry); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(prx,-pry); ctx.stroke();
+        ctx.beginPath(); ctx.arc(0,0,3.5,0,Math.PI*2); ctx.lineWidth=1; ctx.stroke(); // chainring
+        ctx.fillStyle = '#cbd5e1';
+        [[plx,pry],[prx,-pry]].forEach(([px,py]) => {
+            ctx.save(); ctx.translate(px,py); ctx.rotate(Math.atan2(py,px));
+            ctx.fillRect(-1.5,-3,3,6); ctx.restore();
         });
 
-        // ── Rider (aero tuck, side view) ──
-        // 2-joint IK legs, hip at saddle
-        const hipX=seatX+1, hipY=seatY+2;
-        const drawLeg=(hx,hy,px,py,kDir)=>{
-            const tL=10,sL=10, d=Math.min(Math.hypot(px-hx,py-hy),tL+sL-0.5);
-            const a0=Math.atan2(py-hy,px-hx);
-            const ca=(d*d+tL*tL-sL*sL)/(2*d*tL);
-            const a1=a0-Math.acos(Math.max(-1,Math.min(1,ca)))*kDir;
-            const kx=hx+Math.cos(a1)*tL, ky=hy+Math.sin(a1)*tL;
-            ctx.strokeStyle=isDark?'#94a3b8':'#475569'; ctx.lineWidth=3.5; ctx.lineCap='round';
-            ctx.beginPath(); ctx.moveTo(hx,hy); ctx.lineTo(kx,ky); ctx.lineTo(px,py); ctx.stroke();
-        };
-        // Front leg follows front pedal, rear leg follows rear pedal
-        drawLeg(hipX,hipY,pedFx,pedFy, 1);
-        drawLeg(hipX+1,hipY,pedBx,pedBy,-1);
+        // Rider body — elongated oval centered slightly forward
+        const ry = WB*0.2, rw = 7, rl = 12;
+        ctx.fillStyle = accent;
+        ctx.beginPath(); ctx.ellipse(0,ry,rw,rl,0,0,Math.PI*2); ctx.fill();
 
-        // Bars & handlebar stem
-        const barX=htX+2, barY=htY-2;
-        seg(htX,htY,barX+4,barY-2,1.8); // stem
-        seg(barX+2,barY-4,barX+7,barY,1.8); // drop bars
+        // Arms to bars
+        const barY = WB-4;
+        ctx.strokeStyle = skin; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(-rw*0.7,ry-rl*0.4); ctx.lineTo(-5,barY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( rw*0.7,ry-rl*0.4); ctx.lineTo( 5,barY); ctx.stroke();
+        // Handlebars
+        ctx.strokeStyle = frameCol; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(-6,barY); ctx.lineTo(6,barY); ctx.stroke();
 
-        // Torso (aero angle)
-        const shlX=barX+1, shlY=barY+1;
-        ctx.fillStyle=accentCol;
-        ctx.beginPath();
-        ctx.moveTo(hipX,hipY); ctx.lineTo(hipX-2,hipY-3);
-        ctx.lineTo(shlX-1,shlY-2); ctx.lineTo(shlX+2,shlY+1);
-        ctx.closePath(); ctx.fill();
+        // Legs to pedals
+        ctx.strokeStyle = isDark ? '#94a3b8' : '#475569'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(-rw*0.6,ry+4); ctx.lineTo(plx,pry); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( rw*0.6,ry+4); ctx.lineTo(prx,-pry); ctx.stroke();
 
-        // Arm
-        ctx.strokeStyle=accentCol; ctx.lineWidth=2.5;
-        ctx.beginPath(); ctx.moveTo(shlX,shlY); ctx.lineTo(barX+4,barY); ctx.stroke();
-
-        // Helmet (aero teardrop)
-        ctx.fillStyle=accentCol;
-        ctx.beginPath(); ctx.ellipse(shlX-3,shlY-5,5,3.5,-0.35,0,Math.PI*2); ctx.fill();
-        ctx.fillStyle='#1e293b';
-        ctx.beginPath(); ctx.ellipse(shlX,shlY-3,3.5,1.5,-0.35,0,Math.PI); ctx.fill();
-        ctx.fillStyle=skinCol;
-        ctx.beginPath(); ctx.ellipse(shlX-1,shlY-3.5,3,2.5,-0.3,0,Math.PI*2); ctx.fill();
+        // Helmet (circle at front)
+        ctx.fillStyle = accent;
+        ctx.beginPath(); ctx.arc(0,ry-rl*0.65,5,0,Math.PI*2); ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth=1;
+        ctx.beginPath(); ctx.moveTo(-2,ry-rl*0.65); ctx.lineTo(2,ry-rl*0.65); ctx.stroke();
 
         ctx.restore();
     },
@@ -2454,6 +2439,13 @@ const Graphics = {
 
         out(`${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`,
             W/2, H*0.065, 22, cyan, 'center');
+
+        // Coordinates at bottom (AR canvas — geocaching precision, ±1.1m at 6 decimals)
+        if (STATE.lat != null) {
+            const latS = `${Math.abs(STATE.lat.toFixed(6))}°${STATE.lat>=0?'N':'S'}`;
+            const lonS = `${Math.abs(STATE.lon.toFixed(6))}°${STATE.lon>=0?'E':'W'}`;
+            out(`${latS}  ${lonS}`, W/2, H - 14, 10, '#34d399', 'center');
+        }
 
         ctx.restore();
     },
@@ -3072,6 +3064,19 @@ window.Engine = {
         STATE.lon = position.coords.longitude;
         const ts = position.timestamp;
 
+        // Update coordinate bar (fullscreen/AR — geocaching precision)
+        const coordEl  = document.getElementById('coord-text');
+        const coordAcc = document.getElementById('coord-acc');
+        if (coordEl && STATE.lat != null) {
+            const latD = STATE.lat.toFixed(6);
+            const lonD = STATE.lon.toFixed(6);
+            const latH = STATE.lat >= 0 ? 'N' : 'S';
+            const lonH = STATE.lon >= 0 ? 'E' : 'W';
+            coordEl.textContent = `${Math.abs(latD)}°${latH}  ${Math.abs(lonD)}°${lonH}`;
+            if (coordAcc && position.coords.accuracy != null)
+                coordAcc.textContent = `±${Math.round(position.coords.accuracy)}m`;
+        }
+
         // ── Speed: 4-sample weighted moving average ──
         if (position.coords.speed != null) {
             const raw = position.coords.speed * 2.23694;
@@ -3489,35 +3494,67 @@ const Recorder = {
         const btn = document.getElementById('ctrl-rec-btn');
         const ind = document.getElementById('rec-indicator');
 
+        // Request front camera PiP + microphone audio together
         try {
             this.pipStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } }
+                video: { facingMode: 'user', width: { ideal: 320 }, height: { ideal: 240 } },
+                audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
             });
             this.pipVid = document.getElementById('pip-video');
             this.pipVid.srcObject = this.pipStream;
+            this.pipVid.muted = true; // prevent feedback — audio goes to recorder only
             await this.pipVid.play();
             document.body.classList.add('recording');
         } catch(e) {
-            this.pipStream = null;
+            // No camera/mic — try audio-only fallback
+            try {
+                this.pipStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            } catch(e2) {
+                this.pipStream = null;
+            }
         }
 
+        // Canvas video track
         const stream = canvas.captureStream(this.TIMELAPSE_FPS);
 
-        const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-            ? 'video/webm;codecs=vp9'
-            : MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
-            ? 'video/webm;codecs=vp8'
-            : 'video/webm';
+        // Add audio tracks from mic/pip stream so recording has sound
+        if (this.pipStream) {
+            this.pipStream.getAudioTracks().forEach(t => stream.addTrack(t));
+        }
+
+        // Also capture radio audio if playing
+        const radioEl = document.getElementById('squad-music');
+        if (radioEl && !radioEl.paused && window.AudioContext) {
+            try {
+                if (!Graphics._audioCtx) Graphics._audioCtx = new AudioContext();
+                const dest = Graphics._audioCtx.createMediaStreamDestination();
+                const src  = Graphics._audioCtx.createMediaElementSource(radioEl);
+                src.connect(dest); src.connect(Graphics._audioCtx.destination);
+                dest.stream.getAudioTracks().forEach(t => stream.addTrack(t));
+            } catch(e) { /* non-fatal */ }
+        }
+
+        // Choose best supported codec with explicit audio codec for full audio support
+        const mimes = [
+            'video/webm;codecs=vp9,opus',
+            'video/webm;codecs=vp8,opus',
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm',
+            'video/mp4',
+        ];
+        const mimeType = mimes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
 
         this.chunks = [];
         this.recorder = new MediaRecorder(stream, {
             mimeType,
-            videoBitsPerSecond: 1500000
+            videoBitsPerSecond: 800000,  // 800kbps — reliable on mobile encoders
+            audioBitsPerSecond: 64000,   // 64kbps — adequate for speech/ambient
         });
 
         this.recorder.ondataavailable = e => { if (e.data.size > 0) this.chunks.push(e.data); };
         this.recorder.onstop = () => this._export();
-        this.recorder.start(1000); // collect chunks every second
+        this.recorder.start(500); // 500ms chunks — smoother than 1s
 
         this.active = true;
         btn.innerText = '⏹ STOP';
