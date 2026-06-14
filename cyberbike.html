@@ -2460,6 +2460,18 @@ const Graphics = {
 
     renderHUD() {
         const ctx = Graphics.ctx;
+
+        // ── Skip when hidden — saves 100% CPU when tab is backgrounded ──
+        if (document.hidden) { rafId = requestAnimationFrame(Graphics.renderHUD); return; }
+
+        // ── Single now for entire frame — eliminates 4 separate calls ──
+        const now = Date.now();
+
+        // ── craftShift defined here — used by aero vectors AND sprite draw ──
+        const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
+        const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
+        Graphics._lastNow = now;
+
         ctx.clearRect(0, 0, STATE.w, STATE.h);
 
         // ── AR: draw camera frame onto canvas FIRST so recorder captures it ──
@@ -2565,7 +2577,6 @@ const Graphics = {
                 ctx.moveTo(pts[0].x, pts[0].y);
                 for (let i=1; i<pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
                 ctx.stroke();
-                ctx.setLineDash([]);
                 ctx.restore();
             }
         }
@@ -2631,7 +2642,6 @@ const Graphics = {
 
         // ── Squad formation in SVS ──
         if (STATE.squadData && STATE.lat) {
-            const now = Date.now();
             if (now - STATE.squadData.ts < 10000) {
                 const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
                 if (dist <= 3.0) {
@@ -2670,7 +2680,7 @@ const Graphics = {
 
         // ── UFO mode: animated energy ring on pod border ──
         if (isUFO) {
-            const t = Date.now();
+            const t = now;
             const ringR = STATE.r - 2;
             ctx.save();
             // Primary rotating dash ring
@@ -2685,7 +2695,6 @@ const Graphics = {
             ctx.lineDashOffset = (t / 50) % 24;
             ctx.strokeStyle = `rgba(176,38,255,${0.4 + Math.sin(t/400+1)*0.2})`;
             ctx.lineWidth = 1; ctx.stroke();
-            ctx.setLineDash([]);
             ctx.restore();
         }
         ctx.strokeStyle = STATE.clrSecondary;
@@ -2725,28 +2734,44 @@ const Graphics = {
             });
         }
 
+        // ── Compass rose — cached offscreen, redrawn only on heading change ──
         {
-            const tickR = STATE.r - 6;
-            const cardinals = [['N',0],['NE',45],['E',90],['SE',135],['S',180],['SW',225],['W',270],['NW',315]];
-            ctx.globalAlpha = 0.3; ctx.lineWidth = 1.5;
-            for (let deg = 0; deg < 360; deg += 10) {
-                const a = (deg - STATE.hdg - 90) * CFG.TO_RAD;
-                const major = deg % 45 === 0;
-                const tickLen = major ? 8 : 4;
-                ctx.strokeStyle = major ? STATE.clrPrimary : STATE.clrSecondary;
-                ctx.globalAlpha = major ? 0.5 : 0.18;
-                ctx.beginPath();
-                ctx.moveTo(STATE.cx + Math.cos(a) * tickR, STATE.cy + Math.sin(a) * tickR);
-                ctx.lineTo(STATE.cx + Math.cos(a) * (tickR - tickLen), STATE.cy + Math.sin(a) * (tickR - tickLen));
-                ctx.stroke();
+            const headingRounded = Math.round(STATE.hdg);
+            if (!Graphics._compassCache || Graphics._compassHdg !== headingRounded || Graphics._compassR !== STATE.r) {
+                const sz = STATE.r * 2 + 4;
+                if (!Graphics._compassCache || Graphics._compassCache.width !== sz) {
+                    Graphics._compassCache = document.createElement('canvas');
+                    Graphics._compassCache.width = sz; Graphics._compassCache.height = sz;
+                }
+                const cc = Graphics._compassCache.getContext('2d');
+                cc.clearRect(0, 0, sz, sz);
+                const cr = sz/2;
+                const tickR = STATE.r - 6;
+                const cardinals = [['N',0],['NE',45],['E',90],['SE',135],['S',180],['SW',225],['W',270],['NW',315]];
+                cc.lineWidth = 1.5;
+                for (let deg = 0; deg < 360; deg += 10) {
+                    const a = (deg - headingRounded - 90) * CFG.TO_RAD;
+                    const major = deg % 45 === 0;
+                    cc.strokeStyle = major ? STATE.clrPrimary : STATE.clrSecondary;
+                    cc.globalAlpha = major ? 0.5 : 0.18;
+                    cc.beginPath();
+                    cc.moveTo(cr + Math.cos(a)*tickR,        cr + Math.sin(a)*tickR);
+                    cc.lineTo(cr + Math.cos(a)*(tickR-( major?8:4)), cr + Math.sin(a)*(tickR-(major?8:4)));
+                    cc.stroke();
+                }
+                cc.globalAlpha = 0.5; cc.font = 'bold 8px monospace'; cc.textAlign = 'center';
+                cardinals.forEach(([lbl,deg]) => {
+                    const a = (deg - headingRounded - 90) * CFG.TO_RAD;
+                    const lr = tickR - 13;
+                    cc.fillStyle = deg % 90 === 0 ? STATE.clrPrimary : STATE.clrSecondary;
+                    cc.fillText(lbl, cr + Math.cos(a)*lr, cr + Math.sin(a)*lr + 3);
+                });
+                cc.globalAlpha = 1;
+                Graphics._compassHdg = headingRounded;
+                Graphics._compassR   = STATE.r;
             }
-            ctx.globalAlpha = 0.5; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center';
-            cardinals.forEach(([lbl, deg]) => {
-                const a = (deg - STATE.hdg - 90) * CFG.TO_RAD;
-                const lr = tickR - 13;
-                ctx.fillStyle = deg % 90 === 0 ? STATE.clrPrimary : STATE.clrSecondary;
-                ctx.fillText(lbl, STATE.cx + Math.cos(a) * lr, STATE.cy + Math.sin(a) * lr + 3);
-            });
+            const sz = Graphics._compassCache.width;
+            ctx.drawImage(Graphics._compassCache, STATE.cx - sz/2, STATE.cy - sz/2);
         }
 
         if (Math.abs(STATE.gX) > 0.05) {
@@ -2898,7 +2923,7 @@ const Graphics = {
         }
 
         if (STATE.lat && STATE.active) {
-            if (STATE.squadData && (Date.now()-STATE.squadData.ts < 10000)) {
+            if (STATE.squadData && (now-STATE.squadData.ts < 10000)) {
                 const { dist, brg } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.squadData.lat, STATE.squadData.lon);
                 if (dist <= CFG.RADAR_RANGE_MILES) {
                     const rel = (brg - STATE.hdg - 90)*CFG.TO_RAD;
@@ -2920,8 +2945,6 @@ const Graphics = {
         }
 
         // ── Craft sprite — fixed upright, world tilts around it ──
-        const craftShiftX = -(STATE.gX / CFG.MAX_G) * 6;
-        const craftShiftY =  (STATE.gY / CFG.MAX_G) * 6;
         if (!AR.active) {
             const sx = STATE.cx + craftShiftX, sy = STATE.cy + craftShiftY;
             if (STATE.craftMode === 1) Graphics.drawUFO(sx, sy, 0);
@@ -2949,24 +2972,29 @@ const Graphics = {
             ctx.restore();
         }
 
-        // ── Trip clock, fuel, power tick ──
-        DOM.speed.innerText = STATE.spdMph.toFixed(1);
+        // ── Trip clock, fuel, power tick — DOM writes throttled to 4fps ──
+        const _domWrite = !Graphics._lastDomWrite || (now - Graphics._lastDomWrite) > 250;
+        if (_domWrite) {
+            Graphics._lastDomWrite = now;
+            DOM.speed.innerText = STATE.spdMph.toFixed(1);
+        }
         if (STATE.active && STATE.startTs > 0) {
-            const elapsed = Date.now() - STATE.startTs;
-            const h = Math.floor(elapsed/3600000);
-            const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
-            const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
-            STATE._timeDisplay = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
-            DOM.tripTime.innerText = STATE._timeDisplay;
-
-            const hrs = elapsed/3600000;
-            STATE.fuelRem = Math.max(0, STATE.fuelCap - hrs*STATE.burnRate);
-            DOM.fuelRem.innerText = STATE.fuelRem.toFixed(1);
-            if (STATE.fuelRem > 0) {
-                const tte = STATE.fuelRem / STATE.burnRate;
-                STATE._tteDisplay = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
-                DOM.timeRem.innerText = STATE._tteDisplay;
-                DOM.timeRem.className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
+            const elapsed = now - STATE.startTs;
+            if (_domWrite) {
+                const h = Math.floor(elapsed/3600000);
+                const m = Math.floor((elapsed%3600000)/60000).toString().padStart(2,'0');
+                const s = Math.floor((elapsed%60000)/1000).toString().padStart(2,'0');
+                STATE._timeDisplay = h > 0 ? `${h}:${m}:${s}` : `${m}:${s}`;
+                DOM.tripTime.innerText = STATE._timeDisplay;
+                const hrs = elapsed/3600000;
+                STATE.fuelRem = Math.max(0, STATE.fuelCap - hrs*STATE.burnRate);
+                DOM.fuelRem.innerText = STATE.fuelRem.toFixed(1);
+                if (STATE.fuelRem > 0) {
+                    const tte = STATE.fuelRem / STATE.burnRate;
+                    STATE._tteDisplay = `TTE: ${Math.floor(tte)}:${Math.floor((tte%1)*60).toString().padStart(2,'0')}`;
+                    DOM.timeRem.innerText = STATE._tteDisplay;
+                    DOM.timeRem.className = tte < 0.5 ? 'sub-val down-red' : 'sub-val';
+                }
             }
 
             PowerCalc.tick(STATE.spdMph);
@@ -2989,7 +3017,7 @@ window.Engine = {
             STATE.wattsHistory = []; STATE.totalJoules = 0; STATE.powerTs = 0;
             STATE.crumbs = []; STATE._altBuf = []; STATE._spdBuf = []; STATE._vsiBuf = []; STATE.altBuffer = [];
 
-            STATE.active = true; STATE.startTs = Date.now();
+            STATE.active = true; STATE.startTs = now;
             btn.innerText = 'END TRIP';
             btn.style.borderColor = 'var(--danger)';
             btn.style.color = 'var(--danger)';
@@ -3017,7 +3045,7 @@ window.Engine = {
             vibrate([100, 100, 300]);
             if (Recorder.active) Recorder._stop();
 
-            STATE.tripElapsed = STATE.startTs > 0 ? Date.now() - STATE.startTs : 0;
+            STATE.tripElapsed = STATE.startTs > 0 ? now - STATE.startTs : 0;
 
             STATE.activeDest = null;
             DOM.destId.innerText = '--';
@@ -3130,7 +3158,7 @@ window.Engine = {
                 const { dist } = MathUtils.getDistAndBearing(STATE.lat, STATE.lon, STATE.activeDest.lat, STATE.activeDest.lon);
                 let etaStr = '--:--';
                 if (STATE.spdMph > 5) {
-                    const etaDate = new Date(Date.now() + (dist/STATE.spdMph)*3600000);
+                    const etaDate = new Date(now + (dist/STATE.spdMph)*3600000);
                     etaStr = `${etaDate.getHours().toString().padStart(2,'0')}:${etaDate.getMinutes().toString().padStart(2,'0')}`;
                 }
                 DOM.destEta.innerText = `${dist.toFixed(1)} MI | ETA ${etaStr}`;
