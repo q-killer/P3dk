@@ -302,7 +302,30 @@
             width: 100vw !important; height: 100vh !important;
         }
 
-        /* In AR mode — DOM overlays are hidden; canvas _drawARHUD() is the sole renderer */
+        /* In AR mode — slim radio bar at very top, above heading canvas text */
+        #ar-radio-bar {
+            display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 40;
+            background: rgba(0,0,0,0.65); backdrop-filter: blur(6px);
+            height: 36px; align-items: center; justify-content: space-between;
+            padding: 0 10px; gap: 4px;
+        }
+        body.ar-mode #ar-radio-bar { display: flex; }
+        body.ar-mode #fs-station-bar { display: none !important; }
+        .ar-station-btn {
+            flex: 1; background: transparent; border: none;
+            color: rgba(255,255,255,0.6); font-family: var(--font-main);
+            font-size: 9px; font-weight: 900; padding: 4px 2px;
+            cursor: pointer; text-align: center; white-space: nowrap;
+            overflow: hidden; text-overflow: ellipsis; transition: 0.15s;
+        }
+        .ar-station-btn.active { color: var(--squad); }
+        .ar-station-btn:active  { color: #fff; background: rgba(255,255,255,0.1); border-radius: 4px; }
+        #ar-genre-btn {
+            background: transparent; border: 1px solid rgba(255,255,255,0.2);
+            color: var(--wind); font-family: var(--font-main); font-size: 9px;
+            font-weight: 900; padding: 3px 6px; border-radius: 6px; cursor: pointer;
+            white-space: nowrap; flex-shrink: 0;
+        }
         body.ar-mode .top-hdg,
         body.ar-mode .left-avionics,
         body.ar-mode .right-stats,
@@ -625,10 +648,11 @@
 
         <!-- Mini music strip — tap to cycle station, long-press for picker, ▶ to play/pause -->
         <div id="music-strip">
-            <button class="music-dot" id="mdot-0" title="Nightride FM"></button>
-            <button class="music-dot" id="mdot-1" title="Chillsynth"></button>
-            <button class="music-dot" id="mdot-2" title="Lofi Jpop"></button>
-            <button class="music-dot" id="mdot-3" title="Vaporwave"></button>
+            <span id="music-genre-lbl" onclick="Radio.cycleGenre()" title="Tap to change genre" style="font-size:9px;color:var(--wind);font-weight:900;cursor:pointer;white-space:nowrap;padding:0 2px;user-select:none;">⚡</span>
+            <button class="music-dot" id="mdot-0" title="DEF CON RADIO"></button>
+            <button class="music-dot" id="mdot-1" title="CLIQHOP IDM"></button>
+            <button class="music-dot" id="mdot-2" title="DRONE ZONE"></button>
+            <button class="music-dot" id="mdot-3" title="GROOVE SALAD"></button>
             <button id="music-playpause" onclick="Radio.togglePlayPause()">▶</button>
         </div>
 
@@ -650,6 +674,10 @@
             onclick="Horn.beep()"
             title="Horn — long-press to change"
             style="border-color:#fbbf24;color:#fbbf24;font-size:16px;padding:6px 10px;">📯</button>
+        <button class="ctrl-btn" id="ctrl-sport-btn"
+            onclick="STATE.craftMode===2 ? SportEngine.startSprint() : SportEngine.splitSegment()"
+            title="Bike: Sprint 30s | Other: Split segment"
+            style="border-color:#a78bfa;color:#a78bfa;font-size:14px;padding:6px 10px;">⚡</button>
     </div><!-- /ctrl-bar -->
     <button id="ar-btn" onclick="AR.toggle()" title="Augmented Reality windshield mode">📷 AR</button>
     <button id="ar-nv-btn" onclick="AR.toggleNightVision()" title="Night vision boost" style="display:none;">🌙 NV</button>
@@ -660,6 +688,15 @@
     <span id="coord-text">-- ° N, -- ° W</span>
     <span id="coord-acc" style="opacity:0.5;margin-left:8px;font-size:9px;"></span>
 </div>
+<div id="ar-radio-bar">
+    <button id="ar-s0" class="ar-station-btn" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1])">DEF CON</button>
+    <button id="ar-s1" class="ar-station-btn" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1])">CLIQHOP</button>
+    <button id="ar-s2" class="ar-station-btn" onclick="Radio.playStation(Radio.PRESETS[2][0],Radio.PRESETS[2][1])">DRONE</button>
+    <button id="ar-s3" class="ar-station-btn" onclick="Radio.playStation(Radio.PRESETS[3][0],Radio.PRESETS[3][1])">GROOVE</button>
+    <button onclick="Radio.togglePlayPause()" style="font-size:14px;background:transparent;border:none;color:var(--squad);cursor:pointer;flex-shrink:0;padding:0 4px;">▶</button>
+    <button onclick="Radio.cycleGenre()" style="background:transparent;border:1px solid rgba(255,255,255,0.2);color:var(--wind);font-family:inherit;font-size:9px;font-weight:900;padding:3px 6px;border-radius:6px;cursor:pointer;flex-shrink:0;">🔀</button>
+</div>
+
 <div id="fs-station-bar">
     <button class="fs-station-btn" id="fs-s0" onclick="Radio.playStation(Radio.PRESETS[0][0],Radio.PRESETS[0][1])">DEF CON</button>
     <button class="fs-station-btn" id="fs-s1" onclick="Radio.playStation(Radio.PRESETS[1][0],Radio.PRESETS[1][1])">CLIQHOP</button>
@@ -685,10 +722,12 @@
 
 <div id="fuel-modal" class="modal">
     <div class="modal-content">
-        <h3>⛽ FUEL / RIDER CALIBRATION</h3>
+        <h3>⚙️ CALIBRATION & SPORT</h3>
         <div class="input-group"><label>TANK CAPACITY (GAL)</label><input type="number" id="input-fuel-cap" step="0.5" value="5.0"></div>
         <div class="input-group"><label>EST. BURN RATE (GPH)</label><input type="number" id="input-burn-rate" step="0.1" value="2.0"></div>
-        <div class="input-group"><label>RIDER WEIGHT (LBS) — for power calc</label><input type="number" id="input-weight" step="1" value="165"></div>
+        <div class="input-group"><label>RIDER WEIGHT (LBS)</label><input type="number" id="input-weight" step="1" value="165"></div>
+        <div class="input-group"><label>⚡ SPEED ALERT (MPH) — 0 = off</label><input type="number" id="input-speed-alert" step="1" value="0" min="0" max="200"></div>
+        <div class="input-group"><label>🥁 CADENCE GUIDE (RPM) — 0 = off</label><input type="number" id="input-cadence" step="5" value="0" min="0" max="120"></div>
         <button class="modal-close modal-btn-nav" onclick="Avionics.saveFuel()">SAVE</button>
         <button class="modal-close" onclick="closeModal('fuel-modal')">CANCEL</button>
     </div>
@@ -859,6 +898,15 @@ const STATE = {
     maxAltFt: 0, peakVsiFpm: 0, hazardCount: 0,
     _vsiDisplay: '-- MPG', _tteDisplay: 'TTE: --', _timeDisplay: '00:00',
     fuelRem: 5.0,
+    // Sport features
+    speedAlertMph: 0,        // 0=off; mph threshold for haptic warning
+    segmentStartTs: 0,       // timestamp of current segment start
+    segmentSplits: [],       // array of completed segment durations ms
+    sprintMode: false, sprintStart: 0, sprintBest: 0,
+    cadenceTarget: 0,        // target cadence RPM; 0=off
+    crashGuard: true,        // auto-detect crash via G spike
+    _crashTs: 0,             // timestamp of G spike detection
+    lastG: 0,                // previous frame G magnitude for delta
 };
 
 let watchId = null;
@@ -1544,40 +1592,40 @@ window.Radio = {
     isBroadcasting: false, broadcastStartTime: 0,
     GENRES: [
         {name:'⚡ ELECTRONIC', presets:[
-            ['https://ice2.somafm.com/defcon-128-mp3',          'DEF CON RADIO'],
-            ['https://ice1.somafm.com/cliqhop-128-mp3',         'CLIQHOP IDM'],
-            ['https://ice1.somafm.com/dronezone-128-mp3',       'DRONE ZONE'],
-            ['https://ice1.somafm.com/groovesalad-128-mp3',     'GROOVE SALAD'],
+            ['https://ice2.somafm.com/defcon-128-mp3',       'DEF CON'],
+            ['https://ice1.somafm.com/cliqhop-128-mp3',      'CLIQHOP IDM'],
+            ['https://ice1.somafm.com/dronezone-128-mp3',    'DRONE ZONE'],
+            ['https://ice1.somafm.com/groovesalad-128-mp3',  'GROOVE SALAD'],
         ]},
         {name:'🎵 TRANCE/EDM', presets:[
-            ['https://streams.ilovemusic.de/iloveradio16.mp3',  'VOCAL TRANCE'],
-            ['https://streams.ilovemusic.de/iloveradio2.mp3',   'DANCE/EDM'],
-            ['https://streams.ilovemusic.de/iloveradio17.mp3',  'TRANCE'],
-            ['https://streams.ilovemusic.de/iloveradio14.mp3',  'HARD DANCE'],
+            ['https://ice1.somafm.com/spacestation-128-mp3', 'SPACE STATION'],
+            ['https://ice1.somafm.com/deepspaceone-128-mp3', 'DEEP SPACE ONE'],
+            ['https://ice2.somafm.com/defcon-128-mp3',       'DEF CON'],
+            ['https://ice1.somafm.com/cliqhop-128-mp3',      'CLIQHOP IDM'],
         ]},
         {name:'🎸 80s CLASSIC', presets:[
-            ['https://ice1.somafm.com/u80s-128-mp3',            'UNDERGROUND 80s'],
-            ['https://streams.ilovemusic.de/iloveradio6.mp3',   '80s HITS'],
-            ['https://ice1.somafm.com/seventies-128-mp3',       '70s SOMA'],
-            ['https://ice1.somafm.com/80s-128-mp3',             '80s SOMA'],
+            ['https://ice1.somafm.com/u80s-128-mp3',         'UNDERGROUND 80s'],
+            ['https://ice1.somafm.com/seventies-128-mp3',    '70s SOMA'],
+            ['https://ice1.somafm.com/80s-128-mp3',          '80s SOMA'],
+            ['https://ice1.somafm.com/classicrock-128-mp3',  'CLASSIC ROCK'],
         ]},
         {name:'🎻 CLASSICAL', presets:[
-            ['https://live.musopen.org/mp3',                    'MUSOPEN CLASSICAL'],
-            ['https://ice1.somafm.com/classicrock-128-mp3',     'CLASSIC ROCK'],
-            ['https://streams.ilovemusic.de/iloveradio19.mp3',  'CLASSICAL'],
-            ['https://ice1.somafm.com/lush-128-mp3',            'LUSH'],
+            ['https://ice1.somafm.com/lush-128-mp3',         'LUSH'],
+            ['https://ice1.somafm.com/folkfwd-128-mp3',      'FOLK FORWARD'],
+            ['https://ice1.somafm.com/illstreet-128-mp3',    'ILL STREET'],
+            ['https://ice1.somafm.com/doomed-128-mp3',       'DOOMED'],
         ]},
         {name:'🤠 COUNTRY', presets:[
-            ['https://streams.ilovemusic.de/iloveradio23.mp3',  'COUNTRY'],
-            ['https://streams.ilovemusic.de/iloveradio40.mp3',  'COUNTRY HITS'],
-            ['https://ice1.somafm.com/bootliquor-128-mp3',      'BOOT LIQUOR'],
-            ['https://ice1.somafm.com/thistle-128-mp3',         'THISTLE RADIO'],
+            ['https://ice1.somafm.com/bootliquor-128-mp3',   'BOOT LIQUOR'],
+            ['https://ice1.somafm.com/thistle-128-mp3',      'THISTLE RADIO'],
+            ['https://ice1.somafm.com/folkfwd-128-mp3',      'FOLK FORWARD'],
+            ['https://ice1.somafm.com/u80s-128-mp3',         'UNDERGROUND 80s'],
         ]},
-        {name:'🎺 OLDIES', presets:[
-            ['https://streams.ilovemusic.de/iloveradio7.mp3',   'OLDIES'],
-            ['https://streams.ilovemusic.de/iloveradio28.mp3',  '60s'],
-            ['https://ice1.somafm.com/illstreet-128-mp3',       'ILL STREET BLUES'],
-            ['https://ice1.somafm.com/folkfwd-128-mp3',         'FOLK FORWARD'],
+        {name:'🌙 AMBIENT', presets:[
+            ['https://ice1.somafm.com/deepspaceone-128-mp3', 'DEEP SPACE ONE'],
+            ['https://ice1.somafm.com/dronezone-128-mp3',    'DRONE ZONE'],
+            ['https://ice1.somafm.com/spacestation-128-mp3', 'SPACE STATION'],
+            ['https://ice1.somafm.com/groovesalad-128-mp3',  'GROOVE SALAD'],
         ]},
     ],
     currentGenre: 0,
@@ -1585,6 +1633,10 @@ window.Radio = {
 
     initDots() {
         this.PRESETS = this.GENRES[0].presets;
+        // Set initial genre label
+        const lbl = document.getElementById('music-genre-lbl');
+        if (lbl) lbl.textContent = this.GENRES[0].name.split(' ')[0];
+        this._syncARBar();
         this.PRESETS.forEach(([url, name], i) => {
             const btn = document.getElementById('mdot-' + i);
             if (!btn) return;
@@ -1623,9 +1675,22 @@ window.Radio = {
         const genre = this.GENRES[this.currentGenre];
         this.PRESETS = genre.presets;
         HazardEngine.showToast(genre.name);
-        vibrate([50, 50, 100]);
+        vibrate([30, 50, 30]);
         this._rebuildDotTitles();
+        this._syncARBar();
         this._refreshUI();
+        // Update genre label in music strip
+        const lbl = document.getElementById('music-genre-lbl');
+        if (lbl) lbl.textContent = genre.name.split(' ')[0]; // emoji only
+    },
+
+    _syncARBar() {
+        // Sync AR top radio bar station labels
+        this.PRESETS.forEach(([,name], i) => {
+            const btn = document.getElementById('ar-s' + i);
+            if (btn) btn.textContent = name.substring(0,9);
+        });
+        this._updateModalGenre();
     },
     _rebuildDotTitles() {
         this.PRESETS.forEach(([,name], i) => {
@@ -2100,12 +2165,16 @@ window.Avionics = {
     },
 
     saveFuel() {
-        STATE.fuelCap = parseFloat(document.getElementById('input-fuel-cap').value) || 5.0;
-        STATE.burnRate = parseFloat(document.getElementById('input-burn-rate').value) || 2.0;
-        STATE.riderWeightLbs = parseFloat(document.getElementById('input-weight').value) || 165;
-        CFG.RIDER_WEIGHT_LBS = STATE.riderWeightLbs;
-        DOM.fuelRem.innerText = STATE.fuelCap.toFixed(1);
+        STATE.fuelCap          = parseFloat(document.getElementById('input-fuel-cap').value)   || 5.0;
+        STATE.burnRate         = parseFloat(document.getElementById('input-burn-rate').value)  || 2.0;
+        STATE.riderWeightLbs   = parseFloat(document.getElementById('input-weight').value)     || 165;
+        STATE.speedAlertMph    = parseFloat(document.getElementById('input-speed-alert').value)|| 0;
+        STATE.cadenceTarget    = parseFloat(document.getElementById('input-cadence').value)    || 0;
+        CFG.RIDER_WEIGHT_LBS   = STATE.riderWeightLbs;
+        DOM.fuelRem.innerText  = STATE.fuelCap.toFixed(1);
         closeModal('fuel-modal');
+        if (STATE.speedAlertMph > 0)  HazardEngine.showToast(`⚡ SPEED ALERT: ${STATE.speedAlertMph} MPH`);
+        if (STATE.cadenceTarget > 0)  HazardEngine.showToast(`🥁 CADENCE: ${STATE.cadenceTarget} RPM`);
     },
 
     openDest() {
@@ -2696,7 +2765,33 @@ const Graphics = {
         });
         ctx.globalAlpha = 1;
 
-        // ── Instrument arcs — skipped in AR mode (not visible, wastes GPU) ──
+        // ── Sport overlays: sprint countdown arc, segment indicator ──
+        if (STATE.sprintMode && STATE.sprintStart > 0) {
+            const elapsed = now - STATE.sprintStart;
+            const frac = Math.min(1, elapsed / 30000);
+            const remain = Math.ceil((30000 - elapsed) / 1000);
+            // Countdown arc on inside of pod ring
+            const sArc = -Math.PI/2; // start top
+            ctx.save();
+            ctx.beginPath(); ctx.arc(STATE.cx, STATE.cy, STATE.r - 4, sArc, sArc + frac * Math.PI * 2);
+            ctx.strokeStyle = `hsl(${120 - frac*120}, 100%, 55%)`;
+            ctx.lineWidth = 4; ctx.globalAlpha = 0.85; ctx.stroke();
+            ctx.font = `900 ${STATE.isFullscreen?'clamp(24px,3vw,40px)':'16px'} monospace`;
+            ctx.fillStyle = `hsl(${120-frac*120},100%,60%)`;
+            ctx.textAlign = 'center'; ctx.globalAlpha = 1;
+            ctx.fillText(`🚀${remain}s`, STATE.cx, STATE.cy - STATE.r * 0.55);
+            ctx.restore();
+        }
+        if (STATE.segmentStartTs > 0 && STATE.active) {
+            // Small segment timer at bottom of pod
+            const segMs = now - STATE.segmentStartTs;
+            const sm = Math.floor(segMs/60000), ss = Math.floor((segMs%60000)/1000).toString().padStart(2,'0');
+            ctx.save();
+            ctx.font = '700 9px monospace'; ctx.fillStyle = '#a78bfa';
+            ctx.textAlign = 'center'; ctx.globalAlpha = 0.8;
+            ctx.fillText(`✂️ ${sm}:${ss}`, STATE.cx, STATE.cy + STATE.r * 0.72);
+            ctx.restore();
+        }
         if (!AR.active) {
         ctx.save();
 
@@ -2991,6 +3086,7 @@ const Graphics = {
 
             PowerCalc.tick(STATE.spdMph);
             HazardEngine.tick();
+            SportEngine.tick(now);
             GPX.tick();
             if (STATE.gpsLost) DeadReckoning.tick();
         }
@@ -3000,6 +3096,122 @@ const Graphics = {
 };
 
 /* ═══════════════════════════════════════════════════════ ENGINE ══ */
+/* ═══════════════════════════════════════════════════════ SPORT ENGINE ══ */
+const SportEngine = {
+    // Called every frame from renderHUD — lightweight checks only
+    tick(now) {
+        if (!STATE.active) return;
+
+        // ── Speed zone alert — haptic + visual at threshold ──
+        if (STATE.speedAlertMph > 0 && STATE.spdMph >= STATE.speedAlertMph) {
+            if (!SportEngine._alertFired || (now - SportEngine._alertFired) > 3000) {
+                vibrate([50, 30, 50]);
+                SportEngine._alertFired = now;
+                HazardEngine.showToast(`⚡ ${Math.round(STATE.spdMph)} MPH`);
+            }
+        } else { SportEngine._alertFired = 0; }
+
+        // ── Crash detection — sudden G spike > 4G delta ──
+        if (STATE.crashGuard) {
+            const gMag = Math.hypot(STATE.gX, STATE.gY, STATE.gZ);
+            const delta = Math.abs(gMag - STATE.lastG);
+            STATE.lastG = gMag;
+            if (delta > 4.0 && STATE._crashTs === 0) {
+                STATE._crashTs = now;
+                vibrate([200, 100, 200, 100, 200]);
+                HazardEngine.showToast('💥 IMPACT — SOS IN 10s');
+                SportEngine._crashCountdown = setInterval(() => {
+                    const remain = Math.ceil((STATE._crashTs + 10000 - Date.now()) / 1000);
+                    if (remain <= 0) {
+                        clearInterval(SportEngine._crashCountdown);
+                        if (STATE._crashTs > 0) {
+                            // Auto-SOS via Mesh + TTS
+                            MathUtils.say('SOS. Possible crash. Location: ' +
+                                (STATE.lat ? STATE.lat.toFixed(5) + ', ' + STATE.lon.toFixed(5) : 'unknown'));
+                            if (Mesh.connected) Mesh.dc?.send(JSON.stringify({type:'sos', lat:STATE.lat, lon:STATE.lon}));
+                            STATE._crashTs = 0;
+                        }
+                    } else {
+                        HazardEngine.showToast(`💥 SOS in ${remain}s — TAP TO CANCEL`);
+                    }
+                }, 1000);
+                // Single tap on toast cancels
+                document.addEventListener('click', SportEngine._cancelCrash, {once:true});
+            }
+        }
+
+        // ── Sprint mode — 30s power interval ──
+        if (STATE.sprintMode && STATE.sprintStart > 0) {
+            const elapsed = now - STATE.sprintStart;
+            const remain = Math.max(0, 30000 - elapsed);
+            if (remain <= 0) {
+                STATE.sprintMode = false;
+                const avgSpd = STATE._sprintSpdSum / Math.max(1, STATE._sprintFrames);
+                if (avgSpd > STATE.sprintBest) STATE.sprintBest = avgSpd;
+                vibrate([300, 100, 300]);
+                HazardEngine.showToast(`🏁 SPRINT: ${avgSpd.toFixed(1)} MPH ${avgSpd > STATE.sprintBest ? ' PR!' : ''}`);
+            } else {
+                STATE._sprintSpdSum  = (STATE._sprintSpdSum  || 0) + STATE.spdMph;
+                STATE._sprintFrames  = (STATE._sprintFrames  || 0) + 1;
+                // Pulse haptic at each 5s mark
+                const sec = Math.floor(remain/1000);
+                if (sec % 5 === 0 && sec !== SportEngine._lastSprintSec) {
+                    vibrate([40]); SportEngine._lastSprintSec = sec;
+                }
+            }
+        }
+
+        // ── Cadence guide — haptic beep at target RPM ──
+        if (STATE.cadenceTarget > 0 && STATE.craftMode === 2) {
+            const msPerBeat = 60000 / STATE.cadenceTarget;
+            if (!SportEngine._lastCadence || (now - SportEngine._lastCadence) >= msPerBeat) {
+                vibrate([15]);
+                SportEngine._lastCadence = now;
+            }
+        }
+    },
+
+    _cancelCrash() {
+        clearInterval(SportEngine._crashCountdown);
+        STATE._crashTs = 0;
+        HazardEngine.showToast('✅ SOS CANCELLED');
+        vibrate([100]);
+    },
+
+    startSprint() {
+        if (STATE.sprintMode) {
+            STATE.sprintMode = false;
+            HazardEngine.showToast('🏁 SPRINT STOPPED');
+        } else {
+            STATE.sprintMode = true;
+            STATE.sprintStart = Date.now();
+            STATE._sprintSpdSum = 0; STATE._sprintFrames = 0;
+            vibrate([200]); HazardEngine.showToast('🚀 SPRINT START!');
+        }
+    },
+
+    splitSegment() {
+        if (!STATE.active) return;
+        const now = Date.now();
+        if (STATE.segmentStartTs === 0) {
+            STATE.segmentStartTs = now;
+            HazardEngine.showToast('⏱ SEGMENT START');
+            vibrate([100]);
+        } else {
+            const dur = now - STATE.segmentStartTs;
+            STATE.segmentSplits.push(dur);
+            const m = Math.floor(dur/60000), s = Math.floor((dur%60000)/1000).toString().padStart(2,'0');
+            const best = STATE.segmentSplits.length > 1 ? Math.min(...STATE.segmentSplits.slice(0,-1)) : Infinity;
+            const pr = dur < best ? ' 🏆 PR!' : '';
+            HazardEngine.showToast(`✂️ SPLIT: ${m}:${s}${pr}`);
+            vibrate([100, 50, 100]);
+            STATE.segmentStartTs = now; // restart
+        }
+    },
+
+    _alertFired: 0, _crashCountdown: null, _lastSprintSec: -1, _lastCadence: 0,
+};
+
 window.Engine = {
     async toggleTrip() {
         const btn = DOM.tripBtn;
