@@ -329,26 +329,27 @@
         body.ar-mode .speed-value.ar-warn { color: #ff3030 !important; animation: arSpeedWarn 0.4s infinite; }
         @keyframes arSpeedWarn { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-        /* AR slim radio bar — top strip, visible in AR mode only */
+        /* AR slim radio bar — transparent, just text at top */
         #ar-radio-bar {
             display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 40;
-            background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
-            height: 40px; align-items: center; justify-content: space-between; padding: 0 12px; gap: 4px;
-            border-bottom: 1px solid rgba(255,255,255,0.08);
+            background: transparent;
+            height: 36px; align-items: center; justify-content: space-between; padding: 0 12px; gap: 4px;
         }
         body.ar-mode #ar-radio-bar { display: flex; }
         body.ar-mode #fs-station-bar { display: none !important; }
         .ar-station-btn {
             flex: 1; background: transparent; border: none;
-            color: rgba(255,255,255,0.5); font-family: var(--font-main);
-            font-size: 9px; font-weight: 900; padding: 6px 2px;
-            cursor: pointer; text-align: center; white-space: nowrap;
-            overflow: hidden; text-overflow: ellipsis; transition: 0.15s; border-radius: 4px;
+            color: rgba(255,255,255,0.4);
+            font-family: var(--font-main); font-size: 9px; font-weight: 900;
+            padding: 4px 2px; cursor: pointer; text-align: center;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+            text-shadow: 0 0 4px #000, 0 1px 0 #000;
+            transition: 0.15s; border-radius: 4px;
         }
-        .ar-station-btn.ar-active { color: #00ffcc; }
-        .ar-station-btn:active { background: rgba(255,255,255,0.12); color: #fff; }
-        #ar-play-icon { font-size: 16px; cursor: pointer; padding: 0 6px; color: var(--squad); flex-shrink: 0; border: none; background: transparent; }
-        #ar-genre-icon { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: var(--wind); font-family: var(--font-main); font-size: 9px; font-weight: 900; padding: 4px 7px; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
+        .ar-station-btn.ar-active { color: #00ffcc; text-shadow: 0 0 6px #000, 0 0 3px #000; }
+        .ar-station-btn:active { color: #fff; }
+        #ar-play-icon { font-size: 14px; cursor: pointer; padding: 0 4px; color: rgba(0,255,204,0.6); flex-shrink: 0; border: none; background: transparent; text-shadow: 0 0 4px #000; }
+        #ar-genre-icon { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: rgba(56,189,248,0.7); font-family: var(--font-main); font-size: 9px; font-weight: 900; padding: 3px 6px; border-radius: 6px; cursor: pointer; flex-shrink: 0; text-shadow: 0 0 4px #000; }
         body.fullscreen .left-avionics {
             left: max(28px, 3vw) !important;
         }
