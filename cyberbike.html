@@ -262,137 +262,93 @@
             font-size: 11px; font-weight: 900; padding: 12px; border-radius: 8px; cursor: pointer;
         }
 
-        /* ══════════════════════════════════════════════════════
-           AR WINDSHIELD MODE
-           Camera fills 100% of viewport — this is the view.
-           HUD elements become transparent glass overlays.
-           Canvas background cleared — real world shows through.
-           ══════════════════════════════════════════════════════ */
+        /* ══ AR WINDSHIELD MODE ══ */
         #ar-video {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            object-fit: cover; z-index: 0; opacity: 0;
-            transition: opacity 0.5s; pointer-events: none;
+            object-fit: cover; z-index: 0; opacity: 0; transition: opacity 0.4s; pointer-events: none;
         }
         #ar-video.active { opacity: 1; }
-
-        /* In windshield mode the whole page background is camera */
-        body.ar-mode {
-            background: transparent !important;
-        }
-
-        /* Wrapper goes fullscreen automatically in AR */
+        body.ar-mode { background: #000 !important; }
         body.ar-mode #hud-wrapper {
-            position: fixed !important;
-            top: 0 !important; left: 0 !important;
+            position: fixed !important; top: 0 !important; left: 0 !important;
             width: 100vw !important; height: 100vh !important;
-            background: transparent !important;
-            display: flex; justify-content: center; align-items: center;
-            z-index: 10; transform: none !important;
+            background: transparent !important; z-index: 10; transform: none !important;
         }
-
-        /* Pod becomes a ghost glass — camera shows through completely */
         body.ar-mode #hud-pod {
             width: 100vw !important; height: 100vh !important;
             border-radius: 0 !important; border-width: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            overflow: visible !important;
+            background: transparent !important; box-shadow: none !important; overflow: visible !important;
         }
-        body.ar-mode #vector-canvas {
-            width: 100vw !important; height: 100vh !important;
-        }
+        body.ar-mode #vector-canvas { width: 100vw !important; height: 100vh !important; }
 
-        /* In AR mode — slim radio bar at very top, above heading canvas text */
+        /* DOM overlays suppressed — canvas _drawARHUD() handles rendering */
+        body.ar-mode .top-hdg, body.ar-mode .left-avionics, body.ar-mode .right-stats,
+        body.ar-mode #trip-btn, body.ar-mode #bottom-bar, body.ar-mode #music-strip,
+        body.ar-mode #wpt-add-btn, body.ar-mode #hud-pod::after { display: none !important; }
+        body.ar-mode #svg-bezel { opacity: 0.2; }
+        body.ar-mode canvas { z-index: 2; }
+
+        /* EXIT AR — bottom-left corner, red, impossible to accidentally tap from right side */
+        #ar-btn {
+            position: absolute; bottom: -88px; left: 50%; transform: translateX(-50%);
+            background: transparent; border: 1.5px solid var(--wind); color: var(--wind);
+            font-family: var(--font-main); font-size: 11px; font-weight: 900;
+            padding: 7px 18px; border-radius: 20px; cursor: pointer; z-index: 25;
+        }
+        #ar-btn.active { background: var(--wind); color: #000; }
+        body.ar-mode #ar-btn {
+            position: fixed; bottom: 20px; left: 16px; transform: none;
+            font-size: 12px; font-weight: 900; padding: 16px 20px; letter-spacing: 2px;
+            background: rgba(0,0,0,0.75); border: 2px solid #ef4444; color: #ef4444;
+            border-radius: 20px; z-index: 40; min-width: 120px; text-align: center;
+            box-shadow: 0 4px 20px rgba(239,68,68,0.25), inset 0 0 20px rgba(0,0,0,0.5);
+            backdrop-filter: blur(8px);
+        }
+        body.ar-mode #ar-btn:active { background: #ef4444; color: #fff; transform: scale(0.97); }
+
+        /* NV — bottom-right corner, matching but green */
+        body.ar-mode #ar-nv-btn {
+            display: block !important;
+            position: fixed; bottom: 20px; right: 16px;
+            font-family: var(--font-main); font-size: 12px; font-weight: 900;
+            padding: 16px 20px; border-radius: 20px; cursor: pointer; letter-spacing: 2px;
+            background: rgba(0,0,0,0.75); border: 2px solid #94a3b8; color: #94a3b8;
+            z-index: 40; min-width: 80px; text-align: center; backdrop-filter: blur(8px);
+        }
+        body.ar-mode.ar-night #ar-nv-btn { border-color: #39ff14; color: #39ff14; box-shadow: 0 0 12px rgba(57,255,20,0.3); }
+        body.ar-mode.ar-night #ar-video { filter: brightness(2.2) contrast(1.4) saturate(0.3) hue-rotate(100deg); }
+
+        /* Ctrl bar — center bottom, above EXIT/NV buttons */
+        body.ar-mode #ctrl-bar {
+            position: fixed; bottom: 96px; left: 50%; transform: translateX(-50%); z-index: 30;
+        }
+        body.ar-mode #ctrl-bar .ctrl-btn {
+            background: rgba(0,0,0,0.7); border-color: rgba(255,255,255,0.2);
+            color: rgba(255,255,255,0.75); backdrop-filter: blur(10px);
+        }
+        body.ar-mode .speed-value.ar-warn { color: #ff3030 !important; animation: arSpeedWarn 0.4s infinite; }
+        @keyframes arSpeedWarn { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+        /* AR slim radio bar — top strip, visible in AR mode only */
         #ar-radio-bar {
             display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 40;
-            background: rgba(0,0,0,0.65); backdrop-filter: blur(6px);
-            height: 36px; align-items: center; justify-content: space-between;
-            padding: 0 10px; gap: 4px;
+            background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+            height: 40px; align-items: center; justify-content: space-between; padding: 0 12px; gap: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
         }
         body.ar-mode #ar-radio-bar { display: flex; }
         body.ar-mode #fs-station-bar { display: none !important; }
         .ar-station-btn {
             flex: 1; background: transparent; border: none;
-            color: rgba(255,255,255,0.6); font-family: var(--font-main);
-            font-size: 9px; font-weight: 900; padding: 4px 2px;
+            color: rgba(255,255,255,0.5); font-family: var(--font-main);
+            font-size: 9px; font-weight: 900; padding: 6px 2px;
             cursor: pointer; text-align: center; white-space: nowrap;
-            overflow: hidden; text-overflow: ellipsis; transition: 0.15s;
+            overflow: hidden; text-overflow: ellipsis; transition: 0.15s; border-radius: 4px;
         }
-        .ar-station-btn.active { color: var(--squad); }
-        .ar-station-btn:active  { color: #fff; background: rgba(255,255,255,0.1); border-radius: 4px; }
-        #ar-genre-btn {
-            background: transparent; border: 1px solid rgba(255,255,255,0.2);
-            color: var(--wind); font-family: var(--font-main); font-size: 9px;
-            font-weight: 900; padding: 3px 6px; border-radius: 6px; cursor: pointer;
-            white-space: nowrap; flex-shrink: 0;
-        }
-        body.ar-mode .top-hdg,
-        body.ar-mode .left-avionics,
-        body.ar-mode .right-stats,
-        body.ar-mode #trip-btn,
-        body.ar-mode #bottom-bar,
-        body.ar-mode #music-strip,
-        body.ar-mode #wpt-add-btn { display: none !important; }
-
-
-        /* SVG bezel labels — brighter in AR */
-        body.ar-mode #svg-bezel text { opacity: 0.7; }
-
-        /* Horizon line — thicker in AR for attitude reference */
-        body.ar-mode canvas { z-index: 2; }
-
-        /* AR button — bottom center, large, safe to tap at speed */
-        #ar-btn {
-            position: absolute; bottom: -88px; left: 50%; transform: translateX(-50%);
-            background: transparent; border: 1.5px solid var(--wind); color: var(--wind);
-            font-family: var(--font-main); font-size: 11px; font-weight: 900;
-            padding: 7px 18px; border-radius: 20px; cursor: pointer; white-space: nowrap;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.25); z-index: 25;
-        }
-        #ar-btn.active {
-            background: var(--wind); color: #000;
-            box-shadow: 0 0 14px var(--wind);
-        }
-        /* In AR mode the AR button is inside the fullscreen pod */
-        body.ar-mode #ar-btn {
-            position: fixed; bottom: 24px; left: 50%;
-            transform: translateX(-50%);
-            font-size: 14px; padding: 12px 28px;
-            background: rgba(0,0,0,0.5);
-            border-color: #00ffcc; color: #00ffcc;
-            z-index: 30;
-        }
-        body.ar-mode #ctrl-bar {
-            position: fixed; bottom: 80px; left: 50%;
-            transform: translateX(-50%);
-            z-index: 30;
-        }
-        body.ar-mode #ctrl-bar .ctrl-btn {
-            background: rgba(0,0,0,0.55);
-            backdrop-filter: blur(4px);
-        }
-
-        /* Night vision filter — boost brightness/contrast in low light */
-        body.ar-mode.ar-night #ar-video {
-            filter: brightness(2.2) contrast(1.4) saturate(0.3) hue-rotate(100deg);
-        }
-
-        body.ar-mode #ar-nv-btn {
-            display: block !important;
-            position: fixed; bottom: 24px; left: calc(50% + 120px);
-            transform: translateX(-50%);
-            font-family: var(--font-main); font-size: 14px; font-weight: 900;
-            padding: 12px 20px; border-radius: 20px; cursor: pointer;
-            background: rgba(0,0,0,0.5); border: 1.5px solid #94a3b8; color: #94a3b8;
-            z-index: 30;
-        }
-        body.ar-mode.ar-night #ar-nv-btn {
-            border-color: #39ff14; color: #39ff14;
-            box-shadow: 0 0 10px rgba(57,255,20,0.4);
-        }
-        body.ar-mode .speed-value.ar-warn { color: #ff3030 !important; animation: arSpeedWarn 0.4s infinite; }
-        @keyframes arSpeedWarn { 0%,100%{opacity:1} 50%{opacity:0.5} }
-
+        .ar-station-btn.ar-active { color: #00ffcc; }
+        .ar-station-btn:active { background: rgba(255,255,255,0.12); color: #fff; }
+        #ar-play-icon { font-size: 16px; cursor: pointer; padding: 0 6px; color: var(--squad); flex-shrink: 0; border: none; background: transparent; }
+        #ar-genre-icon { background: transparent; border: 1px solid rgba(255,255,255,0.2); color: var(--wind); font-family: var(--font-main); font-size: 9px; font-weight: 900; padding: 4px 7px; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
         body.fullscreen .left-avionics {
             left: max(28px, 3vw) !important;
         }
@@ -548,7 +504,10 @@
     <div id="hud-pod">
         <canvas id="vector-canvas"></canvas>
 
-        <div class="overlay top-hdg" id="heading">000° N</div>
+        <div class="overlay top-hdg">
+            <span id="hdg-deg" style="opacity:0.45;font-size:0.7em;letter-spacing:1px;">000°</span>
+            <span id="hdg-card" style="font-size:1.15em;letter-spacing:3px;margin-left:4px;">N</span>
+        </div>
 
         <div class="overlay left-avionics">
             <!-- ALT block: tappable — future: tap to set QNH or show details -->
@@ -956,8 +915,8 @@ const MathUtils = {
 const DOM = {
     init() {
         const g = id => document.getElementById(id);
-        this.speed     = g('speed');     this.heading   = g('heading');
-        this.altitude  = g('altitude');  this.distance  = g('distance');
+        this.speed     = g('speed');     this.hdgDeg    = g('hdg-deg');
+        this.hdgCard   = g('hdg-card');  this.altitude  = g('altitude');  this.distance  = g('distance');
         this.vsi       = g('vsi');       this.tripTime  = g('trip-time');
         this.fuelRem   = g('fuel-rem');  this.timeRem   = g('time-rem');
         this.destId    = g('dest-id');   this.destEta   = g('dest-eta');
@@ -1708,8 +1667,26 @@ window.Radio = {
         document.getElementById('input-radio-url').value = url;
         this.audioEl.src = url;
         this.audioEl.currentTime = 0;
-        this.audioEl.play().catch(()=>{});
+        // Flash station name in music strip genre label, restore after 3s
+        const lbl = document.getElementById('music-genre-lbl');
+        if (lbl) {
+            lbl.textContent = name.substring(0, 10);
+            clearTimeout(Radio._lblTimer);
+            Radio._lblTimer = setTimeout(() => {
+                if (lbl) lbl.textContent = (Radio.GENRES[Radio.currentGenre]?.name||'⚡').split(' ')[0];
+            }, 3000);
+        }
+        this.audioEl.play().catch(() => {
+            // Auto-try next preset on CORS/stream failure
+            const idx = this.PRESETS.findIndex(([u]) => u === url);
+            const next = this.PRESETS[(idx + 1) % this.PRESETS.length];
+            if (next && next[0] !== url) {
+                HazardEngine.showToast(`⚡ → ${next[1]}`);
+                setTimeout(() => this.playStation(next[0], next[1]), 1200);
+            }
+        });
         this._refreshUI();
+        vibrate([20]);
         if (this.isBroadcasting) {
             this.broadcastStartTime = Date.now();
             Mesh.sendMusicSync(url, true, this.broadcastStartTime);
@@ -1764,9 +1741,11 @@ window.Radio = {
         this.PRESETS.forEach(([url], i) => {
             const dot = document.getElementById('mdot-' + i);
             const fsBtn = document.getElementById('fs-s' + i);
+            const arBtn = document.getElementById('ar-s' + i);
             const active = this.currentStation === url && !this.audioEl.paused;
             if (dot) dot.classList.toggle('active', active);
             if (fsBtn) fsBtn.classList.toggle('active', active);
+            if (arBtn) arBtn.classList.toggle('ar-active', active);
         });
         const activeIdx = this.PRESETS.findIndex(([url]) => url === this.currentStation);
         if (activeIdx >= 0 && typeof highlightBezelStation !== 'undefined') highlightBezelStation(activeIdx);
@@ -2466,54 +2445,67 @@ const Graphics = {
         if (ctx.roundRect) { ctx.roundRect(x,y,w,h,r); } else { ctx.rect(x,y,w,h); }
     },
 
-    /* Draw critical HUD data directly onto canvas for AR recording.
-     * Uses only STATE values — no getElementById in hot render path. */
     _drawARHUD(ctx) {
         const W = STATE.w, H = STATE.h;
         ctx.save();
-        ctx.fillStyle = 'rgba(0,0,0,0.48)';
-        const rr = (x,y,w,h) => { ctx.beginPath(); if(ctx.roundRect) ctx.roundRect(x,y,w,h,8); else ctx.rect(x,y,w,h); ctx.fill(); };
-        rr(8, H*0.25, 115, STATE.tempF ? 150 : 115);
-        rr(W-122, H*0.13, 118, 145);
 
-        const out = (text, x, y, size, color, align='left') => {
+        const out = (text, x, y, size, color, align='left', alpha=1) => {
             ctx.font = `900 ${size}px 'Share Tech Mono',monospace`;
-            ctx.textAlign = align;
-            ctx.fillStyle = 'rgba(0,0,0,0.85)';
+            ctx.textAlign = align; ctx.globalAlpha = alpha;
+            ctx.fillStyle = 'rgba(0,0,0,0.9)';
             for(const [dx,dy] of [[-1,-1],[1,-1],[-1,1],[1,1],[0,-2],[0,2]])
                 ctx.fillText(text, x+dx, y+dy);
-            ctx.fillStyle = color;
-            ctx.fillText(text, x, y);
+            ctx.fillStyle = color; ctx.fillText(text, x, y); ctx.globalAlpha = 1;
         };
 
-        const sec = '#94a3b8', pri = '#f8fafc', cyan = '#00ffcc', blue = '#38bdf8';
-        let y = H*0.28;
-        out('⛰ ALT',                    14, y,    10, sec);   y += 16;
-        out(`${Math.round(STATE.altFt)} FT`, 14, y, 15, pri); y += 14;
-        out(STATE._vsiDisplay || '',     14, y,    10, sec);   y += 18;
-        out('⛽ FUEL',                   14, y,    10, sec);   y += 16;
-        out(`${STATE.fuelRem?.toFixed(1)||'5.0'} G`, 14, y, 15, pri); y += 14;
-        out(STATE._tteDisplay || '',     14, y,    10, sec);   y += 18;
-        if (STATE.tempF) {
-            out(`🌡 ${STATE.tempF}°`,    14, y, 10, blue); y += 14;
-            out(`💧 ${STATE.humidity}%`, 14, y, 10, blue);
+        const cyan = '#00ffcc', sec = 'rgba(255,255,255,0.45)', pri = '#f8fafc';
+
+        // Heading — degrees faded, cardinal large+bright, below radio bar (40px)
+        const hdgStr = Math.round(STATE.hdg).toString().padStart(3,'0') + '°';
+        const card   = MathUtils.getCardinal(STATE.hdg);
+        out(hdgStr, W/2 - 2, 58, 14, 'rgba(0,255,204,0.45)', 'right');
+        out(card,   W/2 + 2, 58, 32, cyan, 'left');
+
+        // Speed top-right
+        out(STATE.spdMph.toFixed(1), W - 12, 58, 38, cyan, 'right');
+        out('MPH', W - 12, 68, 10, sec, 'right');
+
+        // Bottom instrument strip — frosted pill
+        const stripH = 50, stripY = H - stripH - 28;
+        ctx.save(); ctx.globalAlpha = 0.72;
+        ctx.fillStyle = 'rgba(0,0,0,0.68)';
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(12, stripY, W-24, stripH, 14);
+        else ctx.rect(12, stripY, W-24, stripH);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.07)'; ctx.lineWidth=1; ctx.stroke();
+        ctx.restore();
+
+        const cells = [
+            ['ALT', Math.round(STATE.altFt) + ''],
+            ['DIST', (STATE.dist?.toFixed(1)||'0.0')],
+            ['TIME', STATE._timeDisplay || '00:00'],
+            ['FUEL', (STATE.fuelRem?.toFixed(1)||'5.0') + 'G'],
+            STATE.tempF ? ['TEMP', STATE.tempF + '°'] : ['UNIT', 'MPG'],
+        ];
+        const cw = (W-24)/cells.length;
+        cells.forEach(([lbl,val],i) => {
+            const cx = 12 + cw*i + cw/2;
+            out(lbl, cx, stripY+16, 8, sec, 'center', 0.7);
+            out(val, cx, stripY+36, 14, pri, 'center');
+        });
+
+        // VSI only if actively climbing/descending
+        if (STATE._vsiDisplay && STATE._vsiDisplay.includes('FPM')) {
+            const vsiColor = STATE._vsiDisplay.startsWith('+') ? '#34d399' : '#f87171';
+            out(STATE._vsiDisplay, 14, H/2, 11, vsiColor, 'left', 0.9);
         }
 
-        out(`${STATE.spdMph.toFixed(1)}`, W-14, H*0.16, 40, cyan, 'right');
-        out('MPH',  W-14, H*0.16+22, 12, cyan, 'right');
-        out('📏',   W-14, H*0.16+40, 10, sec, 'right');
-        out(`${STATE.dist?.toFixed(1)||'0.0'} MI`, W-14, H*0.16+55, 15, pri, 'right');
-        out('⏱',   W-14, H*0.16+74, 10, sec, 'right');
-        out(STATE._timeDisplay || '00:00', W-14, H*0.16+89, 15, pri, 'right');
-
-        out(`${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`,
-            W/2, H*0.065, 22, cyan, 'center');
-
-        // Coordinates at bottom (AR canvas — geocaching precision, ±1.1m at 6 decimals)
+        // Coordinates — very bottom
         if (STATE.lat != null) {
-            const latS = `${Math.abs(STATE.lat.toFixed(6))}°${STATE.lat>=0?'N':'S'}`;
-            const lonS = `${Math.abs(STATE.lon.toFixed(6))}°${STATE.lon>=0?'E':'W'}`;
-            out(`${latS}  ${lonS}`, W/2, H - 14, 10, '#34d399', 'center');
+            const latS = `${Math.abs(STATE.lat.toFixed(6))}\u00b0${STATE.lat>=0?'N':'S'}`;
+            const lonS = `${Math.abs(STATE.lon.toFixed(6))}\u00b0${STATE.lon>=0?'E':'W'}`;
+            out(`${latS}   ${lonS}`, W/2, H - 8, 10, '#34d399', 'center', 0.75);
         }
 
         ctx.restore();
@@ -3317,7 +3309,9 @@ window.Engine = {
         if (STATE.altFt > STATE.maxAltFt) STATE.maxAltFt = STATE.altFt;
 
         DOM.speed.innerText = STATE.spdMph.toFixed(1);
-        DOM.heading.innerText = `${Math.round(STATE.hdg).toString().padStart(3,'0')}° ${MathUtils.getCardinal(STATE.hdg)}`;
+        const hdgRound = Math.round(STATE.hdg).toString().padStart(3,'0');
+        if (DOM.hdgDeg)  DOM.hdgDeg.innerText  = hdgRound + '°';
+        if (DOM.hdgCard) DOM.hdgCard.innerText  = MathUtils.getCardinal(STATE.hdg);
         DOM.altitude.innerText = Math.round(STATE.altFt);
 
         if (!STATE.active) {
