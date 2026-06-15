@@ -152,34 +152,36 @@
         .speed-unit { font-size: 12px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 0 8px var(--halo), var(--text-outline); }
 
         /* Labels: secondary color with strong outline so they read on sky AND ground */
-        .lbl { font-size: 12px; letter-spacing: 1px; margin-top: 6px; font-weight: 900;
+        .lbl { font-size: 14px; letter-spacing: 1.5px; margin-top: 6px; font-weight: 900;
                color: var(--secondary);
                text-shadow: var(--text-outline), 0 0 8px var(--halo); }
         /* Values: primary color, doubled glow */
         .val { font-size: 18px; font-weight: 900; text-shadow: 0 0 8px var(--halo), 0 0 12px var(--halo), var(--text-outline); }
         /* Sub-values: slightly smaller but same contrast treatment */
-        .sub-val { font-size: 11px; color: var(--primary); font-weight: 900; text-shadow: 0 0 6px var(--halo), var(--text-outline); }
-        .unit { font-size: 10px; font-weight: 900; margin-left: 2px; }
+        .sub-val { font-size: 13px; color: var(--primary); font-weight: 900; text-shadow: 0 0 6px var(--halo), var(--text-outline); }
+        .unit { font-size: 12px; font-weight: 900; margin-left: 2px; }
 
         #svg-bezel { position: absolute; top: 0; left: 0; width: 320px; height: 320px; z-index: 10; pointer-events: none; }
 
-        .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; }
+        .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; transition: background 0.2s ease; }
+        .hit-zone:active { background: rgba(255,255,255,0.18); box-shadow: 0 0 15px rgba(255,255,255,0.35); }
 
-        /* ptt-btn is now inside #bottom-bar — no absolute positioning needed */
+        /* PTT — compact, sits above model center so it doesn't crowd ctrl-bar */
         #ptt-btn {
-            background: rgba(0,0,0,0.3); border: 1px solid var(--secondary); color: var(--secondary);
-            padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
-            cursor: pointer; border-radius: 12px; transition: 0.2s;
-            pointer-events: auto; backdrop-filter: blur(2px);
+            position: absolute; top: calc(50% - 54px); left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.45); border: 1px solid var(--secondary); color: var(--secondary);
+            padding: 4px 14px; font-family: inherit; font-size: 10px; font-weight: 900;
+            cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15;
+            pointer-events: auto; backdrop-filter: blur(3px); letter-spacing: 1px;
         }
-        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 15px var(--danger); }
+        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 12px var(--danger); }
         #bottom-bar {
-            position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+            position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 8px; align-items: center; z-index: 15; pointer-events: auto;
         }
         #ats-badge {
             font-family: var(--font-main); font-size: 10px; font-weight: 900;
-            color: var(--secondary); opacity: 0.4; padding: 5px 8px;
+            color: var(--secondary); opacity: 0.4; padding: 4px 8px;
             border: 1px solid var(--secondary); border-radius: 10px;
             cursor: pointer; transition: 0.3s; white-space: nowrap;
             background: rgba(0,0,0,0.3); backdrop-filter: blur(2px);
@@ -389,11 +391,16 @@
             left: 50% !important; transform: translateX(-50%) !important;
             font-size: 13px !important; padding: 10px 22px !important;
         }
+        body.fullscreen #ptt-btn {
+            top: 50% !important; transform: translate(-50%, -160%) !important;
+            font-size: 10px !important; padding: 5px 14px !important;
+        }
 
+        /* Music strip — directly below START TRIP button */
         #music-strip {
-            position: absolute; bottom: 42px; left: 50%; transform: translateX(-50%);
+            position: absolute; top: calc(50% + 72px); left: 50%; transform: translateX(-50%);
             display: flex; gap: 6px; align-items: center; z-index: 15;
-            pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 14px; padding: 4px 8px;
+            pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 12px; padding: 4px 8px;
         }
         body.fullscreen #music-strip {
             position: fixed; bottom: 70px; top: auto; left: 50%; transform: translateX(-50%);
@@ -401,7 +408,7 @@
             backdrop-filter: blur(5px); z-index: 30;
         }
         .music-dot {
-            width: 8px; height: 8px; border-radius: 50%;
+            width: 14px; height: 14px; border-radius: 50%;
             background: var(--secondary); cursor: pointer; transition: 0.15s;
             border: 1.5px solid transparent;
         }
@@ -518,7 +525,7 @@
 
             <!-- FUEL block: tappable → open fuel calibration -->
             <div class="lbl clickable" onclick="Avionics.openFuel()" style="margin-top:6px;cursor:pointer;">⛽ FUEL</div>
-            <div class="val clickable" onclick="Avionics.openFuel()" style="cursor:pointer;"><span id="fuel-rem">5.0</span><span class="unit">G</span></div>
+            <div class="val clickable" onclick="Avionics.openFuel()" ondblclick="Avionics.quickRefuel()" title="Double-tap: instant refuel" style="cursor:pointer;"><span id="fuel-rem">5.0</span><span class="unit">G</span></div>
             <div class="sub-val clickable" onclick="Avionics.openFuel()" id="time-rem" style="cursor:pointer;">TTE: 2:30</div>
 
             <!-- Cyclist power metrics — shown when craft=bike -->
@@ -549,7 +556,7 @@
 
             <!-- WPT: tappable → open waypoint picker. Hidden when no waypoint set. -->
             <div id="wpt-block" style="display:none;">
-                <div class="lbl clickable nav-color" onclick="Avionics.openDest()" style="margin-top:6px;cursor:pointer;">🎯 WPT</div>
+                <div class="lbl clickable nav-color" onclick="Avionics.openDest()" ondblclick="Avionics.routeNearest()" title="Double-tap: nearest aerodrome" style="margin-top:6px;cursor:pointer;">🎯 WPT</div>
                 <div class="val clickable nav-color" onclick="Avionics.openDest()" style="cursor:pointer;"><span id="dest-id">--</span></div>
                 <div class="sub-val nav-color" id="dest-eta" style="line-height:1.0;">-- MI | ETA --:--</div>
             </div>
@@ -596,17 +603,14 @@
                     top:50%;left:50%;transform:translate(-50%,-68%);
                     background:transparent;cursor:pointer;z-index:20;pointer-events:auto;"></div>
 
+        <!-- PTT — compact, above model center, behind the sprite -->
+        <button id="ptt-btn"
+            onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
+            ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
+
         <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
 
-        <!-- Bottom row: ATS status badge + PTT side by side -->
-        <div id="bottom-bar">
-            <span id="ats-badge" onclick="Mesh.openModal()" title="Squad link status">● ATS</span>
-            <button id="ptt-btn"
-                onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
-                ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
-        </div>
-
-        <!-- Mini music strip — tap to cycle station, long-press for picker, ▶ to play/pause -->
+        <!-- Music strip — directly below START TRIP -->
         <div id="music-strip">
             <span id="music-genre-lbl" onclick="Radio.cycleGenre()" title="Tap to change genre" style="font-size:9px;color:var(--wind);font-weight:900;cursor:pointer;white-space:nowrap;padding:0 2px;user-select:none;">⚡</span>
             <button class="music-dot" id="mdot-0" title="DEF CON RADIO"></button>
@@ -614,6 +618,11 @@
             <button class="music-dot" id="mdot-2" title="DRONE ZONE"></button>
             <button class="music-dot" id="mdot-3" title="GROOVE SALAD"></button>
             <button id="music-playpause" onclick="Radio.togglePlayPause()">▶</button>
+        </div>
+
+        <!-- Bottom row: ATS badge only -->
+        <div id="bottom-bar">
+            <span id="ats-badge" onclick="Mesh.openModal()" title="Squad link status">● ATS</span>
         </div>
 
         <div id="station-picker">
@@ -688,6 +697,8 @@
         <div class="input-group"><label>RIDER WEIGHT (LBS)</label><input type="number" id="input-weight" step="1" value="165"></div>
         <div class="input-group"><label>⚡ SPEED ALERT (MPH) — 0 = off</label><input type="number" id="input-speed-alert" step="1" value="0" min="0" max="200"></div>
         <div class="input-group"><label>🥁 CADENCE GUIDE (RPM) — 0 = off</label><input type="number" id="input-cadence" step="5" value="0" min="0" max="120"></div>
+        <div class="input-group"><label>🪂 DEPLOY ALT (FT) — skydive chute alert</label><input type="number" id="input-deploy-alt" step="100" value="2500" min="500" max="15000"></div>
+        <div class="input-group"><label>🤿 BREATHING GAS O₂% — air=21, nitrox=32</label><input type="number" id="input-o2pct" step="1" value="21" min="16" max="40"></div>
         <button class="modal-close modal-btn-nav" onclick="Avionics.saveFuel()">SAVE</button>
         <button class="modal-close" onclick="closeModal('fuel-modal')">CANCEL</button>
     </div>
@@ -859,14 +870,26 @@ const STATE = {
     _vsiDisplay: '-- MPG', _tteDisplay: 'TTE: --', _timeDisplay: '00:00',
     fuelRem: 5.0,
     // Sport features
-    speedAlertMph: 0,        // 0=off; mph threshold for haptic warning
-    segmentStartTs: 0,       // timestamp of current segment start
-    segmentSplits: [],       // array of completed segment durations ms
+    speedAlertMph: 0,
+    segmentStartTs: 0,
+    segmentSplits: [],
     sprintMode: false, sprintStart: 0, sprintBest: 0,
-    cadenceTarget: 0,        // target cadence RPM; 0=off
-    crashGuard: true,        // auto-detect crash via G spike
-    _crashTs: 0,             // timestamp of G spike detection
-    lastG: 0,                // previous frame G magnitude for delta
+    cadenceTarget: 0,
+    crashGuard: true,
+    _crashTs: 0, lastG: 0,
+    // Skydiving mode
+    deployAlt: 2500,
+    _deployAlerted: false,
+    // Skydive phase: 'ascent' | 'freefall' | 'canopy'
+    skyPhase: 'ascent', skyExitAlt: 0, skyExitTs: 0, skyMaxSpeed: 0,
+    // Dive computer fields (simplified Bühlmann NDL simulation)
+    diveDepthFt: 0, diveMaxDepthFt: 0, diveBottomTimeSec: 0,
+    diveNDLMin: 99,     // no-decompression limit remaining (minutes)
+    diveCNSpct: 0,      // CNS O2 toxicity percentage
+    diveO2pct: 32,      // breathing gas O2% (21=air, 32=nitrox)
+    diveAscentRate: 0,  // ft/min ascent rate (warn if > 30 ft/min)
+    _diveStartTs: 0, _diveLastDepth: 0, _diveLastTs: 0,
+    deviceTempC: null,
 };
 
 let watchId = null;
@@ -1526,21 +1549,134 @@ window.Mesh = {
 };
 
 /* ═══════════════════════════════════════════════════════ COMMS ══ */
+/* ═══════════════════════════════════════════════════════ ACOUSTIC SYNC ══ */
+const AcousticSync = {
+    ctx: null, osc: null, analyser: null, micStream: null,
+    listening: false, _detectTimer: null,
+    FREQ: 2750,  // sci-fi ping frequency — distinctive, above ambient noise
+
+    _ac() {
+        if (!this.ctx) {
+            window.AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        return this.ctx;
+    },
+
+    async start() {
+        const ac = this._ac();
+        // Play outbound pairing tone — pulsed sine wave
+        this.osc = ac.createOscillator();
+        const gain = ac.createGain();
+        this.osc.type = 'sine';
+        this.osc.frequency.value = this.FREQ;
+        gain.gain.setValueAtTime(0, ac.currentTime);
+        gain.gain.linearRampToValueAtTime(0.7, ac.currentTime + 0.08);
+        gain.gain.exponentialRampToValueAtTime(0.001, ac.currentTime + 0.55);
+        this.osc.connect(gain); gain.connect(ac.destination);
+        this.osc.start(); this.osc.stop(ac.currentTime + 0.6);
+
+        // Listen for a matching tone from another device
+        try {
+            this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const src = ac.createMediaStreamSource(this.micStream);
+            this.analyser = ac.createAnalyser();
+            this.analyser.fftSize = 2048;
+            src.connect(this.analyser);
+            this.listening = true;
+            // Timeout after 8s so we don't poll forever
+            this._detectTimer = setTimeout(() => this.stop(), 8000);
+            this._detect();
+        } catch (e) {
+            HazardEngine.showToast('🎤 Mic needed for Acoustic Sync');
+            this._resetBtn();
+        }
+    },
+
+    stop() {
+        clearTimeout(this._detectTimer);
+        if (this.osc) { try { this.osc.stop(); } catch(e){} this.osc = null; }
+        if (this.micStream) { this.micStream.getTracks().forEach(t => t.stop()); this.micStream = null; }
+        this.listening = false;
+        this._resetBtn();
+    },
+
+    _resetBtn() {
+        const btn = document.getElementById('ptt-btn');
+        if (btn) { btn.classList.remove('recording'); btn.innerText = '🎙️ PTT'; }
+    },
+
+    _detect() {
+        if (!this.listening || !this.analyser) return;
+        const buf = new Uint8Array(this.analyser.frequencyBinCount);
+        this.analyser.getByteFrequencyData(buf);
+        const nyquist = this.ctx.sampleRate / 2;
+        const bin = Math.round((this.FREQ / nyquist) * buf.length);
+        if (buf[bin] > 180) {
+            // Strong match — link up
+            this.stop();
+            vibrate([100, 50, 100]);
+            HazardEngine.showToast('📡 TONE DETECTED — LINKING');
+            Mesh.openModal();  // Let user choose host/join — safer than auto-hosting
+        } else {
+            requestAnimationFrame(() => this._detect());
+        }
+    }
+};
+
+/* ═══════════════════════════════════════════════════════ COMMS ══ */
 window.Comms = {
+    _tapTimer: null, _locked: false,
+
     startTx(e) {
         if (e?.preventDefault) e.preventDefault();
-        if (!Mesh.connected) {
-            Mesh.openModal(); // not paired yet — show pairing screen
+        const btn = document.getElementById('ptt-btn');
+
+        // Double-tap within 300ms → toggle hands-free TX lock
+        if (this._tapTimer) {
+            clearTimeout(this._tapTimer);
+            this._tapTimer = null;
+            this._locked = !this._locked;
+            if (this._locked) {
+                btn.classList.add('recording');
+                btn.innerText = '🔴 TX LOCKED';
+                vibrate([50, 50, 100]);
+                if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true;
+            } else {
+                this._unlock(btn);
+            }
             return;
         }
-        document.getElementById('ptt-btn').classList.add('recording');
-        document.getElementById('ptt-btn').innerText = '🔴 TX';
+        this._tapTimer = setTimeout(() => { this._tapTimer = null; }, 300);
+
+        if (this._locked) return; // Locked = hands-free already broadcasting
+
+        if (!Mesh.connected) {
+            // PTT when unconnected → Acoustic Sync pairing
+            btn.classList.add('recording');
+            btn.innerText = '📡 SYNCING';
+            AcousticSync.start();
+            return;
+        }
+
+        // Standard momentary PTT
+        btn.classList.add('recording');
+        btn.innerText = '🔴 TX';
         if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = true;
     },
+
     stopTx(e) {
         if (e?.preventDefault) e.preventDefault();
-        document.getElementById('ptt-btn').classList.remove('recording');
-        document.getElementById('ptt-btn').innerText = '🎙️ PTT';
+        if (this._locked) return; // Hands-free lock: ignore release
+        const btn = document.getElementById('ptt-btn');
+        this._unlock(btn);
+        if (!Mesh.connected) AcousticSync.stop();
+    },
+
+    _unlock(btn) {
+        this._locked = false;
+        if (btn) { btn.classList.remove('recording'); btn.innerText = '🎙️ PTT'; }
         if (Mesh.localStream) Mesh.localStream.getAudioTracks()[0].enabled = false;
     }
 };
@@ -2113,15 +2249,21 @@ const API = {
 /* ═══════════════════════════════════════════════════════ AVIONICS ══ */
 window.Avionics = {
     toggleCraft() {
-        STATE.craftMode = (STATE.craftMode + 1) % 3;
-        const svgEl = document.getElementById('svg-craft'); // may be null — element removed from bezel
+        STATE.craftMode = (STATE.craftMode + 1) % 5;
+        const svgEl  = document.getElementById('svg-craft');
         const ctrlBtn = DOM.ctrlCraft;
-        const icons = ['🛩️','🛸','🚴'];
-        const names = ['avionics','alien technology','cyber bike'];
-        if (svgEl) svgEl.textContent = icons[STATE.craftMode];
-        if (ctrlBtn) ctrlBtn.innerText = icons[STATE.craftMode];
+        const icons = ['🛩️','🛸','🚴','🪂','🤿'];
+        const names = ['avionics','alien technology','cyber bike','skydive','dive mode'];
+        if (svgEl)   svgEl.textContent  = icons[STATE.craftMode];
+        if (ctrlBtn) ctrlBtn.innerText  = icons[STATE.craftMode];
         MathUtils.say(names[STATE.craftMode] + ' engaged');
         DOM.powerBlk.style.display = STATE.craftMode === 2 ? 'block' : 'none';
+        // Skydive: warn if deploy altitude not set
+        if (STATE.craftMode === 3 && !STATE.deployAlt)
+            HazardEngine.showToast('🪂 Set deploy ALT in ⚙️');
+        // Dive: prompt depth mode
+        if (STATE.craftMode === 4)
+            HazardEngine.showToast('🤿 GPS depth or manual entry');
         API.applyTheme();
     },
 
@@ -2150,11 +2292,42 @@ window.Avionics = {
         STATE.riderWeightLbs   = parseFloat(document.getElementById('input-weight').value)     || 165;
         STATE.speedAlertMph    = parseFloat(document.getElementById('input-speed-alert').value)|| 0;
         STATE.cadenceTarget    = parseFloat(document.getElementById('input-cadence').value)    || 0;
+        STATE.deployAlt   = parseFloat(document.getElementById('input-deploy-alt')?.value) || 2500;
+        STATE.diveO2pct   = parseFloat(document.getElementById('input-o2pct')?.value)       || 21;
+        // Reset dive computer on save
+        if (STATE.craftMode === 4) {
+            STATE.diveMaxDepthFt=0; STATE.diveBottomTimeSec=0;
+            STATE._diveStartTs=0; STATE.diveCNSpct=0;
+            STATE._ndlWarned=false; STATE._cnsWarned=false;
+            HazardEngine.showToast(`🤿 O₂: ${STATE.diveO2pct}% — DIVE RESET`);
+        }
         CFG.RIDER_WEIGHT_LBS   = STATE.riderWeightLbs;
         DOM.fuelRem.innerText  = STATE.fuelCap.toFixed(1);
         closeModal('fuel-modal');
         if (STATE.speedAlertMph > 0)  HazardEngine.showToast(`⚡ SPEED ALERT: ${STATE.speedAlertMph} MPH`);
         if (STATE.cadenceTarget > 0)  HazardEngine.showToast(`🥁 CADENCE: ${STATE.cadenceTarget} RPM`);
+    },
+
+    // Double-tap fuel display → instant refuel
+    quickRefuel() {
+        STATE.fuelRem = STATE.fuelCap;
+        DOM.fuelRem.innerText = STATE.fuelRem.toFixed(1);
+        HazardEngine.showToast('⛽ TANK FULL');
+        vibrate([100]);
+    },
+
+    // Double-tap WPT label → auto-route to nearest aerodrome
+    routeNearest() {
+        const airports = STATE.airports || [];
+        if (!airports.length || STATE.lat == null) {
+            HazardEngine.showToast('📡 No radar contacts'); return;
+        }
+        const nearest = airports.map(ap => ({
+            ...ap, d: MathUtils.getDistAndBearing(STATE.lat, STATE.lon, ap.lat, ap.lon).dist
+        })).sort((a, b) => a.d - b.d)[0];
+        this.setDest(nearest.lat, nearest.lon, nearest.name || 'APT');
+        MathUtils.say(`Routing to ${nearest.name || 'nearest aerodrome'}`);
+        HazardEngine.showToast(`🎯 → ${nearest.name || 'NEAREST APT'}`);
     },
 
     openDest() {
@@ -2303,18 +2476,6 @@ const Graphics = {
             ctx.strokeStyle = `rgba(0,255,255,${alpha})`; ctx.lineWidth = 1; ctx.stroke();
         });
 
-        // ── Rotating outer energy ring ──
-        ctx.save();
-        ctx.rotate(spin);
-        for (let i = 0; i < 12; i++) {
-            const a = i * Math.PI / 6;
-            const ex = Math.cos(a) * 27, ey = Math.sin(a) * 8;
-            const bright = 0.3 + 0.7 * Math.pow(Math.sin(spin * 3 + i * 0.5) * 0.5 + 0.5, 2);
-            ctx.fillStyle = i % 3 === 0 ? `rgba(57,255,20,${bright})` : `rgba(0,255,255,${bright * 0.6})`;
-            ctx.beginPath(); ctx.arc(ex, ey, i % 3 === 0 ? 2.5 : 1.5, 0, Math.PI*2); ctx.fill();
-        }
-        ctx.restore();
-
         // ── Hull lower disc ──
         const hullGrad = ctx.createRadialGradient(0, 2, 2, 0, 2, 28);
         hullGrad.addColorStop(0, '#1a1a2e');
@@ -2361,82 +2522,194 @@ const Graphics = {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
-        ctx.scale(1.1, 1.1); // bird's-eye plan view
+        ctx.scale(1.15, 1.15);
+        const crank = STATE.active ? Date.now() / Math.max(55, 240 - STATE.spdMph * 2) : 0;
+        const fc = isDark ? '#94a3b8' : '#334155';
+        const tc = isDark ? '#0f172a' : '#1e293b';
+        const ac = STATE.clrWind;
+        const lc = isDark ? '#cbd5e1' : '#475569';
+        const WB = 17;
 
-        const cadence = STATE.active ? Date.now() / Math.max(55, 240 - STATE.spdMph * 2) : 0;
-        const frameCol = isDark ? '#64748b' : '#334155';
-        const tyreCol  = isDark ? '#1e293b' : '#0f172a';
-        const rimCol   = isDark ? '#94a3b8' : '#475569';
-        const accent   = STATE.clrWind;
-        const skin     = '#f5c5a3';
+        // Shadow — elongated to match bike silhouette
+        ctx.save();
+        ctx.translate(4, 4);
+        ctx.globalAlpha = isDark ? 0.35 : 0.15;
+        ctx.fillStyle = '#000';
+        ctx.beginPath(); ctx.ellipse(0, 0, 7, WB, 0, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
 
-        // Plan-view: y=forward(up), x=lateral. Wheelbase half = 18px.
-        const WB = 18;
-
-        // Shadow
-        ctx.save(); ctx.globalAlpha = isDark ? 0.2 : 0.1; ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.ellipse(2, 2, 9, 21, 0, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha = 1; ctx.restore();
-
-        // Wheels (foreshortened top-down: narrow ellipses)
-        const dw = (cy) => {
-            ctx.beginPath(); ctx.ellipse(0, cy, 4, 8, 0, 0, Math.PI*2);
-            ctx.fillStyle = tyreCol; ctx.fill();
-            ctx.beginPath(); ctx.ellipse(0, cy, 1.5, 6, 0, 0, Math.PI*2);
-            ctx.fillStyle = rimCol; ctx.fill();
+        // Wheels with neon rim highlights
+        const wheel=(cy)=>{
+            ctx.beginPath(); ctx.ellipse(0,cy,3.5,8,0,0,Math.PI*2);
+            ctx.fillStyle=tc; ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0,cy,2,7,0,0,Math.PI*2);
+            ctx.fillStyle=ac; ctx.fill();
         };
-        dw(-WB); dw(WB);
+        wheel(-WB); wheel(WB);
 
-        // Frame from above — centerline tube + stays fanning out
-        ctx.strokeStyle = frameCol; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        // Main tube (seat to head)
-        ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0,-WB+4); ctx.lineTo(0,WB-4); ctx.stroke();
-        // Rear chain/seat stays
-        ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo( 3,0); ctx.lineTo( 2,-WB); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-3,0); ctx.lineTo(-2,-WB); ctx.stroke();
-        // Front fork
-        ctx.beginPath(); ctx.moveTo( 2,WB-3); ctx.lineTo( 1,WB); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-2,WB-3); ctx.lineTo(-1,WB); ctx.stroke();
-
-        // Crank arms (rotate in plan — side-to-side sweep)
-        const crankR = 5;
-        const plx = Math.sin(cadence)*crankR, pry = Math.cos(cadence)*1.5;
-        const prx = -Math.sin(cadence)*crankR;
-        ctx.strokeStyle = rimCol; ctx.lineWidth = 1.8;
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(plx, pry); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(prx,-pry); ctx.stroke();
-        ctx.beginPath(); ctx.arc(0,0,3.5,0,Math.PI*2); ctx.lineWidth=1; ctx.stroke(); // chainring
-        ctx.fillStyle = '#cbd5e1';
-        [[plx,pry],[prx,-pry]].forEach(([px,py]) => {
-            ctx.save(); ctx.translate(px,py); ctx.rotate(Math.atan2(py,px));
-            ctx.fillRect(-1.5,-3,3,6); ctx.restore();
+        // Frame — center spine with subtle neon glow
+        ctx.strokeStyle=fc; ctx.lineCap='round'; ctx.lineJoin='round';
+        ctx.lineWidth=3;
+        ctx.shadowColor=ac; ctx.shadowBlur=4;
+        ctx.beginPath(); ctx.moveTo(0,-WB+5); ctx.lineTo(0,WB-5); ctx.stroke();
+        ctx.shadowBlur=0;
+        ctx.lineWidth=1.8;
+        [[3,0,2,-WB],[-3,0,-2,-WB],[2.5,0,1.5,WB],[-2.5,0,-1.5,WB]].forEach(([x1,y1,x2,y2])=>{
+            ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
         });
 
-        // Rider body — elongated oval centered slightly forward
-        const ry = WB*0.2, rw = 7, rl = 12;
-        ctx.fillStyle = accent;
-        ctx.beginPath(); ctx.ellipse(0,ry,rw,rl,0,0,Math.PI*2); ctx.fill();
+        // Crank / pedals
+        const CR=5.5;
+        const lPx=Math.sin(crank)*CR, lPy=Math.cos(crank)*2;
+        const rPx=-Math.sin(crank)*CR, rPy=-Math.cos(crank)*2;
+        ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.8;
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(lPx,lPy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rPx,rPy); ctx.stroke();
+        ctx.fillStyle='#cbd5e1';
+        [[lPx,lPy],[rPx,rPy]].forEach(([px,py])=>{
+            ctx.save(); ctx.translate(px,py); ctx.rotate(Math.atan2(py,px));
+            ctx.fillRect(-3,-1.5,6,3); ctx.restore();
+        });
 
-        // Arms to bars
-        const barY = WB-4;
-        ctx.strokeStyle = skin; ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(-rw*0.7,ry-rl*0.4); ctx.lineTo(-5,barY); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo( rw*0.7,ry-rl*0.4); ctx.lineTo( 5,barY); ctx.stroke();
+        // Rider
+        const bY=WB*0.15, bW=6.5, bL=11;
+        const bodyGrad=ctx.createLinearGradient(0,bY-bL,0,bY+bL);
+        bodyGrad.addColorStop(0,ac); bodyGrad.addColorStop(1,'#0f172a');
+        ctx.fillStyle=bodyGrad;
+        ctx.beginPath(); ctx.ellipse(0,bY,bW,bL,0,0,Math.PI*2); ctx.fill();
+
+        // Aero helmet (teardrop)
+        ctx.fillStyle='#1e293b';
+        ctx.beginPath();
+        ctx.arc(0,bY-bL*0.65,4.5,0,Math.PI,true);
+        ctx.lineTo(0,bY-bL*0.05);
+        ctx.closePath(); ctx.fill();
+
+        // Cyber visor
+        ctx.fillStyle=STATE.clrSquad;
+        ctx.shadowColor=STATE.clrSquad; ctx.shadowBlur=5;
+        ctx.beginPath(); ctx.ellipse(0,bY-bL*0.8,3.5,1.5,0,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
+
         // Handlebars
-        ctx.strokeStyle = frameCol; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(-6,barY); ctx.lineTo(6,barY); ctx.stroke();
+        const hbY=bY-bL*0.5;
+        ctx.strokeStyle=fc; ctx.lineWidth=2.2;
+        ctx.beginPath(); ctx.moveTo(-6,hbY); ctx.lineTo(6,hbY); ctx.stroke();
 
-        // Legs to pedals
-        ctx.strokeStyle = isDark ? '#94a3b8' : '#475569'; ctx.lineWidth = 3;
-        ctx.beginPath(); ctx.moveTo(-rw*0.6,ry+4); ctx.lineTo(plx,pry); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo( rw*0.6,ry+4); ctx.lineTo(prx,-pry); ctx.stroke();
+        // Arms
+        ctx.strokeStyle=ac; ctx.lineWidth=2.5;
+        ctx.beginPath(); ctx.moveTo(-bW*0.7,bY-bL*0.3); ctx.lineTo(-5.5,hbY); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( bW*0.7,bY-bL*0.3); ctx.lineTo( 5.5,hbY); ctx.stroke();
 
-        // Helmet (circle at front)
-        ctx.fillStyle = accent;
-        ctx.beginPath(); ctx.arc(0,ry-rl*0.65,5,0,Math.PI*2); ctx.fill();
-        ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth=1;
-        ctx.beginPath(); ctx.moveTo(-2,ry-rl*0.65); ctx.lineTo(2,ry-rl*0.65); ctx.stroke();
+        // Legs
+        ctx.strokeStyle=lc; ctx.lineWidth=3.5; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(-bW*0.55,bY+bL*0.3); ctx.lineTo(lPx,lPy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( bW*0.55,bY+bL*0.3); ctx.lineTo(rPx,rPy); ctx.stroke();
+
+        ctx.restore();
+    },
+
+    drawSkydiver(x, y, _roll, isDark) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1.1, 1.1);
+        const suit=STATE.clrWind, hel='#1e293b';
+        const t=Date.now();
+        const sway=Math.sin(STATE.active?t/300:0)*(STATE.active?1.5:0);
+
+        // Shadow
+        ctx.save(); ctx.translate(4,4); ctx.globalAlpha=isDark?0.35:0.15; ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.ellipse(sway,0,7,15,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+
+        // Tactical rig / backpack
+        ctx.fillStyle='#334155';
+        ctx.beginPath(); this._rr(ctx,sway-4.5,-4,9,14,2); ctx.fill();
+        ctx.strokeStyle=STATE.clrSquad; ctx.lineWidth=1;
+        ctx.beginPath(); this._rr(ctx,sway-3.5,-3,7,12,1); ctx.stroke();
+
+        // Body
+        const suitGrad=ctx.createRadialGradient(sway,0,2,sway,0,14);
+        suitGrad.addColorStop(0,suit); suitGrad.addColorStop(1,'#0284c7');
+        ctx.fillStyle=suitGrad;
+        ctx.beginPath(); ctx.ellipse(sway,0,5,14,0,0,Math.PI*2); ctx.fill();
+
+        // Arms
+        ctx.strokeStyle=suit; ctx.lineWidth=4.5; ctx.lineCap='round'; ctx.lineJoin='round';
+        ctx.beginPath(); ctx.moveTo(sway-4,-2); ctx.lineTo(sway-12,-2); ctx.lineTo(sway-16,4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sway+4,-2); ctx.lineTo(sway+12,-2); ctx.lineTo(sway+16,4); ctx.stroke();
+
+        // Legs
+        ctx.beginPath(); ctx.moveTo(sway-3,10); ctx.lineTo(sway-10,16); ctx.lineTo(sway-7,22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(sway+3,10); ctx.lineTo(sway+10,16); ctx.lineTo(sway+7,22); ctx.stroke();
+
+        // Helmet
+        ctx.fillStyle=hel;
+        ctx.beginPath(); ctx.arc(sway,-10,5.5,0,Math.PI*2); ctx.fill();
+
+        // Glowing cyber visor
+        ctx.fillStyle=STATE.clrDanger;
+        ctx.shadowColor=STATE.clrDanger; ctx.shadowBlur=6;
+        ctx.beginPath(); ctx.ellipse(sway,-11.5,4.5,2.5,0,Math.PI,Math.PI*2.5); ctx.fill();
+        ctx.shadowBlur=0;
+
+        ctx.restore();
+    },
+
+    drawDiver(x, y, _roll, isDark) {
+        const ctx = this.ctx;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(1.05, 1.05);
+        const neon=STATE.clrNav;
+        const t=Date.now();
+        const bob=Math.sin(STATE.active?t/500:0)*(STATE.active?1:0);
+        const kick=Math.sin(STATE.active?t/200:0)*3;
+
+        // Shadow
+        ctx.save(); ctx.translate(3,4); ctx.globalAlpha=isDark?0.35:0.15; ctx.fillStyle='#000';
+        ctx.beginPath(); ctx.ellipse(bob,0,6,19,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+
+        // Animated bubbles
+        if (STATE.active) {
+            ctx.fillStyle='rgba(255,255,255,0.6)';
+            for(let i=0;i<4;i++){
+                const bY=-14-((t/25+i*12)%30);
+                const bX=bob+Math.sin(t/150+i)*4;
+                const bS=2-((bY+14)/-30)*1.5;
+                if(bS>0){ctx.beginPath();ctx.arc(bX,bY,bS,0,Math.PI*2);ctx.fill();}
+            }
+        }
+
+        // Fins (animated kicking flutter)
+        ctx.fillStyle='#0ea5e9';
+        ctx.beginPath(); ctx.ellipse(bob-4,18+kick,4,6,-0.2,0,Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.ellipse(bob+4,18-kick,4,6,0.2,0,Math.PI*2); ctx.fill();
+
+        // Body
+        const suitGrad=ctx.createLinearGradient(0,-18,0,18);
+        suitGrad.addColorStop(0,'#334155'); suitGrad.addColorStop(1,'#0f172a');
+        ctx.fillStyle=suitGrad;
+        ctx.beginPath(); ctx.ellipse(bob,0,5,18,0,0,Math.PI*2); ctx.fill();
+
+        // Tank (metallic gradient)
+        const tankGrad=ctx.createLinearGradient(bob-3,0,bob+3,0);
+        tankGrad.addColorStop(0,'#64748b'); tankGrad.addColorStop(0.5,'#cbd5e1'); tankGrad.addColorStop(1,'#475569');
+        ctx.fillStyle=tankGrad;
+        ctx.beginPath(); this._rr(ctx,bob-3.5,-2,7,14,2); ctx.fill();
+        ctx.fillStyle='#f59e0b';
+        ctx.beginPath(); ctx.arc(bob,-3,1.5,0,Math.PI*2); ctx.fill();
+
+        // Arms (Superman)
+        ctx.strokeStyle='#1e293b'; ctx.lineWidth=4; ctx.lineCap='round';
+        ctx.beginPath(); ctx.moveTo(bob-4,-10); ctx.lineTo(bob-6,-22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(bob+4,-10); ctx.lineTo(bob+6,-22); ctx.stroke();
+
+        // Glowing mask
+        ctx.fillStyle=neon;
+        ctx.shadowColor=neon; ctx.shadowBlur=6;
+        ctx.beginPath(); ctx.ellipse(bob,-13,3.5,2.5,0,0,Math.PI*2); ctx.fill();
+        ctx.shadowBlur=0;
 
         ctx.restore();
     },
@@ -2758,6 +3031,70 @@ const Graphics = {
         });
         ctx.globalAlpha = 1;
 
+        // ── Mode-specific canvas overlays (skydive / dive) ──
+        if (!AR.active && STATE.craftMode === 3) {
+            const cx=STATE.cx, cy=STATE.cy, r=STATE.r;
+            ctx.save();
+            const altFrac = Math.max(0, Math.min(1, STATE.altFt / Math.max(1, STATE.skyExitAlt || 14000)));
+            const altHue  = Math.round(altFrac * 120);
+            ctx.beginPath(); ctx.arc(cx,cy,r-4,-Math.PI/2,-Math.PI/2+(1-altFrac)*Math.PI*2);
+            ctx.strokeStyle=`hsl(${altHue},100%,55%)`; ctx.lineWidth=5; ctx.globalAlpha=0.8; ctx.stroke();
+            if (STATE.skyPhase==='freefall') {
+                const ffMph=Math.abs(STATE._vsiFpm||0)/88*60;
+                const ffF=Math.min(1,ffMph/200);
+                ctx.beginPath(); ctx.arc(cx,cy,r*0.78,-Math.PI/2,-Math.PI/2+ffF*Math.PI*2);
+                ctx.strokeStyle='#f59e0b'; ctx.lineWidth=4; ctx.globalAlpha=0.75; ctx.stroke();
+                ctx.font='900 13px monospace'; ctx.fillStyle='#f59e0b'; ctx.textAlign='center'; ctx.globalAlpha=0.9;
+                ctx.fillText(`${Math.round(ffMph)} MPH ▼`,cx,cy-r*0.48);
+            }
+            if (STATE.deployAlt>0 && (STATE.skyExitAlt||14000)>0) {
+                const dF=1-STATE.deployAlt/(STATE.skyExitAlt||14000);
+                const dA=-Math.PI/2+dF*Math.PI*2;
+                ctx.beginPath(); ctx.moveTo(cx+Math.cos(dA)*(r-9),cy+Math.sin(dA)*(r-9));
+                ctx.lineTo(cx+Math.cos(dA)*(r+2),cy+Math.sin(dA)*(r+2));
+                ctx.strokeStyle='#ef4444'; ctx.lineWidth=3; ctx.globalAlpha=0.9; ctx.stroke();
+            }
+            const pLbl={ascent:'↑ ASCENT',freefall:'▼ FREEFALL',canopy:'🪂 CANOPY'}[STATE.skyPhase]||'';
+            ctx.font='900 11px monospace'; ctx.fillStyle='#00ffcc'; ctx.textAlign='center'; ctx.globalAlpha=0.7;
+            ctx.fillText(pLbl,cx,cy+r*0.68);
+            if (STATE.skyPhase==='freefall'&&STATE.skyExitTs>0) {
+                ctx.font='900 10px monospace'; ctx.fillStyle='#f59e0b'; ctx.globalAlpha=0.8;
+                ctx.fillText(`FF ${((now-STATE.skyExitTs)/1000).toFixed(1)}s`,cx,cy+r*0.80);
+            }
+            ctx.restore();
+        }
+
+        if (!AR.active && STATE.craftMode === 4) {
+            const cx=STATE.cx, cy=STATE.cy, r=STATE.r;
+            ctx.save();
+            // NDL arc (outer) — this IS the "fuel/O2" meter
+            const ndlF=Math.min(1,STATE.diveNDLMin/99);
+            const ndlH=Math.round(ndlF*120);
+            ctx.beginPath(); ctx.arc(cx,cy,r-4,-Math.PI/2,-Math.PI/2+ndlF*Math.PI*2);
+            ctx.strokeStyle=`hsl(${ndlH},100%,55%)`; ctx.lineWidth=5; ctx.globalAlpha=0.85; ctx.stroke();
+            ctx.font='900 12px monospace'; ctx.textAlign='center'; ctx.globalAlpha=0.85;
+            ctx.fillStyle=STATE.diveNDLMin<=5?'#ef4444':STATE.diveNDLMin<=15?'#f59e0b':'#00ffcc';
+            ctx.fillText(`NDL ${STATE.diveNDLMin<99?STATE.diveNDLMin+'min':'∞'}`,cx,cy+r*0.55);
+            // CNS O2 inner arc
+            const cnsF=Math.min(1,STATE.diveCNSpct/100);
+            const cnsH=Math.round((1-cnsF)*120);
+            ctx.beginPath(); ctx.arc(cx,cy,r*0.78,-Math.PI/2,-Math.PI/2+cnsF*Math.PI*2);
+            ctx.strokeStyle=`hsl(${cnsH},100%,55%)`; ctx.lineWidth=4; ctx.globalAlpha=0.7; ctx.stroke();
+            ctx.font='700 9px monospace'; ctx.fillStyle=`hsl(${cnsH},100%,60%)`; ctx.globalAlpha=0.7;
+            ctx.fillText(`CNS ${Math.round(STATE.diveCNSpct)}%`,cx,cy+r*0.67);
+            // Ascent rate warning
+            if (STATE.diveAscentRate>15) {
+                ctx.fillStyle=STATE.diveAscentRate>30?'#ef4444':'#f59e0b';
+                ctx.font='900 10px monospace'; ctx.globalAlpha=0.9;
+                ctx.fillText(`↑ ${Math.round(STATE.diveAscentRate)} FT/MIN`,cx,cy-r*0.52);
+            }
+            const btM=Math.floor(STATE.diveBottomTimeSec/60);
+            const btS=Math.floor(STATE.diveBottomTimeSec%60).toString().padStart(2,'0');
+            ctx.font='700 9px monospace'; ctx.fillStyle='rgba(255,255,255,0.5)'; ctx.globalAlpha=0.6;
+            ctx.fillText(`BOT ${btM}:${btS}  MAX ${Math.round(STATE.diveMaxDepthFt)}FT`,cx,cy+r*0.80);
+            ctx.restore();
+        }
+
         // ── Sport overlays: sprint countdown arc, segment indicator ──
         if (STATE.sprintMode && STATE.sprintStart > 0) {
             const elapsed = now - STATE.sprintStart;
@@ -3027,9 +3364,11 @@ const Graphics = {
         // ── Craft sprite — fixed upright, world tilts around it ──
         if (!AR.active) {
             const sx = STATE.cx + craftShiftX, sy = STATE.cy + craftShiftY;
-            if (STATE.craftMode === 1) Graphics.drawUFO(sx, sy, 0);
+            if      (STATE.craftMode === 1) Graphics.drawUFO(sx, sy, 0);
             else if (STATE.craftMode === 2) Graphics.drawBike(sx, sy, 0, isDark);
-            else Graphics.drawCessna(sx, sy, 0, isDark);
+            else if (STATE.craftMode === 3) Graphics.drawSkydiver(sx, sy, 0, isDark);
+            else if (STATE.craftMode === 4) Graphics.drawDiver(sx, sy, 0, isDark);
+            else                            Graphics.drawCessna(sx, sy, 0, isDark);
         }
 
         // ── AR windshield overlays (horizon, speed tape, reticles) ──
@@ -3056,7 +3395,20 @@ const Graphics = {
         const _domWrite = !Graphics._lastDomWrite || (now - Graphics._lastDomWrite) > 250;
         if (_domWrite) {
             Graphics._lastDomWrite = now;
-            DOM.speed.innerText = STATE.spdMph.toFixed(1);
+            const unitEl = document.getElementById('speed-unit-label');
+            if (STATE.craftMode === 3) {
+                // ── SKYDIVE primary: altitude (large), fallrate in VSI slot ──
+                DOM.speed.innerText = Math.round(STATE.altFt).toLocaleString();
+                if (unitEl) unitEl.innerText = STATE.skyPhase === 'freefall' ? 'FT ▼' :
+                                               STATE.skyPhase === 'canopy'   ? 'FT 🪂' : 'FT ↑';
+            } else if (STATE.craftMode === 4) {
+                // ── DIVE primary: depth ──
+                DOM.speed.innerText = STATE.diveDepthFt.toFixed(1);
+                if (unitEl) unitEl.innerText = 'FT DEPTH';
+            } else {
+                DOM.speed.innerText = STATE.spdMph.toFixed(1);
+                if (unitEl) unitEl.innerText = 'MPH';
+            }
         }
         if (STATE.active && STATE.startTs > 0) {
             const elapsed = now - STATE.startTs;
@@ -3154,7 +3506,97 @@ const SportEngine = {
             }
         }
 
-        // ── Cadence guide — haptic beep at target RPM ──
+        // ── Skydiving — phase-aware instrument set ──
+        if (STATE.craftMode === 3) {
+            const vsi = STATE._vsiFpm || 0;
+            const alt = STATE.altFt;
+            // Phase detection
+            if      (vsi < -200) STATE.skyPhase = 'freefall';    // falling fast
+            else if (vsi < -50 && STATE.skyPhase === 'freefall') STATE.skyPhase = 'canopy';
+            else if (vsi > 100 && STATE.skyPhase !== 'freefall') STATE.skyPhase = 'ascent';
+
+            if (STATE.skyPhase === 'freefall' && STATE.skyExitTs === 0) {
+                STATE.skyExitTs = now; STATE.skyExitAlt = alt;
+            }
+            STATE.skyMaxSpeed = Math.max(STATE.skyMaxSpeed, Math.abs(vsi / 60)); // fps
+
+            // Deploy alert
+            if (STATE.deployAlt > 0 && alt <= STATE.deployAlt && alt > 100 && !STATE._deployAlerted) {
+                STATE._deployAlerted = true;
+                vibrate([500,100,500,100,500]);
+                HazardEngine.showToast(`🪂 DEPLOY! ${Math.round(alt)} FT`);
+                MathUtils.say('Deploy altitude. Pull now.');
+            }
+            if (alt > STATE.deployAlt + 300) { STATE._deployAlerted = false; }
+        }
+
+        // ── Diving — depth, NDL, CNS O2, ascent rate ──
+        if (STATE.craftMode === 4 && STATE.lat != null) {
+            const depthFt = Math.max(0, -STATE.altFt); // GPS altitude < 0 = below sea level
+            const depthM  = depthFt * 0.3048;
+            STATE.diveDepthFt = depthFt;
+            STATE.diveMaxDepthFt = Math.max(STATE.diveMaxDepthFt, depthFt);
+
+            // Bottom time counter
+            if (depthFt > 3) {
+                if (STATE._diveStartTs === 0) STATE._diveStartTs = now;
+                STATE.diveBottomTimeSec = (now - STATE._diveStartTs) / 1000;
+            }
+
+            // Ascent rate (ft/min) — warn if > 30 ft/min (PADI standard)
+            const dtSec = (now - STATE._diveLastTs) / 1000;
+            if (dtSec > 1 && STATE._diveLastTs > 0) {
+                STATE.diveAscentRate = (STATE._diveLastDepth - depthFt) / dtSec * 60;
+                if (STATE.diveAscentRate > 30 && depthFt > 10) {
+                    vibrate([200,50,200]);
+                    HazardEngine.showToast('⚠️ SLOW DOWN — ASCENT RATE');
+                }
+            }
+            STATE._diveLastDepth = depthFt; STATE._diveLastTs = now;
+
+            // Simplified NDL (Bühlmann-lite: single tissue compartment model)
+            // NDL ≈ max bottom time at depth from US Navy table approximation
+            // At surface NDL = ∞; at 60ft ≈ 60min; at 100ft ≈ 20min; at 130ft ≈ 10min
+            const maxNDL = depthFt < 15 ? 9999
+                : depthFt < 30  ? 200
+                : depthFt < 40  ? 140
+                : depthFt < 50  ? 80
+                : depthFt < 60  ? 60
+                : depthFt < 70  ? 50
+                : depthFt < 80  ? 40
+                : depthFt < 90  ? 30
+                : depthFt < 100 ? 25
+                : depthFt < 110 ? 20
+                : depthFt < 130 ? 15
+                : 10;
+            STATE.diveNDLMin = Math.max(0, maxNDL - Math.floor(STATE.diveBottomTimeSec / 60));
+
+            // CNS O2 toxicity % — simplified: ppO2 = (O2%/100) * (depthM/10 + 1)
+            // Single exposure rate at ppO2; toxic limit is ppO2 = 1.6
+            const ppO2 = (STATE.diveO2pct / 100) * (depthM / 10 + 1);
+            // NOAA CNS table: time limit at ppO2 1.6 = 45min; at 1.4 = 150min; linear approx
+            const cnsMinsLimit = ppO2 > 1.6 ? 0 : ppO2 > 1.5 ? 45 : ppO2 > 1.4 ? 150
+                : ppO2 > 1.3 ? 180 : 999;
+            STATE.diveCNSpct = cnsMinsLimit > 0 ? Math.min(100,
+                (STATE.diveBottomTimeSec / 60 / cnsMinsLimit) * 100) : 100;
+
+            // NDL alarm at 5 min
+            if (STATE.diveNDLMin <= 5 && STATE.diveNDLMin > 0 && !STATE._ndlWarned) {
+                STATE._ndlWarned = true;
+                vibrate([300,100,300,100,300]);
+                HazardEngine.showToast(`⚠️ NDL ${STATE.diveNDLMin} MIN — ASCEND`);
+                MathUtils.say('Warning. Five minutes no decompression limit. Begin ascent.');
+            }
+            if (STATE.diveNDLMin > 6) STATE._ndlWarned = false;
+
+            // CNS alarm at 80%
+            if (STATE.diveCNSpct >= 80 && !STATE._cnsWarned) {
+                STATE._cnsWarned = true;
+                vibrate([400,100,400]);
+                HazardEngine.showToast('⚠️ CNS O₂ 80% — SURFACE');
+            }
+            if (STATE.diveCNSpct < 75) STATE._cnsWarned = false;
+        }
         if (STATE.cadenceTarget > 0 && STATE.craftMode === 2) {
             const msPerBeat = 60000 / STATE.cadenceTarget;
             if (!SportEngine._lastCadence || (now - SportEngine._lastCadence) >= msPerBeat) {
@@ -3464,6 +3906,26 @@ window.Engine = {
                 p.style.display = 'none';
             }
         });
+
+        // ── Swipe left/right on music strip → cycle genre (L=next, R=prev) ──
+        {
+            let _swipeX = 0;
+            const ms = document.getElementById('music-strip');
+            if (ms) {
+                ms.addEventListener('touchstart', e => { _swipeX = e.changedTouches[0].screenX; }, { passive: true });
+                ms.addEventListener('touchend', e => {
+                    const dx = e.changedTouches[0].screenX - _swipeX;
+                    if (Math.abs(dx) < 40) return; // not a swipe — normal tap
+                    if (dx < 0) {
+                        Radio.cycleGenre(); // left → next genre
+                    } else {
+                        // right → previous genre (Gemini had off-by-one: used -2, correct is -1)
+                        Radio.currentGenre = (Radio.currentGenre - 1 + Radio.GENRES.length) % Radio.GENRES.length;
+                        Radio.cycleGenre();
+                    }
+                }, { passive: true });
+            }
+        }
 
         if ('geolocation' in navigator) {
             watchId = navigator.geolocation.watchPosition(
