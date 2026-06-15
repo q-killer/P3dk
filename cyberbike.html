@@ -436,7 +436,57 @@
             background: var(--squad); color: #000;
         }
         body.fullscreen #station-picker { position: fixed; top: 55px; bottom: auto; }
-        /* ── COORDINATE BAR — fullscreen + AR only ── */
+        /* ── MODE-AWARE UI PROMINENCE ── */
+        /* Base: all secondary elements visible at normal opacity */
+
+        /* SKYDIVE (mode 3) — altitude is life. De-emphasize everything except alt display.
+           Speed becomes fallrate. Fuel/dist/mesh irrelevant at 120mph. */
+        body.mode-skydive .left-avionics .lbl:not(.alt-lbl),
+        body.mode-skydive .left-avionics .val:not(.alt-val),
+        body.mode-skydive .left-avionics #time-rem,
+        body.mode-skydive #bottom-bar,
+        body.mode-skydive #ctrl-rec-btn,
+        body.mode-skydive #ctrl-horn-btn { opacity: 0.2 !important; pointer-events: none; }
+        body.mode-skydive .speed-value { font-size: 52px !important; color: var(--danger) !important;
+            text-shadow: 0 0 20px var(--danger), 0 0 40px rgba(239,68,68,0.4) !important; }
+        body.mode-skydive #speed-unit-label { color: var(--danger) !important; font-size: 14px !important; }
+
+        /* DIVE (mode 4) — NDL is oxygen. Depth primary. Speed/heading irrelevant.
+           Make NDL/depth visually dominant. */
+        body.mode-dive #bottom-bar,
+        body.mode-dive #ctrl-rec-btn,
+        body.mode-dive #ctrl-horn-btn,
+        body.mode-dive #ctrl-sport-btn { opacity: 0.2 !important; pointer-events: none; }
+        body.mode-dive .speed-value { color: #38bdf8 !important;
+            text-shadow: 0 0 14px #38bdf8, 0 0 30px rgba(56,189,248,0.35) !important; }
+        body.mode-dive #speed-unit-label { color: #38bdf8 !important; }
+        body.mode-dive .top-hdg { opacity: 0.35 !important; } /* heading irrelevant underwater */
+
+        /* BIKE (mode 2) — power zones and effort. Fuel = water. Heading less critical.
+           Make watts prominent, heading de-emphasized. */
+        body.mode-bike .top-hdg { opacity: 0.55 !important; font-size: 20px !important; }
+        body.mode-bike #power-block { display: block !important; }
+        body.mode-bike .speed-value { color: var(--nav) !important;
+            text-shadow: 0 0 12px var(--nav), 0 0 25px rgba(52,211,153,0.3) !important; }
+
+        /* UFO (mode 1) — exploration, spectacle. Everything looks good.
+           Squad/mesh is "alien communion" — make it prominent. */
+        body.mode-ufo #ats-badge { opacity: 1 !important; color: var(--primary) !important;
+            border-color: var(--primary) !important; box-shadow: 0 0 10px rgba(57,255,20,0.4); }
+        body.mode-ufo .speed-value { letter-spacing: 2px; }
+
+        /* PLANE (mode 0) — VSI and altitude are navigation-critical. Normal prominence. */
+        /* (no overrides needed — default layout is pilot-optimized) */
+        /* Mode-aware ctrl-bar button prominence */
+        body.mode-skydive #ctrl-rec-btn,
+        body.mode-skydive #ctrl-horn-btn,
+        body.mode-skydive #ctrl-sport-btn { opacity: 0.18 !important; pointer-events: none !important; }
+        body.mode-dive #ctrl-rec-btn,
+        body.mode-dive #ctrl-horn-btn,
+        body.mode-dive #ctrl-sport-btn { opacity: 0.18 !important; pointer-events: none !important; }
+        body.mode-plane #ctrl-sport-btn,
+        body.mode-plane #ctrl-horn-btn { opacity: 0.35; }
+
         #coord-bar {
             display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 35;
             background: rgba(0,0,0,0.72); backdrop-filter: blur(4px);
@@ -2078,9 +2128,12 @@ const API = {
         if (wantDay && STATE.craftMode !== 1) cls.push('day-mode');
         if (STATE.craftMode === 1) cls.push('ufo-mode');
         if (STATE.isFullscreen) cls.push('fullscreen');
-        if (document.body.classList.contains('ar-mode')) cls.push('ar-mode');
-        if (document.body.classList.contains('ar-night')) cls.push('ar-night');
-        if (document.body.classList.contains('recording')) cls.push('recording');
+        if (document.body.classList.contains('ar-mode'))    cls.push('ar-mode');
+        if (document.body.classList.contains('ar-night'))   cls.push('ar-night');
+        if (document.body.classList.contains('recording'))  cls.push('recording');
+        // Mode-specific prominence classes
+        const modeClass = ['mode-plane','mode-ufo','mode-bike','mode-skydive','mode-dive'];
+        cls.push(modeClass[STATE.craftMode] || 'mode-plane');
         document.body.className = cls.join(' ');
         ThemeCache.update();
     },
@@ -2448,72 +2501,74 @@ const Graphics = {
         ctx.restore();
     },
 
-    drawUFO(x, y, roll) {
+    drawUFO(x, y, _roll) {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(1.15, 1.15);
-        ctx.rotate(roll * CFG.TO_RAD);
+
+        // 2.5D parallax — clamped, NaN-guarded
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const pX = clamp((STATE.leanAngle  || 0) * 0.3, -8, 8);
+        const pY = clamp(((STATE.pitchAngle || 0) + 70) * 0.3, -8, 8);
 
         const t = Date.now();
-        const spin = t / Math.max(80, 200 - STATE.spdMph * 1.5);
-        const pulse = Math.sin(t / 400) * 0.5 + 0.5;          // 0–1 pulsing
-        const glow  = `rgba(${pulse<0.5?'57,255,20':'0,255,255'},${0.5+pulse*0.5})`;
-        const c1 = STATE.clrPrimary;   // green in ufo-mode
-        const c2 = STATE.clrSecondary; // magenta
+        const speed = STATE.active ? STATE.spdMph : 0;
+        const pulseRate = Math.max(100, 400 - speed * 3);
+        const pulse = Math.sin(t / pulseRate) * 0.5 + 0.5;
+        const spin  = t / Math.max(200, 1000 - speed * 10);
+        const coreColor   = `rgba(0,255,255,${(0.4 + pulse * 0.5).toFixed(2)})`;
+        const coronaColor = `rgba(176,38,255,${(0.15 + pulse * 0.25).toFixed(2)})`;
 
-        // ── Tractor beam (below saucer) ──
-        const beam = ctx.createLinearGradient(0, 4, 0, 30);
-        beam.addColorStop(0, `rgba(0,255,255,${0.3 + pulse*0.2})`);
-        beam.addColorStop(1, 'rgba(0,255,255,0)');
-        ctx.fillStyle = beam;
-        ctx.beginPath(); ctx.moveTo(-6,4); ctx.lineTo(-18,30); ctx.lineTo(18,30); ctx.lineTo(6,4); ctx.closePath(); ctx.fill();
-        // Tractor beam reticle rings
-        [0.4, 0.7, 1.0].forEach((f, i) => {
-            const ry = 4 + f * 26, rw = 6 + f * 12;
-            const alpha = (0.6 - f * 0.4) * (0.5 + 0.5 * Math.sin(t/300 + i));
-            ctx.beginPath(); ctx.ellipse(0, ry, rw, rw * 0.3, 0, 0, Math.PI*2);
-            ctx.strokeStyle = `rgba(0,255,255,${alpha})`; ctx.lineWidth = 1; ctx.stroke();
+        // Z = -1.0: Corona discharge / gravity distortion field
+        this._drawLayer(ctx, pX, pY, -1.0, () => {
+            const aura = ctx.createRadialGradient(0, 0, 22, 0, 0, 42);
+            aura.addColorStop(0, coreColor); aura.addColorStop(0.4, coronaColor); aura.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = aura;
+            ctx.beginPath(); ctx.arc(0, 0, 42, 0, Math.PI*2); ctx.fill();
         });
 
-        // ── Hull lower disc ──
-        const hullGrad = ctx.createRadialGradient(0, 2, 2, 0, 2, 28);
-        hullGrad.addColorStop(0, '#1a1a2e');
-        hullGrad.addColorStop(0.6, '#16213e');
-        hullGrad.addColorStop(1, '#0f3460');
-        ctx.fillStyle = hullGrad;
-        ctx.beginPath(); ctx.ellipse(0, 2, 27, 8.5, 0, 0, Math.PI * 2); ctx.fill();
-        // Hull rim highlight
-        ctx.beginPath(); ctx.ellipse(0, 2, 27, 8.5, 0, 0, Math.PI*2);
-        ctx.strokeStyle = glow; ctx.lineWidth = 1.2; ctx.stroke();
-
-        // ── Raised dome ──
-        const domeGrad = ctx.createRadialGradient(-4, -10, 1, 0, -6, 14);
-        domeGrad.addColorStop(0, 'rgba(180,255,255,0.9)');
-        domeGrad.addColorStop(0.4, 'rgba(0,200,200,0.6)');
-        domeGrad.addColorStop(1, 'rgba(0,50,80,0.8)');
-        ctx.fillStyle = domeGrad;
-        ctx.beginPath(); ctx.ellipse(0, -4, 13, 10, 0, Math.PI, Math.PI*2); ctx.fill();
-        // Dome rim
-        ctx.beginPath(); ctx.ellipse(0, -4, 13, 3.5, 0, 0, Math.PI*2);
-        ctx.strokeStyle = `rgba(0,255,255,0.4)`; ctx.lineWidth = 1; ctx.stroke();
-        // Dome scanline highlight
-        ctx.beginPath(); ctx.ellipse(-3, -8, 5, 2.5, -0.4, 0, Math.PI);
-        ctx.fillStyle = 'rgba(255,255,255,0.25)'; ctx.fill();
-
-        // ── Under-hull panel lines ──
-        ctx.strokeStyle = 'rgba(0,255,200,0.2)'; ctx.lineWidth = 0.8;
-        [-15, -7, 0, 7, 15].forEach(px => {
-            ctx.beginPath(); ctx.moveTo(px, -1); ctx.lineTo(px * 0.7, 6); ctx.stroke();
+        // Z = -0.5: Gravity wave amplifiers (below hull, rotating)
+        this._drawLayer(ctx, pX, pY, -0.5, () => {
+            ctx.save(); ctx.rotate(spin);
+            for (let i=0; i<3; i++) {
+                ctx.rotate((Math.PI*2)/3);
+                const ag = ctx.createRadialGradient(0,17,0, 0,17,9);
+                ag.addColorStop(0, `rgba(0,255,255,${(0.5+pulse*0.4).toFixed(2)})`);
+                ag.addColorStop(1, 'rgba(0,255,255,0)');
+                ctx.fillStyle = ag;
+                ctx.beginPath(); ctx.arc(0, 17, 9, 0, Math.PI*2); ctx.fill();
+            }
+            ctx.restore();
         });
 
-        // ── Central landing light ──
-        const lGrad = ctx.createRadialGradient(0, 5, 0, 0, 5, 5);
-        lGrad.addColorStop(0, `rgba(255,255,255,${0.8 + pulse * 0.2})`);
-        lGrad.addColorStop(0.5, `rgba(0,255,200,${0.5 + pulse * 0.3})`);
-        lGrad.addColorStop(1, 'rgba(0,255,200,0)');
-        ctx.fillStyle = lGrad;
-        ctx.beginPath(); ctx.arc(0, 5, 5, 0, Math.PI*2); ctx.fill();
+        // Z = 0: Main seamless hull — brushed pewter
+        this._drawLayer(ctx, pX, pY, 0, () => {
+            const hg = ctx.createRadialGradient(-6,-6,4, 0,0,28);
+            hg.addColorStop(0, '#f1f5f9'); hg.addColorStop(0.3, '#94a3b8');
+            hg.addColorStop(0.7,'#334155'); hg.addColorStop(1, '#0f172a');
+            ctx.fillStyle = hg;
+            ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI*2); ctx.fill();
+        });
+
+        // Z = 1.5: Central dome — dark metallic with specular
+        this._drawLayer(ctx, pX, pY, 1.5, () => {
+            const dg = ctx.createRadialGradient(-3,-3,2, 0,0,13);
+            dg.addColorStop(0,'#ffffff'); dg.addColorStop(0.4,'#64748b');
+            dg.addColorStop(0.8,'#1e293b'); dg.addColorStop(1,'#020617');
+            ctx.fillStyle = dg;
+            ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI*2); ctx.fill();
+            ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=1;
+            ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI*2); ctx.stroke();
+        });
+
+        // Z = 2.0: Reactor core / Element 115 waveguide — peak height
+        this._drawLayer(ctx, pX, pY, 2.0, () => {
+            ctx.fillStyle = coreColor;
+            ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 12;
+            ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        });
 
         ctx.restore();
     },
@@ -2523,88 +2578,85 @@ const Graphics = {
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(1.15, 1.15);
-        const crank = STATE.active ? Date.now() / Math.max(55, 240 - STATE.spdMph * 2) : 0;
-        const fc = isDark ? '#94a3b8' : '#334155';
-        const tc = isDark ? '#0f172a' : '#1e293b';
-        const ac = STATE.clrWind;
-        const lc = isDark ? '#cbd5e1' : '#475569';
-        const WB = 17;
 
-        // Shadow — elongated to match bike silhouette
-        ctx.save();
-        ctx.translate(4, 4);
-        ctx.globalAlpha = isDark ? 0.35 : 0.15;
-        ctx.fillStyle = '#000';
-        ctx.beginPath(); ctx.ellipse(0, 0, 7, WB, 0, 0, Math.PI*2); ctx.fill();
-        ctx.restore();
+        // 2.5D parallax — clamped, NaN-guarded
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const pX = clamp((STATE.leanAngle  || 0) * 0.35, -8, 8);
+        const pY = clamp(((STATE.pitchAngle || 0) + 70) * 0.35, -8, 8);
 
-        // Wheels with neon rim highlights
-        const wheel=(cy)=>{
-            ctx.beginPath(); ctx.ellipse(0,cy,3.5,8,0,0,Math.PI*2);
-            ctx.fillStyle=tc; ctx.fill();
-            ctx.beginPath(); ctx.ellipse(0,cy,2,7,0,0,Math.PI*2);
-            ctx.fillStyle=ac; ctx.fill();
-        };
-        wheel(-WB); wheel(WB);
+        const speed = STATE.active ? STATE.spdMph : 0;
+        const crankRate = speed > 0.5 ? Math.max(80, 250 - speed * 4) : 0;
+        const crank = crankRate > 0 ? Date.now() / crankRate : 0;
+        const sway  = crankRate > 0 ? Math.sin(crank) * 1.5 : 0;
+        const WB    = 18;
+        const hipY  = WB - 6, shoulderY = -WB + 10;
+        const lFootY = 1 + Math.sin(crank) * 5.5;
+        const rFootY = 1 + Math.sin(crank + Math.PI) * 5.5;
 
-        // Frame — center spine with subtle neon glow
-        ctx.strokeStyle=fc; ctx.lineCap='round'; ctx.lineJoin='round';
-        ctx.lineWidth=3;
-        ctx.shadowColor=ac; ctx.shadowBlur=4;
-        ctx.beginPath(); ctx.moveTo(0,-WB+5); ctx.lineTo(0,WB-5); ctx.stroke();
-        ctx.shadowBlur=0;
-        ctx.lineWidth=1.8;
-        [[3,0,2,-WB],[-3,0,-2,-WB],[2.5,0,1.5,WB],[-2.5,0,-1.5,WB]].forEach(([x1,y1,x2,y2])=>{
-            ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke();
+        // Z = -1: Shadow
+        this._drawLayer(ctx, pX, pY, -1.0, () => {
+            ctx.globalAlpha = isDark ? 0.35 : 0.15; ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.ellipse(sway*0.6+4, 5, 7, WB+2, 0, 0, Math.PI*2); ctx.fill();
+            ctx.globalAlpha = 1;
         });
 
-        // Crank / pedals
-        const CR=5.5;
-        const lPx=Math.sin(crank)*CR, lPy=Math.cos(crank)*2;
-        const rPx=-Math.sin(crank)*CR, rPy=-Math.cos(crank)*2;
-        ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1.8;
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(lPx,lPy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(rPx,rPy); ctx.stroke();
-        ctx.fillStyle='#cbd5e1';
-        [[lPx,lPy],[rPx,rPy]].forEach(([px,py])=>{
-            ctx.save(); ctx.translate(px,py); ctx.rotate(Math.atan2(py,px));
-            ctx.fillRect(-3,-1.5,6,3); ctx.restore();
+        // Z = 0: Wheels + spine
+        this._drawLayer(ctx, pX, pY, 0, () => {
+            ctx.fillStyle = isDark ? '#0f172a' : '#1e293b';
+            ctx.beginPath(); ctx.ellipse(0,-WB,2.2,9,0,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0, WB,2.2,9,0,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle = isDark ? '#475569' : '#94a3b8'; ctx.lineWidth=2.5;
+            ctx.beginPath(); ctx.moveTo(0,-WB+5); ctx.lineTo(0,WB-5); ctx.stroke();
         });
 
-        // Rider
-        const bY=WB*0.15, bW=6.5, bL=11;
-        const bodyGrad=ctx.createLinearGradient(0,bY-bL,0,bY+bL);
-        bodyGrad.addColorStop(0,ac); bodyGrad.addColorStop(1,'#0f172a');
-        ctx.fillStyle=bodyGrad;
-        ctx.beginPath(); ctx.ellipse(0,bY,bW,bL,0,0,Math.PI*2); ctx.fill();
+        // Z = 0.5: Handlebars
+        this._drawLayer(ctx, pX, pY, 0.5, () => {
+            ctx.strokeStyle='#1e293b'; ctx.lineWidth=2.5; ctx.lineCap='round'; ctx.lineJoin='round';
+            ctx.beginPath();
+            ctx.moveTo(-6.5,-WB+7); ctx.lineTo(-3.5,-WB+5.5);
+            ctx.lineTo(3.5,-WB+5.5); ctx.lineTo(6.5,-WB+7);
+            ctx.stroke();
+        });
 
-        // Aero helmet (teardrop)
-        ctx.fillStyle='#1e293b';
-        ctx.beginPath();
-        ctx.arc(0,bY-bL*0.65,4.5,0,Math.PI,true);
-        ctx.lineTo(0,bY-bL*0.05);
-        ctx.closePath(); ctx.fill();
+        // Z = 1.0: Legs
+        this._drawLayer(ctx, pX, pY, 1.0, () => {
+            ctx.lineWidth=4; ctx.lineCap='round';
+            ctx.strokeStyle='#e2a76f'; // skin / calf
+            ctx.beginPath(); ctx.moveTo(3.5,hipY-3); ctx.lineTo(4,rFootY); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-3.5,hipY-3); ctx.lineTo(-4,lFootY); ctx.stroke();
+            ctx.strokeStyle='#0f172a'; // shorts / thigh
+            ctx.beginPath(); ctx.moveTo(2.5,hipY); ctx.lineTo(3.5,hipY-3+Math.sin(crank+Math.PI)*3); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-2.5,hipY); ctx.lineTo(-3.5,hipY-3+Math.sin(crank)*3); ctx.stroke();
+        });
 
-        // Cyber visor
-        ctx.fillStyle=STATE.clrSquad;
-        ctx.shadowColor=STATE.clrSquad; ctx.shadowBlur=5;
-        ctx.beginPath(); ctx.ellipse(0,bY-bL*0.8,3.5,1.5,0,0,Math.PI*2); ctx.fill();
-        ctx.shadowBlur=0;
+        // Z = 1.5: Torso + arms
+        this._drawLayer(ctx, pX, pY, 1.5, () => {
+            ctx.fillStyle = STATE.clrWind;
+            ctx.beginPath();
+            ctx.moveTo(-3.5+sway*0.2, hipY);
+            ctx.quadraticCurveTo(-6.5+sway, (hipY+shoulderY)/2, -5.5+sway, shoulderY);
+            ctx.lineTo(5.5+sway, shoulderY);
+            ctx.quadraticCurveTo(6.5+sway, (hipY+shoulderY)/2, 3.5+sway*0.2, hipY);
+            ctx.fill();
+            ctx.strokeStyle='#e2a76f'; ctx.lineWidth=3;
+            ctx.beginPath(); ctx.moveTo(-5+sway,shoulderY); ctx.quadraticCurveTo(-8,-WB+9,-6,-WB+6.5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo( 5+sway,shoulderY); ctx.quadraticCurveTo( 8,-WB+9, 6,-WB+6.5); ctx.stroke();
+        });
 
-        // Handlebars
-        const hbY=bY-bL*0.5;
-        ctx.strokeStyle=fc; ctx.lineWidth=2.2;
-        ctx.beginPath(); ctx.moveTo(-6,hbY); ctx.lineTo(6,hbY); ctx.stroke();
-
-        // Arms
-        ctx.strokeStyle=ac; ctx.lineWidth=2.5;
-        ctx.beginPath(); ctx.moveTo(-bW*0.7,bY-bL*0.3); ctx.lineTo(-5.5,hbY); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo( bW*0.7,bY-bL*0.3); ctx.lineTo( 5.5,hbY); ctx.stroke();
-
-        // Legs
-        ctx.strokeStyle=lc; ctx.lineWidth=3.5; ctx.lineCap='round';
-        ctx.beginPath(); ctx.moveTo(-bW*0.55,bY+bL*0.3); ctx.lineTo(lPx,lPy); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo( bW*0.55,bY+bL*0.3); ctx.lineTo(rPx,rPy); ctx.stroke();
+        // Z = 2.0: Aero helmet (topmost point)
+        this._drawLayer(ctx, pX, pY, 2.0, () => {
+            const hs = sway * 1.1;
+            ctx.fillStyle = isDark ? '#e2e8f0' : '#ffffff';
+            ctx.beginPath();
+            ctx.moveTo(hs, shoulderY-8);
+            ctx.quadraticCurveTo(hs+4, shoulderY-5, hs+3, shoulderY-1);
+            ctx.lineTo(hs, shoulderY+3); ctx.lineTo(hs-3, shoulderY-1);
+            ctx.quadraticCurveTo(hs-4, shoulderY-5, hs, shoulderY-8);
+            ctx.fill();
+            // Vent slit
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath(); ctx.ellipse(hs, shoulderY-4, 1, 2, 0, 0, Math.PI*2); ctx.fill();
+        });
 
         ctx.restore();
     },
@@ -2614,44 +2666,81 @@ const Graphics = {
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(1.1, 1.1);
-        const suit=STATE.clrWind, hel='#1e293b';
-        const t=Date.now();
-        const sway=Math.sin(STATE.active?t/300:0)*(STATE.active?1.5:0);
+
+        const t = Date.now();
+        const isFF     = STATE.skyPhase === 'freefall';
+        const isCanopy = STATE.skyPhase === 'canopy';
+
+        // Wind buffeting in freefall; pendulum sway under canopy
+        const jitterX = STATE.active && isFF ? (Math.random() - 0.5) * 1.5 : 0;
+        const jitterY = STATE.active && isFF ? (Math.random() - 0.5) * 1.5 : 0;
+        const sway    = isCanopy ? Math.sin(t / 800) * 3 : 0;
+        ctx.translate(jitterX + sway, jitterY);
+
+        const suit = STATE.clrWind;
+        const skin = '#e2a76f';
+        const rig  = '#334155';
+
+        // Canopy — only rendered when parachute is open
+        if (isCanopy) {
+            ctx.fillStyle = STATE.clrSquad;
+            ctx.globalAlpha = 0.85;
+            ctx.beginPath();
+            ctx.moveTo(-25, 15); ctx.quadraticCurveTo(0, 5, 25, 15);
+            ctx.lineTo(22, 22); ctx.quadraticCurveTo(0, 12, -22, 22);
+            ctx.fill();
+            // Suspension lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 0.5;
+            ctx.beginPath();
+            [-20, -10, 0, 10, 20].forEach(lx => { ctx.moveTo(lx, 18); ctx.lineTo(0, -2); });
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
 
         // Shadow
-        ctx.save(); ctx.translate(4,4); ctx.globalAlpha=isDark?0.35:0.15; ctx.fillStyle='#000';
-        ctx.beginPath(); ctx.ellipse(sway,0,7,15,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath(); ctx.ellipse(4, 4, 8, 12, 0, 0, Math.PI*2); ctx.fill();
 
-        // Tactical rig / backpack
-        ctx.fillStyle='#334155';
-        ctx.beginPath(); this._rr(ctx,sway-4.5,-4,9,14,2); ctx.fill();
-        ctx.strokeStyle=STATE.clrSquad; ctx.lineWidth=1;
-        ctx.beginPath(); this._rr(ctx,sway-3.5,-3,7,12,1); ctx.stroke();
+        // Pose — legs hang in canopy, Boxman spread in freefall
+        const legExt = isCanopy ? 12 : 6;
+        const armExt = isCanopy ? -8 : -14; // negative = reaches further out
 
-        // Body
-        const suitGrad=ctx.createRadialGradient(sway,0,2,sway,0,14);
-        suitGrad.addColorStop(0,suit); suitGrad.addColorStop(1,'#0284c7');
-        ctx.fillStyle=suitGrad;
-        ctx.beginPath(); ctx.ellipse(sway,0,5,14,0,0,Math.PI*2); ctx.fill();
+        ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
 
         // Arms
-        ctx.strokeStyle=suit; ctx.lineWidth=4.5; ctx.lineCap='round'; ctx.lineJoin='round';
-        ctx.beginPath(); ctx.moveTo(sway-4,-2); ctx.lineTo(sway-12,-2); ctx.lineTo(sway-16,4); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(sway+4,-2); ctx.lineTo(sway+12,-2); ctx.lineTo(sway+16,4); ctx.stroke();
+        ctx.strokeStyle = suit;
+        ctx.beginPath(); ctx.moveTo(-4,-2); ctx.lineTo(-12,-2); ctx.lineTo( armExt, 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( 4,-2); ctx.lineTo( 12,-2); ctx.lineTo(-armExt, 5); ctx.stroke();
 
         // Legs
-        ctx.beginPath(); ctx.moveTo(sway-3,10); ctx.lineTo(sway-10,16); ctx.lineTo(sway-7,22); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(sway+3,10); ctx.lineTo(sway+10,16); ctx.lineTo(sway+7,22); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-3,8); ctx.lineTo(-8,14); ctx.lineTo(-5, 14+legExt); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo( 3,8); ctx.lineTo( 8,14); ctx.lineTo( 5, 14+legExt); ctx.stroke();
 
-        // Helmet
-        ctx.fillStyle=hel;
-        ctx.beginPath(); ctx.arc(sway,-10,5.5,0,Math.PI*2); ctx.fill();
+        // Hands
+        ctx.fillStyle = skin;
+        ctx.beginPath(); ctx.arc( armExt, 5, 2.5, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(-armExt, 5, 2.5, 0, Math.PI*2); ctx.fill();
 
-        // Glowing cyber visor
-        ctx.fillStyle=STATE.clrDanger;
-        ctx.shadowColor=STATE.clrDanger; ctx.shadowBlur=6;
-        ctx.beginPath(); ctx.ellipse(sway,-11.5,4.5,2.5,0,Math.PI,Math.PI*2.5); ctx.fill();
-        ctx.shadowBlur=0;
+        // Glowing altimeter on left wrist in freefall
+        if (isFF) {
+            ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 4;
+            ctx.beginPath(); ctx.arc(-11.5, 4, 1.5, 0, Math.PI*2); ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+
+        // Torso + rig container
+        ctx.fillStyle = suit;
+        ctx.beginPath(); ctx.ellipse(0, 2, 5, 10, 0, 0, Math.PI*2); ctx.fill();
+        if (!isCanopy) {
+            ctx.fillStyle = rig;
+            ctx.beginPath(); this._rr(ctx, -4, -2, 8, 12, 2); ctx.fill();
+        }
+
+        // Helmet + visor
+        ctx.fillStyle = '#1e293b';
+        ctx.beginPath(); ctx.arc(0, -9, 4.5, 0, Math.PI*2); ctx.fill();
+        ctx.fillStyle = STATE.clrDanger;
+        ctx.beginPath(); ctx.ellipse(0, -10.5, 3.5, 2, 0, 0, Math.PI*2); ctx.fill();
 
         ctx.restore();
     },
@@ -2661,56 +2750,81 @@ const Graphics = {
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(1.05, 1.05);
-        const neon=STATE.clrNav;
-        const t=Date.now();
-        const bob=Math.sin(STATE.active?t/500:0)*(STATE.active?1:0);
-        const kick=Math.sin(STATE.active?t/200:0)*3;
 
-        // Shadow
-        ctx.save(); ctx.translate(3,4); ctx.globalAlpha=isDark?0.35:0.15; ctx.fillStyle='#000';
-        ctx.beginPath(); ctx.ellipse(bob,0,6,19,0,0,Math.PI*2); ctx.fill(); ctx.restore();
+        // 2.5D parallax — clamped, NaN-guarded
+        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+        const pX = clamp((STATE.leanAngle  || 0) * 0.3, -8, 8);
+        const pY = clamp(((STATE.pitchAngle || 0) + 70) * 0.3, -8, 8);
 
-        // Animated bubbles
-        if (STATE.active) {
-            ctx.fillStyle='rgba(255,255,255,0.6)';
-            for(let i=0;i<4;i++){
-                const bY=-14-((t/25+i*12)%30);
-                const bX=bob+Math.sin(t/150+i)*4;
-                const bS=2-((bY+14)/-30)*1.5;
-                if(bS>0){ctx.beginPath();ctx.arc(bX,bY,bS,0,Math.PI*2);ctx.fill();}
+        const t = Date.now();
+        const kc = STATE.active ? t / 350 : 0; // kickCycle
+        const bodyRoll = Math.sin(kc) * 1.5;
+
+        // Z = -1: Shadow + bubbles
+        this._drawLayer(ctx, pX, pY, -1.0, () => {
+            ctx.fillStyle = 'rgba(0,0,0,0.25)';
+            ctx.beginPath(); ctx.ellipse(3,4,6,16,0,0,Math.PI*2); ctx.fill();
+            if (STATE.active) {
+                ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.strokeStyle='rgba(255,255,255,0.7)'; ctx.lineWidth=0.5;
+                for (let i=0;i<3;i++) {
+                    const bt=(t/1000+i*0.8)%2, bY=-12+bt*30;
+                    if (bY>-15&&bY<25) {
+                        ctx.beginPath(); ctx.arc(Math.sin(t/500+i)*3,bY,1+bt*2.5,0,Math.PI*2);
+                        ctx.fill(); ctx.stroke();
+                    }
+                }
             }
-        }
+        });
 
-        // Fins (animated kicking flutter)
-        ctx.fillStyle='#0ea5e9';
-        ctx.beginPath(); ctx.ellipse(bob-4,18+kick,4,6,-0.2,0,Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.ellipse(bob+4,18-kick,4,6,0.2,0,Math.PI*2); ctx.fill();
+        // Z = 0: Legs + fins
+        this._drawLayer(ctx, pX, pY, 0, () => {
+            ctx.lineWidth=4; ctx.lineCap='round'; ctx.strokeStyle='#0f172a';
+            ctx.beginPath(); ctx.moveTo( 2,10); ctx.lineTo( 3,16+Math.sin(kc)*2); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-2,10); ctx.lineTo(-3,16+Math.sin(kc+Math.PI)*2); ctx.stroke();
+            ctx.fillStyle = STATE.clrNav;
+            ctx.beginPath(); ctx.ellipse( 3.5,21+Math.sin(kc)*3,      2.5,6,-0.1,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(-3.5,21+Math.sin(kc+Math.PI)*3,2.5,6, 0.1,0,Math.PI*2); ctx.fill();
+        });
 
-        // Body
-        const suitGrad=ctx.createLinearGradient(0,-18,0,18);
-        suitGrad.addColorStop(0,'#334155'); suitGrad.addColorStop(1,'#0f172a');
-        ctx.fillStyle=suitGrad;
-        ctx.beginPath(); ctx.ellipse(bob,0,5,18,0,0,Math.PI*2); ctx.fill();
+        // Z = 0.5: Torso, arms, dive computer
+        this._drawLayer(ctx, pX, pY, 0.5, () => {
+            ctx.fillStyle='#0f172a';
+            ctx.beginPath(); ctx.ellipse(bodyRoll*0.5,2,4.5,12,0,0,Math.PI*2); ctx.fill();
+            ctx.strokeStyle='#0f172a'; ctx.lineWidth=4;
+            ctx.beginPath(); ctx.moveTo(bodyRoll-4,-4); ctx.quadraticCurveTo(-6,2,bodyRoll-2,6); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(bodyRoll+4,-4); ctx.quadraticCurveTo( 6,2,bodyRoll+2,6); ctx.stroke();
+            ctx.fillStyle='#00ffcc'; ctx.shadowColor='#00ffcc'; ctx.shadowBlur=4;
+            ctx.beginPath(); ctx.arc(bodyRoll+3.5,4,1.5,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+        });
 
-        // Tank (metallic gradient)
-        const tankGrad=ctx.createLinearGradient(bob-3,0,bob+3,0);
-        tankGrad.addColorStop(0,'#64748b'); tankGrad.addColorStop(0.5,'#cbd5e1'); tankGrad.addColorStop(1,'#475569');
-        ctx.fillStyle=tankGrad;
-        ctx.beginPath(); this._rr(ctx,bob-3.5,-2,7,14,2); ctx.fill();
-        ctx.fillStyle='#f59e0b';
-        ctx.beginPath(); ctx.arc(bob,-3,1.5,0,Math.PI*2); ctx.fill();
+        // Z = 1.0: Tank cylinder
+        this._drawLayer(ctx, pX, pY, 1.0, () => {
+            const tg=ctx.createLinearGradient(-3,0,3,0);
+            tg.addColorStop(0,'#475569'); tg.addColorStop(0.5,'#cbd5e1'); tg.addColorStop(1,'#334155');
+            ctx.fillStyle=tg;
+            ctx.beginPath(); this._rr(ctx,bodyRoll*0.8-3,-4,6,15,2); ctx.fill();
+        });
 
-        // Arms (Superman)
-        ctx.strokeStyle='#1e293b'; ctx.lineWidth=4; ctx.lineCap='round';
-        ctx.beginPath(); ctx.moveTo(bob-4,-10); ctx.lineTo(bob-6,-22); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(bob+4,-10); ctx.lineTo(bob+6,-22); ctx.stroke();
+        // Z = 1.5: Head, glowing mask, tank valve
+        this._drawLayer(ctx, pX, pY, 1.5, () => {
+            ctx.fillStyle='#f59e0b';
+            ctx.beginPath(); ctx.fillRect(bodyRoll*0.8-1.5,-6,3,2);
+            ctx.fillStyle='#0f172a';
+            ctx.beginPath(); ctx.arc(bodyRoll,-11,4,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle='rgba(0,255,204,0.8)'; ctx.shadowColor='#00ffcc'; ctx.shadowBlur=4;
+            ctx.beginPath(); ctx.ellipse(bodyRoll,-12.5,3,1.5,0,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+        });
 
-        // Glowing mask
-        ctx.fillStyle=neon;
-        ctx.shadowColor=neon; ctx.shadowBlur=6;
-        ctx.beginPath(); ctx.ellipse(bob,-13,3.5,2.5,0,0,Math.PI*2); ctx.fill();
-        ctx.shadowBlur=0;
+        ctx.restore();
+    },
 
+    /* 2.5D parallax engine — shift each layer by zDepth * gyro tilt.
+     * z < 0 = ground/shadow, z = 0 = hull surface, z > 0 = raised above hull.
+     * pX/pY must be pre-clamped by the caller to prevent NaN and extreme shifts. */
+    _drawLayer(ctx, pX, pY, zDepth, drawFn) {
+        ctx.save();
+        ctx.translate(pX * zDepth, pY * zDepth);
+        drawFn();
         ctx.restore();
     },
 
