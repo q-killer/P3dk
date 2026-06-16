@@ -2510,7 +2510,7 @@ const Graphics = {
         // 2.5D parallax — clamped, NaN-guarded
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const pX = clamp((STATE.leanAngle  || 0) * 0.3, -8, 8);
-        const pY = clamp(((STATE.pitchAngle || 0) + 70) * 0.3, -8, 8);
+        const pY = clamp(((STATE.pitchAngle || 0) + 90) * 0.18, 0, 16);
 
         const t = Date.now();
         const speed = STATE.active ? STATE.spdMph : 0;
@@ -2529,17 +2529,25 @@ const Graphics = {
         });
 
         // Z = -0.5: Gravity wave amplifiers (below hull, rotating)
+        // More prominent at high pY (rear view) — they face the viewer from behind
         this._drawLayer(ctx, pX, pY, -0.5, () => {
+            const ampAlpha = 0.5 + pulse * 0.4 + (pY / 16) * 0.3; // brighter in rear view
             ctx.save(); ctx.rotate(spin);
             for (let i=0; i<3; i++) {
                 ctx.rotate((Math.PI*2)/3);
-                const ag = ctx.createRadialGradient(0,17,0, 0,17,9);
-                ag.addColorStop(0, `rgba(0,255,255,${(0.5+pulse*0.4).toFixed(2)})`);
+                const ag = ctx.createRadialGradient(0,17,0, 0,17,9+pY*0.3);
+                ag.addColorStop(0, `rgba(0,255,255,${Math.min(1,ampAlpha).toFixed(2)})`);
                 ag.addColorStop(1, 'rgba(0,255,255,0)');
                 ctx.fillStyle = ag;
-                ctx.beginPath(); ctx.arc(0, 17, 9, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(0, 17, 9+pY*0.3, 0, Math.PI*2); ctx.fill();
             }
             ctx.restore();
+            // Hull rim edge — visible from rear as a lit ellipse
+            if (pY > 4) {
+                ctx.beginPath(); ctx.ellipse(0, 28*Math.sin(pY/16*0.5), 28, 3, 0, 0, Math.PI*2);
+                ctx.strokeStyle = `rgba(200,210,220,${(pY/16)*0.5})`;
+                ctx.lineWidth = 2; ctx.stroke();
+            }
         });
 
         // Z = 0: Main seamless hull — brushed pewter
@@ -2582,7 +2590,7 @@ const Graphics = {
         // 2.5D parallax — clamped, NaN-guarded
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const pX = clamp((STATE.leanAngle  || 0) * 0.35, -8, 8);
-        const pY = clamp(((STATE.pitchAngle || 0) + 70) * 0.35, -8, 8);
+        const pY = clamp(((STATE.pitchAngle || 0) + 90) * 0.18, 0, 16);
 
         const speed = STATE.active ? STATE.spdMph : 0;
         const crankRate = speed > 0.5 ? Math.max(80, 250 - speed * 4) : 0;
@@ -2653,9 +2661,9 @@ const Graphics = {
             ctx.lineTo(hs, shoulderY+3); ctx.lineTo(hs-3, shoulderY-1);
             ctx.quadraticCurveTo(hs-4, shoulderY-5, hs, shoulderY-8);
             ctx.fill();
-            // Vent slit
-            ctx.fillStyle = '#0f172a';
-            ctx.beginPath(); ctx.ellipse(hs, shoulderY-4, 1, 2, 0, 0, Math.PI*2); ctx.fill();
+            // Visor stripe (white, not black — won't read as shadow)
+            ctx.strokeStyle = 'rgba(180,220,255,0.6)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(hs-2, shoulderY-5); ctx.lineTo(hs+2, shoulderY-5); ctx.stroke();
         });
 
         ctx.restore();
@@ -2754,7 +2762,7 @@ const Graphics = {
         // 2.5D parallax — clamped, NaN-guarded
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const pX = clamp((STATE.leanAngle  || 0) * 0.3, -8, 8);
-        const pY = clamp(((STATE.pitchAngle || 0) + 70) * 0.3, -8, 8);
+        const pY = clamp(((STATE.pitchAngle || 0) + 90) * 0.18, 0, 16);
 
         const t = Date.now();
         const kc = STATE.active ? t / 350 : 0; // kickCycle
