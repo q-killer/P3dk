@@ -658,7 +658,7 @@
             onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
             ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
 
-        <button id="trip-btn" onclick="Engine.toggleTrip()">START TRIP</button>
+        <button id="trip-btn" onclick="Engine.safeToggleTrip()">START TRIP</button>
 
         <!-- Music strip — directly below START TRIP -->
         <div id="music-strip">
@@ -1021,6 +1021,33 @@ const ThemeCache = {
 
 /* ═══════════════════════════════════════════════════════ TRIP LOGGER ══ */
 const TripLogger = {
+    // Auto-save emergency backup on unload / background
+    _autoSave() {
+        if (!STATE.active || !STATE.startTs) return;
+        try {
+            localStorage.setItem('cyberbike_trip_backup', JSON.stringify({
+                ts: Date.now(), dist: STATE.dist,
+                time: STATE._timeDisplay, maxSpd: STATE.maxSpd,
+                lat: STATE.lat, lon: STATE.lon,
+            }));
+        } catch(e) {}
+    },
+
+    // Check for backup from an interrupted trip on startup
+    checkBackup() {
+        try {
+            const raw = localStorage.getItem('cyberbike_trip_backup');
+            if (!raw) return;
+            const snap = JSON.parse(raw);
+            const ageMins = (Date.now() - snap.ts) / 60000;
+            if (ageMins < 120 && (snap.dist || 0) > 0.01) {
+                setTimeout(() => HazardEngine.showToast(
+                    `🔄 Interrupted trip: ${(snap.dist||0).toFixed(1)} MI, ${snap.time||'?'} — ${Math.round(ageMins)}min ago`
+                ), 3000);
+            }
+            localStorage.removeItem('cyberbike_trip_backup');
+        } catch(e) {}
+    },
     getESN() {
         let esn = localStorage.getItem('cyberbike_esn');
         if (!esn) { esn = 'CB-' + Math.random().toString(36).substr(2,9).toUpperCase(); localStorage.setItem('cyberbike_esn', esn); }
@@ -2428,89 +2455,138 @@ window.Avionics = {
 const Graphics = {
     ctx: document.getElementById('vector-canvas').getContext('2d'),
 
-    drawCessna(x, y, roll, isDark) {
+    drawCessna(x, y, _roll, isDark) {
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(1.2, 1.2);
-        ctx.rotate(roll * CFG.TO_RAD);
 
-        // Use fixed contrast colors — white fuselage is invisible on light pod background
-        const baseColor = isDark ? '#cc4444' : '#e2e8f0';
-        const shadeColor = isDark ? '#1a0000' : '#475569';
+        const baseColor      = isDark ? '#cc4444' : '#e2e8f0';
+        const shadeColor     = isDark ? '#1a0000' : '#475569';
         const highlightColor = isDark ? '#ff8888' : '#ffffff';
-        const glassColor = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
+        const glassColor     = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
 
-        const invRoll = -roll * CFG.TO_RAD;
+        // Gyro perspective
+        const rawPitch = STATE.pitchAngle || 0;
+        const pX = Math.max(-10, Math.min(10, (STATE.leanAngle || 0) * 0.3));
+        const pY = Math.max(-12, Math.min(0, (rawPitch + 90) * -0.2));
+        // Foreshortening: wings squash as phone tilts toward upright
+        // sin(-90°)=-1 → abs=1 (flat=full wing). sin(0°)=0 → 0.2 (thin ellipse).
+        const squash = Math.max(0.2, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
 
-        // ── Shape shadow — fuselage+wing footprint below sprite ──
-        ctx.save();
-        ctx.translate(10, 18); // drop below and slightly right
-        ctx.scale(1, 0.3);     // flatten vertically = ground projection
-        ctx.globalAlpha = isDark ? 0.22 : 0.12;
-        ctx.fillStyle = '#000';
-        // Wing shadow
-        ctx.beginPath(); ctx.ellipse(0, 0, 32, 4, 0, 0, Math.PI*2); ctx.fill();
-        // Fuselage shadow
-        ctx.beginPath(); ctx.ellipse(0, 2, 5, 17, 0, 0, Math.PI*2); ctx.fill();
-        ctx.globalAlpha = 1; ctx.restore();
-        ctx.beginPath(); this._rr(ctx, -12, 12, 24, 4, 2); ctx.fill();
-        ctx.fillStyle = baseColor;
-        ctx.beginPath(); this._rr(ctx, -12, 12, 24, 1.5, 0.75); ctx.fill();
+        // Layer helper — damps division to prevent off-screen shift
+        const layer = (z, fn) => {
+            ctx.save();
+            ctx.translate(pX * z, (pY * z) / Math.max(0.65, squash));
+            fn();
+            ctx.restore();
+        };
 
-        ctx.fillStyle = shadeColor;
-        ctx.beginPath(); this._rr(ctx, -35, -4, 70, 8, 4); ctx.fill();
-        ctx.fillStyle = baseColor;
-        ctx.beginPath(); this._rr(ctx, -35, -4, 70, 2.5, 1.25); ctx.fill();
+        // Z = -1: Ground shadow — squash flat, offset below-right
+        layer(-1, () => {
+            ctx.save(); ctx.scale(1, 0.28 * squash);
+            ctx.globalAlpha = isDark ? 0.22 : 0.12; ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.ellipse(6, 60, 30, 4, 0, 0, Math.PI*2); ctx.fill(); // wings
+            ctx.beginPath(); ctx.ellipse(6, 60, 4, 14, 0, 0, Math.PI*2); ctx.fill(); // fuselage
+            ctx.globalAlpha = 1; ctx.restore();
+        });
 
-        let fg = ctx.createLinearGradient(-5, 0, 5, 0);
-        fg.addColorStop(0, shadeColor); fg.addColorStop(0.3, highlightColor); fg.addColorStop(1, shadeColor);
-        ctx.fillStyle = fg;
-        ctx.beginPath();
-        ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
-        ctx.fill();
-        ctx.strokeStyle = shadeColor; ctx.lineWidth = 0.75;
-        ctx.beginPath();
-        ctx.moveTo(0, -22); ctx.bezierCurveTo(6,-18,5,2,2,15); ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
-        ctx.stroke();
+        // Z = 0: Wings — squash Y axis so they flatten from circles to lines as tilt increases
+        layer(0, () => {
+            ctx.save(); ctx.scale(1, squash);
+            ctx.fillStyle = shadeColor;
+            ctx.beginPath(); ctx.ellipse(0, 0, 35, 4, 0, 0, Math.PI*2); ctx.fill(); // wing shadow base
+            ctx.fillStyle = baseColor;
+            ctx.beginPath(); ctx.ellipse(0, 0, 35, 2.5, 0, 0, Math.PI*2); ctx.fill(); // wing top
+            ctx.restore();
+        });
 
-        ctx.fillStyle = glassColor;
-        ctx.beginPath();
-        ctx.moveTo(0,-11); ctx.quadraticCurveTo(4,-8,3,-3); ctx.lineTo(-3,-3); ctx.quadraticCurveTo(-4,-8,0,-11);
-        ctx.fill();
+        // Z = 0: Tail horizontal stabilizer (smaller, further back)
+        layer(0, () => {
+            ctx.save(); ctx.scale(1, squash);
+            ctx.fillStyle = shadeColor;
+            ctx.beginPath(); ctx.ellipse(0, 14, 16, 3, 0, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = baseColor;
+            ctx.beginPath(); ctx.ellipse(0, 14, 16, 2, 0, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        });
 
-        let tg = ctx.createLinearGradient(-1,0,1,0);
-        tg.addColorStop(0, shadeColor); tg.addColorStop(1, highlightColor);
-        ctx.fillStyle = tg;
-        ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(1.5,16); ctx.lineTo(0,18); ctx.lineTo(-1.5,16); ctx.closePath(); ctx.fill();
+        // Z = 0.5: Fuselage body — doesn't squash (it's cylindrical)
+        layer(0.5, () => {
+            // Fuselage shaded sides
+            ctx.fillStyle = shadeColor;
+            ctx.beginPath();
+            ctx.moveTo(0,-22); ctx.bezierCurveTo(6,-18,5,2,2,15);
+            ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
+            ctx.fill();
+            // Fuselage highlight stripe
+            const fg = ctx.createLinearGradient(-5,0,5,0);
+            fg.addColorStop(0,shadeColor); fg.addColorStop(0.3,highlightColor); fg.addColorStop(1,shadeColor);
+            ctx.fillStyle = fg;
+            ctx.beginPath();
+            ctx.moveTo(0,-22); ctx.bezierCurveTo(6,-18,5,2,2,15);
+            ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
+            ctx.fill();
+        });
 
-        ctx.save(); ctx.translate(0, -22);
-        const pA = STATE.active ? Date.now() / (20 - Math.min(STATE.spdMph/10, 15)) : Math.PI/4;
-        const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
-        const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
-        ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(-b1x,-b1y); ctx.lineTo(b1x,b1y); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-b2x,-b2y); ctx.lineTo(b2x,b2y); ctx.stroke();
-        ctx.fillStyle = isDark ? '#ef4444' : '#94a3b8';
-        ctx.beginPath(); ctx.ellipse(0,0,2,1.5,0,0,Math.PI*2); ctx.fill();
-        ctx.restore();
+        // Z = 1.0: Tail fin (vertical) — rises above fuselage
+        layer(1.0, () => {
+            let tg = ctx.createLinearGradient(-1,0,1,0);
+            tg.addColorStop(0,shadeColor); tg.addColorStop(1,highlightColor);
+            ctx.fillStyle = tg;
+            ctx.beginPath(); ctx.moveTo(0,6); ctx.lineTo(1.5,16); ctx.lineTo(0,18); ctx.lineTo(-1.5,16); ctx.closePath(); ctx.fill();
+        });
 
-        ctx.beginPath(); ctx.arc(0,15,1.5,0,Math.PI*2);
-        ctx.fillStyle = isDark ? '#ff0000' : '#ef4444';
-        ctx.fill(); // no shadow — prevents the dot artifact below aircraft
+        // Z = 1.2: Cockpit glass
+        layer(1.2, () => {
+            ctx.fillStyle = glassColor;
+            ctx.beginPath();
+            ctx.moveTo(0,-11); ctx.quadraticCurveTo(4,-8,3,-3);
+            ctx.lineTo(-3,-3); ctx.quadraticCurveTo(-4,-8,0,-11);
+            ctx.fill();
+        });
+
+        // Z = 1.5: Propeller arc (topmost, in front)
+        layer(1.5, () => {
+            ctx.save(); ctx.translate(0, -22);
+            const pA = STATE.active ? Date.now() / Math.max(5, 20 - STATE.spdMph/10*15) : Math.PI/4;
+            const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
+            const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
+            ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(-b1x,-b1y); ctx.lineTo(b1x,b1y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-b2x,-b2y); ctx.lineTo(b2x,b2y); ctx.stroke();
+            ctx.fillStyle = isDark ? '#ef4444' : '#94a3b8';
+            ctx.beginPath(); ctx.ellipse(0,0,2,1.5,0,0,Math.PI*2); ctx.fill();
+            ctx.restore();
+        });
+
+        // Nav light — tail beacon
+        layer(0.5, () => {
+            ctx.beginPath(); ctx.arc(0,15,1.5,0,Math.PI*2);
+            ctx.fillStyle = isDark ? '#ff0000' : '#ef4444'; ctx.fill();
+        });
+
         ctx.restore();
     },
 
     drawUFO(x, y, _roll) {
+        // Bob Lazar Sport Model — volumetric voxel slice rendering with gyro perspective
+        // 17 horizontal slices (8 hull + 8 dome + 1 reactor) build a true 3D profile.
+        // Foreshortening + pY parallax create top-down → rear-view transition.
         const ctx = this.ctx;
         ctx.save();
         ctx.translate(x, y);
         ctx.scale(1.15, 1.15);
 
-        // 2.5D parallax — clamped, NaN-guarded
-        const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-        const pX = clamp((STATE.leanAngle  || 0) * 0.3, -8, 8);
-        const pY = clamp(((STATE.pitchAngle || 0) + 90) * 0.18, 0, 16);
+        // Gyro perspective — flat table = top view, held upright = rear view
+        const pX = Math.max(-12, Math.min(12, (STATE.leanAngle  || 0) * 0.3));
+        const rawPitch = STATE.pitchAngle || 0;
+        // pY range: 0 when flat (-90°), negative when upright (0°) → top layers shift UP = rear view
+        const pY = Math.max(-12, Math.min(0, (rawPitch + 90) * -0.2));
+
+        // Y-axis foreshortening: 1.0 = perfect circle (top-down), 0.25 = thin ellipse (side view)
+        const squash = Math.max(0.25, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
+        ctx.scale(1, squash);
 
         const t = Date.now();
         const speed = STATE.active ? STATE.spdMph : 0;
@@ -2520,63 +2596,86 @@ const Graphics = {
         const coreColor   = `rgba(0,255,255,${(0.4 + pulse * 0.5).toFixed(2)})`;
         const coronaColor = `rgba(176,38,255,${(0.15 + pulse * 0.25).toFixed(2)})`;
 
-        // Z = -1.0: Corona discharge / gravity distortion field
-        this._drawLayer(ctx, pX, pY, -1.0, () => {
+        // Per-slice layer helper — divides pY by squash to counteract global Y scaling
+        // Damped: caps the undivided shift to prevent off-screen at extreme angles
+        const layer = (z, fn) => {
+            ctx.save();
+            const rawShift = pY * z;
+            // Damp division: use (squash + 0.4) as divisor floor so squash=0.25 → divides by 0.65 not 0.25
+            const yShift = rawShift / Math.max(0.65, squash);
+            ctx.translate(pX * z, yShift);
+            fn();
+            ctx.restore();
+        };
+
+        // ── Z = -1.5: Corona field + rotating gravity amplifiers (beneath hull) ──
+        layer(-1.5, () => {
             const aura = ctx.createRadialGradient(0, 0, 22, 0, 0, 42);
             aura.addColorStop(0, coreColor); aura.addColorStop(0.4, coronaColor); aura.addColorStop(1, 'rgba(0,0,0,0)');
             ctx.fillStyle = aura;
             ctx.beginPath(); ctx.arc(0, 0, 42, 0, Math.PI*2); ctx.fill();
-        });
-
-        // Z = -0.5: Gravity wave amplifiers (below hull, rotating)
-        // More prominent at high pY (rear view) — they face the viewer from behind
-        this._drawLayer(ctx, pX, pY, -0.5, () => {
-            const ampAlpha = 0.5 + pulse * 0.4 + (pY / 16) * 0.3; // brighter in rear view
+            // Amplifiers rotate as a unit
             ctx.save(); ctx.rotate(spin);
             for (let i=0; i<3; i++) {
                 ctx.rotate((Math.PI*2)/3);
-                const ag = ctx.createRadialGradient(0,17,0, 0,17,9+pY*0.3);
-                ag.addColorStop(0, `rgba(0,255,255,${Math.min(1,ampAlpha).toFixed(2)})`);
+                const ag = ctx.createRadialGradient(0,17,0, 0,17,9);
+                ag.addColorStop(0, `rgba(0,255,255,${(0.5+pulse*0.4).toFixed(2)})`);
                 ag.addColorStop(1, 'rgba(0,255,255,0)');
                 ctx.fillStyle = ag;
-                ctx.beginPath(); ctx.arc(0, 17, 9+pY*0.3, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(0, 17, 9, 0, Math.PI*2); ctx.fill();
             }
             ctx.restore();
-            // Hull rim edge — visible from rear as a lit ellipse
-            if (pY > 4) {
-                ctx.beginPath(); ctx.ellipse(0, 28*Math.sin(pY/16*0.5), 28, 3, 0, 0, Math.PI*2);
-                ctx.strokeStyle = `rgba(200,210,220,${(pY/16)*0.5})`;
-                ctx.lineWidth = 2; ctx.stroke();
-            }
         });
 
-        // Z = 0: Main seamless hull — brushed pewter
-        this._drawLayer(ctx, pX, pY, 0, () => {
-            const hg = ctx.createRadialGradient(-6,-6,4, 0,0,28);
-            hg.addColorStop(0, '#f1f5f9'); hg.addColorStop(0.3, '#94a3b8');
-            hg.addColorStop(0.7,'#334155'); hg.addColorStop(1, '#0f172a');
-            ctx.fillStyle = hg;
-            ctx.beginPath(); ctx.arc(0, 0, 28, 0, Math.PI*2); ctx.fill();
-        });
+        // ── Hull voxel slices Z = 0..8 (disc body) ──
+        // Each slice is a circle with radius shrinking from 28 at base to 13 at top.
+        // Drawn back-to-front: lower Z = further from viewer = drawn first.
+        for (let z=0; z<=8; z++) {
+            const zS = z * 0.15;                           // physical height increment
+            const r  = 28 - Math.pow(z/8, 2) * 15;        // profile: 28→13 (parabolic taper)
+            layer(zS, () => {
+                ctx.beginPath(); ctx.arc(0, 0, Math.max(0.1, r), 0, Math.PI*2);
+                if (z === 8) {
+                    // Top surface: brushed metallic radial gradient
+                    const hg = ctx.createRadialGradient(-6,-6,2, 0,0,r);
+                    hg.addColorStop(0, '#f1f5f9'); hg.addColorStop(0.3, '#94a3b8');
+                    hg.addColorStop(0.7, '#334155'); hg.addColorStop(1, '#0f172a');
+                    ctx.fillStyle = hg;
+                } else {
+                    // Side walls: dark steel, brightens slightly toward top
+                    ctx.fillStyle = `hsl(215,25%,${15 + (z/8)*20}%)`;
+                }
+                ctx.fill();
+            });
+        }
 
-        // Z = 1.5: Central dome — dark metallic with specular
-        this._drawLayer(ctx, pX, pY, 1.5, () => {
-            const dg = ctx.createRadialGradient(-3,-3,2, 0,0,13);
-            dg.addColorStop(0,'#ffffff'); dg.addColorStop(0.4,'#64748b');
-            dg.addColorStop(0.8,'#1e293b'); dg.addColorStop(1,'#020617');
-            ctx.fillStyle = dg;
-            ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI*2); ctx.fill();
-            ctx.strokeStyle='rgba(255,255,255,0.15)'; ctx.lineWidth=1;
-            ctx.beginPath(); ctx.arc(0, 0, 13, 0, Math.PI*2); ctx.stroke();
-        });
-
-        // Z = 2.0: Reactor core / Element 115 waveguide — peak height
-        this._drawLayer(ctx, pX, pY, 2.0, () => {
-            ctx.fillStyle = coreColor;
-            ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 12;
-            ctx.beginPath(); ctx.arc(0, 0, 2.5, 0, Math.PI*2); ctx.fill();
-            ctx.shadowBlur = 0;
-        });
+        // ── Dome voxel slices Z = 9..16 (hemisphere above hull) ──
+        // Radius follows hemisphere curve: 13 at base → 0 at apex.
+        for (let z=9; z<=16; z++) {
+            const zS = z * 0.15;
+            const dz = z - 8;
+            const r  = 13 * Math.sqrt(Math.max(0, 1 - Math.pow(dz/8, 2)));
+            layer(zS, () => {
+                ctx.beginPath(); ctx.arc(0, 0, Math.max(0.1, r), 0, Math.PI*2);
+                if (z === 16) {
+                    // Reactor core at peak — Element 115 glow
+                    ctx.fillStyle = coreColor;
+                    ctx.shadowColor = '#00ffff'; ctx.shadowBlur = 12;
+                    ctx.fill(); ctx.shadowBlur = 0;
+                } else if (z === 15) {
+                    // Dome top surface
+                    const dg = ctx.createRadialGradient(-3,-3,1, 0,0,r);
+                    dg.addColorStop(0,'#ffffff'); dg.addColorStop(0.4,'#64748b');
+                    dg.addColorStop(0.8,'#1e293b'); dg.addColorStop(1,'#020617');
+                    ctx.fillStyle = dg; ctx.fill();
+                    ctx.strokeStyle='rgba(255,255,255,0.2)'; ctx.lineWidth=0.5; ctx.stroke();
+                } else {
+                    // Dome side walls — lighter near top (lit from above)
+                    ctx.fillStyle = `hsl(215,20%,${25+(dz/8)*30}%)`;
+                    ctx.fill();
+                }
+            });
+        }
 
         ctx.restore();
     },
@@ -2675,80 +2774,98 @@ const Graphics = {
         ctx.translate(x, y);
         ctx.scale(1.1, 1.1);
 
-        const t = Date.now();
+        const t   = Date.now();
         const isFF     = STATE.skyPhase === 'freefall';
         const isCanopy = STATE.skyPhase === 'canopy';
 
+        // Gyro perspective — appropriate per phase:
+        // Ascent: phone flat = top-down view (looking down into plane)
+        // Freefall: jitter dominates, gentle parallax
+        // Canopy: phone held up = looking up at diver from below = pY inverted
+        const rawPitch = STATE.pitchAngle || 0;
+        const pX  = Math.max(-8, Math.min(8, (STATE.leanAngle || 0) * 0.25));
+        const pY  = Math.max(-10, Math.min(10, (rawPitch + 90) * (isCanopy ? 0.15 : -0.12)));
+        const squash = Math.max(0.3, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
+
+        const layer = (z, fn) => {
+            ctx.save();
+            ctx.translate(pX * z, (pY * z) / Math.max(0.65, squash));
+            fn();
+            ctx.restore();
+        };
+
         // Wind buffeting in freefall; pendulum sway under canopy
-        const jitterX = STATE.active && isFF ? (Math.random() - 0.5) * 1.5 : 0;
-        const jitterY = STATE.active && isFF ? (Math.random() - 0.5) * 1.5 : 0;
-        const sway    = isCanopy ? Math.sin(t / 800) * 3 : 0;
-        ctx.translate(jitterX + sway, jitterY);
+        const jitterX = STATE.active && isFF ? (Math.random()-0.5)*1.5 : 0;
+        const jitterY = STATE.active && isFF ? (Math.random()-0.5)*1.5 : 0;
+        const sway    = isCanopy ? Math.sin(t/800)*3 : 0;
+        ctx.translate(jitterX+sway, jitterY);
 
-        const suit = STATE.clrWind;
-        const skin = '#e2a76f';
-        const rig  = '#334155';
+        const suit = STATE.clrWind, skin = '#e2a76f', rig = '#334155';
 
-        // Canopy — only rendered when parachute is open
+        // Z = -1: Ground shadow
+        layer(-1, () => {
+            ctx.fillStyle='rgba(0,0,0,0.25)';
+            ctx.beginPath(); ctx.ellipse(4,4,8,12,0,0,Math.PI*2); ctx.fill();
+        });
+
+        // Z = -0.5: Canopy (below the diver from above, above if phone tilted up)
         if (isCanopy) {
-            ctx.fillStyle = STATE.clrSquad;
-            ctx.globalAlpha = 0.85;
-            ctx.beginPath();
-            ctx.moveTo(-25, 15); ctx.quadraticCurveTo(0, 5, 25, 15);
-            ctx.lineTo(22, 22); ctx.quadraticCurveTo(0, 12, -22, 22);
-            ctx.fill();
-            // Suspension lines
-            ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 0.5;
-            ctx.beginPath();
-            [-20, -10, 0, 10, 20].forEach(lx => { ctx.moveTo(lx, 18); ctx.lineTo(0, -2); });
-            ctx.stroke();
-            ctx.globalAlpha = 1;
+            layer(-0.5, () => {
+                ctx.fillStyle=STATE.clrSquad; ctx.globalAlpha=0.85;
+                ctx.beginPath();
+                ctx.moveTo(-25,15); ctx.quadraticCurveTo(0,5,25,15);
+                ctx.lineTo(22,22); ctx.quadraticCurveTo(0,12,-22,22);
+                ctx.fill();
+                ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=0.5;
+                ctx.beginPath();
+                [-20,-10,0,10,20].forEach(lx=>{ctx.moveTo(lx,18); ctx.lineTo(0,-2);});
+                ctx.stroke();
+                ctx.globalAlpha=1;
+            });
         }
 
-        // Shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.25)';
-        ctx.beginPath(); ctx.ellipse(4, 4, 8, 12, 0, 0, Math.PI*2); ctx.fill();
-
-        // Pose — legs hang in canopy, Boxman spread in freefall
+        // Z = 0: Legs (lowest body part)
         const legExt = isCanopy ? 12 : 6;
-        const armExt = isCanopy ? -8 : -14; // negative = reaches further out
+        const armExt = isCanopy ? -8  : -14;
+        layer(0, () => {
+            ctx.lineWidth=4; ctx.lineCap='round'; ctx.lineJoin='round';
+            ctx.strokeStyle=suit;
+            ctx.beginPath(); ctx.moveTo(-3,8); ctx.lineTo(-8,14); ctx.lineTo(-5,14+legExt); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo( 3,8); ctx.lineTo( 8,14); ctx.lineTo( 5,14+legExt); ctx.stroke();
+        });
 
-        ctx.lineWidth = 4; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        // Z = 0.5: Arms
+        layer(0.5, () => {
+            ctx.lineWidth=4; ctx.lineCap='round'; ctx.lineJoin='round';
+            ctx.strokeStyle=suit;
+            ctx.beginPath(); ctx.moveTo(-4,-2); ctx.lineTo(-12,-2); ctx.lineTo( armExt,5); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo( 4,-2); ctx.lineTo( 12,-2); ctx.lineTo(-armExt,5); ctx.stroke();
+            ctx.fillStyle=skin;
+            ctx.beginPath(); ctx.arc( armExt,5,2.5,0,Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(-armExt,5,2.5,0,Math.PI*2); ctx.fill();
+            if (isFF) {
+                ctx.fillStyle='#ef4444'; ctx.shadowColor='#ef4444'; ctx.shadowBlur=4;
+                ctx.beginPath(); ctx.arc(-11.5,4,1.5,0,Math.PI*2); ctx.fill(); ctx.shadowBlur=0;
+            }
+        });
 
-        // Arms
-        ctx.strokeStyle = suit;
-        ctx.beginPath(); ctx.moveTo(-4,-2); ctx.lineTo(-12,-2); ctx.lineTo( armExt, 5); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo( 4,-2); ctx.lineTo( 12,-2); ctx.lineTo(-armExt, 5); ctx.stroke();
+        // Z = 1.0: Torso + rig
+        layer(1.0, () => {
+            ctx.fillStyle=suit;
+            ctx.beginPath(); ctx.ellipse(0,2,5,10,0,0,Math.PI*2); ctx.fill();
+            if (!isCanopy) {
+                ctx.fillStyle=rig;
+                ctx.beginPath(); this._rr(ctx,-4,-2,8,12,2); ctx.fill();
+            }
+        });
 
-        // Legs
-        ctx.beginPath(); ctx.moveTo(-3,8); ctx.lineTo(-8,14); ctx.lineTo(-5, 14+legExt); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo( 3,8); ctx.lineTo( 8,14); ctx.lineTo( 5, 14+legExt); ctx.stroke();
-
-        // Hands
-        ctx.fillStyle = skin;
-        ctx.beginPath(); ctx.arc( armExt, 5, 2.5, 0, Math.PI*2); ctx.fill();
-        ctx.beginPath(); ctx.arc(-armExt, 5, 2.5, 0, Math.PI*2); ctx.fill();
-
-        // Glowing altimeter on left wrist in freefall
-        if (isFF) {
-            ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 4;
-            ctx.beginPath(); ctx.arc(-11.5, 4, 1.5, 0, Math.PI*2); ctx.fill();
-            ctx.shadowBlur = 0;
-        }
-
-        // Torso + rig container
-        ctx.fillStyle = suit;
-        ctx.beginPath(); ctx.ellipse(0, 2, 5, 10, 0, 0, Math.PI*2); ctx.fill();
-        if (!isCanopy) {
-            ctx.fillStyle = rig;
-            ctx.beginPath(); this._rr(ctx, -4, -2, 8, 12, 2); ctx.fill();
-        }
-
-        // Helmet + visor
-        ctx.fillStyle = '#1e293b';
-        ctx.beginPath(); ctx.arc(0, -9, 4.5, 0, Math.PI*2); ctx.fill();
-        ctx.fillStyle = STATE.clrDanger;
-        ctx.beginPath(); ctx.ellipse(0, -10.5, 3.5, 2, 0, 0, Math.PI*2); ctx.fill();
+        // Z = 1.5: Helmet + visor (highest point — head above body)
+        layer(1.5, () => {
+            ctx.fillStyle='#1e293b';
+            ctx.beginPath(); ctx.arc(0,-9,4.5,0,Math.PI*2); ctx.fill();
+            ctx.fillStyle=STATE.clrDanger;
+            ctx.beginPath(); ctx.ellipse(0,-10.5,3.5,2,0,0,Math.PI*2); ctx.fill();
+        });
 
         ctx.restore();
     },
@@ -3770,6 +3887,40 @@ const SportEngine = {
 };
 
 window.Engine = {
+    // Called by END TRIP button — requires tap confirmation to prevent accidental data loss
+    safeToggleTrip() {
+        if (!STATE.active) {
+            // Starting a trip — just go
+            Engine.toggleTrip();
+            return;
+        }
+        // Trip is running — show inline confirmation instead of browser confirm()
+        const btn = DOM.tripBtn;
+        if (btn._confirmPending) {
+            // Second tap within 4 seconds = confirmed end
+            clearTimeout(btn._confirmTimer);
+            btn._confirmPending = false;
+            btn.innerText = 'END TRIP';
+            btn.style.borderColor = 'var(--danger)';
+            btn.style.color = 'var(--danger)';
+            TripLogger._autoSave(); // save backup before ending
+            Engine.toggleTrip();
+            return;
+        }
+        // First tap — ask for confirmation with 4-second countdown
+        btn._confirmPending = true;
+        btn.innerText = '⚠️ TAP AGAIN TO END';
+        btn.style.borderColor = '#f59e0b';
+        btn.style.color = '#f59e0b';
+        vibrate([50, 50, 50]);
+        btn._confirmTimer = setTimeout(() => {
+            btn._confirmPending = false;
+            btn.innerText = 'END TRIP';
+            btn.style.borderColor = 'var(--danger)';
+            btn.style.color = 'var(--danger)';
+        }, 4000);
+    },
+
     async toggleTrip() {
         const btn = DOM.tripBtn;
         if (!STATE.active) {
@@ -3778,7 +3929,7 @@ window.Engine = {
             STATE.wattsHistory = []; STATE.totalJoules = 0; STATE.powerTs = 0;
             STATE.crumbs = []; STATE._altBuf = []; STATE._spdBuf = []; STATE._vsiBuf = []; STATE.altBuffer = [];
 
-            STATE.active = true; STATE.startTs = now;
+            STATE.active = true; STATE.startTs = Date.now();
             btn.innerText = 'END TRIP';
             btn.style.borderColor = 'var(--danger)';
             btn.style.color = 'var(--danger)';
@@ -3962,6 +4113,7 @@ window.Engine = {
 
     init() {
         DOM.init();
+        TripLogger.checkBackup();
         UX.initDrag();
         UX.handleResize();
         window.addEventListener('resize', () => {
@@ -4029,7 +4181,18 @@ window.Engine = {
             }
         });
 
-        // ── Swipe left/right on music strip → cycle genre (L=next, R=prev) ──
+        // ── Trip data protection — warn before page unload/refresh ──
+        window.addEventListener('beforeunload', e => {
+            if (STATE.active) {
+                e.preventDefault();
+                e.returnValue = 'Trip in progress — your data will be lost. Leave anyway?';
+                return e.returnValue;
+            }
+        });
+        // Also intercept Android back-button / PWA close
+        window.addEventListener('pagehide', () => {
+            if (STATE.active) TripLogger._autoSave();
+        });
         {
             let _swipeX = 0;
             const ms = document.getElementById('music-strip');
@@ -4057,7 +4220,11 @@ window.Engine = {
             );
         }
 
-        STATE._drTimer = setInterval(() => { if (STATE.gpsLost && STATE.active) DeadReckoning.tick(); }, 1000);
+        STATE._drTimer = setInterval(() => {
+            if (STATE.gpsLost && STATE.active) DeadReckoning.tick();
+            // Auto-save trip backup every 60s — guards against accidental refresh
+            if (STATE.active && Date.now() % 60000 < 1100) TripLogger._autoSave();
+        }, 1000);
     }
 };
 
