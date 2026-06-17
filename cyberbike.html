@@ -597,6 +597,11 @@
         <div class="overlay right-stats">
             <div class="speed-value" id="speed">0.0</div>
             <div class="speed-unit" id="speed-unit-label">MPH</div>
+            <div id="secondary-instrument" style="display:none;margin-top:4px;text-align:center;">
+                <div class="lbl" id="sec-lbl" style="margin-top:0;font-size:11px;letter-spacing:1px;">⬇ FALL</div>
+                <div style="font-size:22px;font-weight:900;font-family:var(--font-mono);" id="sec-val">--</div>
+                <div class="sub-val" id="sec-sub" style="font-size:10px;"></div>
+            </div>
 
             <div class="lbl">📏 DIST</div>
             <div class="val"><span id="distance">0.0</span><span class="unit" id="dist-unit-label">MI</span></div>
@@ -946,7 +951,7 @@ let watchId = null;
 let rafId = null;
 
 /* ═══════════════════════════════════════════════════════ HELPERS ══ */
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModal(id) { const _m=document.getElementById(id); if(_m)_m.style.display='none'; }
 
 function vibrate(pattern) {
     if (navigator.vibrate) try { navigator.vibrate(pattern); } catch(e) {}
@@ -1001,6 +1006,9 @@ const DOM = {
         this.wattsNow  = g('watts-now'); this.vo2Disp   = g('vo2-display');
         this.svgGps    = g('svg-gps');   this.svgWx     = g('svg-wx');
         this.arVideo   = g('ar-video');  this.atsBadge  = g('ats-badge');
+        this.svgGps    = g('svg-gps');   this.svgWx     = g('svg-wx');
+        this.secInst   = g('secondary-instrument');
+        this.secLbl    = g('sec-lbl'); this.secVal = g('sec-val'); this.secSub = g('sec-sub');
         this.ctrlCraft = g('ctrl-craft-btn'); this.ctrlTheme = g('ctrl-theme-btn');
     }
 };
@@ -1878,7 +1886,7 @@ window.Radio = {
     playStation(url, name) {
         this.currentStation = url;
         this.currentStationName = name;
-        document.getElementById('input-radio-url').value = url;
+        const _ru=document.getElementById('input-radio-url'); if(_ru)_ru.value=url;
         this.audioEl.src = url;
         this.audioEl.currentTime = 0;
         // Flash station name in music strip genre label, restore after 3s
@@ -2271,7 +2279,7 @@ const API = {
                 STATE.lastTemp = Math.round(cw.temperature);
             }
         } catch(e) {
-            DOM.svgWx.textContent = '☁️ WX: ERR';
+            if(DOM.svgWx) DOM.svgWx.textContent = '☁️ WX: ERR';
         }
         // Kick off radar fetch (non-blocking, 5-min cache)
         this.fetchRadar(lat, lon);
@@ -2527,6 +2535,17 @@ const Graphics = {
             ctx.moveTo(0,-22); ctx.bezierCurveTo(6,-18,5,2,2,15);
             ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
             ctx.fill();
+            // Propeller — same z as nose, stays attached
+            ctx.save(); ctx.translate(0, -22);
+            const pA = STATE.active ? Date.now() / Math.max(5, 20 - STATE.spdMph/10*15) : Math.PI/4;
+            const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
+            const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
+            ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(-b1x,-b1y); ctx.lineTo(b1x,b1y); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(-b2x,-b2y); ctx.lineTo(b2x,b2y); ctx.stroke();
+            ctx.fillStyle = isDark ? '#ef4444' : '#94a3b8';
+            ctx.beginPath(); ctx.ellipse(0,0,2,1.5,0,0,Math.PI*2); ctx.fill();
+            ctx.restore();
         });
 
         // Z = 1.0: Tail fin (vertical) — rises above fuselage
@@ -2546,19 +2565,7 @@ const Graphics = {
             ctx.fill();
         });
 
-        // Z = 1.5: Propeller arc (topmost, in front)
-        layer(1.5, () => {
-            ctx.save(); ctx.translate(0, -22);
-            const pA = STATE.active ? Date.now() / Math.max(5, 20 - STATE.spdMph/10*15) : Math.PI/4;
-            const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
-            const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
-            ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
-            ctx.beginPath(); ctx.moveTo(-b1x,-b1y); ctx.lineTo(b1x,b1y); ctx.stroke();
-            ctx.beginPath(); ctx.moveTo(-b2x,-b2y); ctx.lineTo(b2x,b2y); ctx.stroke();
-            ctx.fillStyle = isDark ? '#ef4444' : '#94a3b8';
-            ctx.beginPath(); ctx.ellipse(0,0,2,1.5,0,0,Math.PI*2); ctx.fill();
-            ctx.restore();
-        });
+        // Propeller rendered inline in fuselage layer below
 
         // Nav light — tail beacon
         layer(0.5, () => {
@@ -3636,17 +3643,29 @@ const Graphics = {
             Graphics._lastDomWrite = now;
             const unitEl = document.getElementById('speed-unit-label');
             if (STATE.craftMode === 3) {
-                // ── SKYDIVE primary: altitude (large), fallrate in VSI slot ──
                 DOM.speed.innerText = Math.round(STATE.altFt).toLocaleString();
-                if (unitEl) unitEl.innerText = STATE.skyPhase === 'freefall' ? 'FT ▼' :
-                                               STATE.skyPhase === 'canopy'   ? 'FT 🪂' : 'FT ↑';
+                if (unitEl) unitEl.innerText = {ascent:'FT ↑',freefall:'FT ▼',canopy:'FT 🪂'}[STATE.skyPhase]||'FT';
+                if (DOM.secInst) {
+                    DOM.secInst.style.display = 'block';
+                    const ffMph = Math.round(Math.abs(STATE._vsiFpm||0)/88*60);
+                    if (DOM.secLbl) DOM.secLbl.innerText = STATE.skyPhase==='freefall'?'⬇ FALL':STATE.skyPhase==='canopy'?'⬇ DESC':'⬆ CLIMB';
+                    if (DOM.secVal) { DOM.secVal.innerText = ffMph; DOM.secVal.style.color = STATE.skyPhase==='freefall'?'#f59e0b':'var(--primary)'; }
+                    if (DOM.secSub) DOM.secSub.innerText = 'MPH';
+                }
             } else if (STATE.craftMode === 4) {
-                // ── DIVE primary: depth ──
                 DOM.speed.innerText = STATE.diveDepthFt.toFixed(1);
                 if (unitEl) unitEl.innerText = 'FT DEPTH';
+                if (DOM.secInst) {
+                    DOM.secInst.style.display = 'block';
+                    const ndl = STATE.diveNDLMin;
+                    if (DOM.secLbl) DOM.secLbl.innerText = '⏱ NDL';
+                    if (DOM.secVal) { DOM.secVal.innerText = ndl>=99?'∞':ndl; DOM.secVal.style.color = ndl<=5?'#ef4444':ndl<=15?'#f59e0b':'#00ffcc'; }
+                    if (DOM.secSub) DOM.secSub.innerText = ndl>=99?'SAFE':'MIN LEFT';
+                }
             } else {
                 DOM.speed.innerText = STATE.spdMph.toFixed(1);
                 if (unitEl) unitEl.innerText = 'MPH';
+                if (DOM.secInst) DOM.secInst.style.display = 'none';
             }
         }
         if (STATE.active && STATE.startTs > 0) {
@@ -4752,4 +4771,3 @@ Engine.init();
 </script>
 </body>
 </html>
-
