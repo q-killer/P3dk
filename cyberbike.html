@@ -1311,7 +1311,7 @@ const Hardware = {
         const k = 0.08;
         const rawLean = Math.max(-45, Math.min(45, (e.gamma || 0) * 0.5));
         STATE.leanAngle  = STATE.leanAngle  * (1-k) + rawLean * k;
-        STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 90) * k;
+        STATE.pitchAngle = STATE.pitchAngle * (1-k) + ((e.beta || 0) - 45) * k;
     }
 };
 
@@ -2478,10 +2478,10 @@ const Graphics = {
         // Gyro perspective
         const rawPitch = STATE.pitchAngle || 0;
         const pX = Math.max(-10, Math.min(10, (STATE.leanAngle || 0) * 0.3));
-        const pY = Math.max(-12, Math.min(0, (rawPitch + 90) * -0.2));
+        const pY = Math.max(-12, Math.min(0, rawPitch * -0.2));
         // Foreshortening: wings squash as phone tilts toward upright
         // sin(-90°)=-1 → abs=1 (flat=full wing). sin(0°)=0 → 0.2 (thin ellipse).
-        const squash = Math.max(0.2, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
+        const squash = Math.max(0.2, Math.abs(Math.cos(rawPitch * CFG.TO_RAD)));
 
         // Layer helper — damps division to prevent off-screen shift
         const layer = (z, fn) => {
@@ -2590,10 +2590,10 @@ const Graphics = {
         const pX = Math.max(-12, Math.min(12, (STATE.leanAngle  || 0) * 0.3));
         const rawPitch = STATE.pitchAngle || 0;
         // pY range: 0 when flat (-90°), negative when upright (0°) → top layers shift UP = rear view
-        const pY = Math.max(-12, Math.min(0, (rawPitch + 90) * -0.2));
+        const pY = Math.max(-12, Math.min(0, rawPitch * -0.2));
 
         // Y-axis foreshortening: 1.0 = perfect circle (top-down), 0.25 = thin ellipse (side view)
-        const squash = Math.max(0.25, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
+        const squash = Math.max(0.25, Math.abs(Math.cos(rawPitch * CFG.TO_RAD)));
         ctx.scale(1, squash);
 
         const t = Date.now();
@@ -2697,7 +2697,7 @@ const Graphics = {
         // 2.5D parallax — clamped, NaN-guarded
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const pX = clamp((STATE.leanAngle  || 0) * 0.35, -8, 8);
-        const pY = clamp(((STATE.pitchAngle || 0) + 90) * 0.18, 0, 16);
+        const pY = clamp((STATE.pitchAngle || 0) * 0.18, 0, 16);
 
         const speed = STATE.active ? STATE.spdMph : 0;
         const crankRate = speed > 0.5 ? Math.max(80, 250 - speed * 4) : 0;
@@ -2792,7 +2792,7 @@ const Graphics = {
         // Canopy: phone held up = looking up at diver from below = pY inverted
         const rawPitch = STATE.pitchAngle || 0;
         const pX  = Math.max(-8, Math.min(8, (STATE.leanAngle || 0) * 0.25));
-        const pY  = Math.max(-10, Math.min(10, (rawPitch + 90) * (isCanopy ? 0.15 : -0.12)));
+        const pY  = Math.max(-10, Math.min(10, rawPitch * (isCanopy ? 0.15 : -0.12)));
         const squash = Math.max(0.3, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
 
         const layer = (z, fn) => {
@@ -2887,7 +2887,7 @@ const Graphics = {
         // 2.5D parallax — clamped, NaN-guarded
         const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
         const pX = clamp((STATE.leanAngle  || 0) * 0.3, -8, 8);
-        const pY = clamp(((STATE.pitchAngle || 0) + 90) * 0.18, 0, 16);
+        const pY = clamp((STATE.pitchAngle || 0) * 0.18, 0, 16);
 
         const t = Date.now();
         const kc = STATE.active ? t / 350 : 0; // kickCycle
