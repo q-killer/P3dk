@@ -166,25 +166,15 @@
         .hit-zone { position: absolute; width: 44px; height: 44px; border-radius: 50%; background: transparent; cursor: pointer; z-index: 20; transform: translate(-50%, -50%); pointer-events: auto; transition: background 0.2s ease; }
         .hit-zone:active { background: rgba(255,255,255,0.18); box-shadow: 0 0 15px rgba(255,255,255,0.35); }
 
-        /* PTT — above compass heading, centered. Small, won't block cardinal. */
+        /* PTT — compact, sits above model center so it doesn't crowd ctrl-bar */
         #ptt-btn {
-            position: absolute;
-            top: 8px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.5); border: 1px solid var(--secondary); color: var(--secondary);
-            padding: 3px 12px; font-family: inherit; font-size: 9px; font-weight: 900;
-            cursor: pointer; border-radius: 10px; transition: 0.2s; z-index: 15;
+            position: absolute; top: calc(50% - 54px); left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.45); border: 1px solid var(--secondary); color: var(--secondary);
+            padding: 4px 14px; font-family: inherit; font-size: 10px; font-weight: 900;
+            cursor: pointer; border-radius: 12px; transition: 0.2s; z-index: 15;
             pointer-events: auto; backdrop-filter: blur(3px); letter-spacing: 1px;
-            white-space: nowrap;
         }
-        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 10px var(--danger); }
-        /* Fullscreen: upper-right corner, clear of heading */
-        body.fullscreen #ptt-btn {
-            position: fixed !important;
-            top: 12px !important; right: 12px !important;
-            left: auto !important; transform: none !important;
-            font-size: 10px !important; padding: 5px 14px !important;
-            border-radius: 12px !important;
-        }
+        #ptt-btn.recording { color: #fff; background: var(--danger); border-color: var(--danger); box-shadow: 0 0 12px var(--danger); }
         #bottom-bar {
             position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%);
             display: flex; gap: 8px; align-items: center; z-index: 15; pointer-events: auto;
@@ -216,6 +206,14 @@
         .fs-station-btn.active { background: var(--squad); color: #000; border-color: var(--squad); }
         /* Station picker in fullscreen: opens upward from bottom bar */
         body.fullscreen #station-picker { position: fixed; bottom: 168px; top: auto; left: 50%; transform: translateX(-50%); }
+        #trip-btn {
+            position: absolute; top: calc(50% + 42px); left: 50%; transform: translateX(-50%);
+            background: var(--bg); color: var(--primary); border: 2px solid var(--primary);
+            padding: 5px 12px; font-family: inherit; font-size: 10px; font-weight: 900;
+            cursor: pointer; border-radius: 12px; transition: 0.3s; letter-spacing: 1px;
+            z-index: 10; box-shadow: 0 4px 10px rgba(0,0,0,0.2); pointer-events: auto;
+        }
+        #trip-btn:active { background: var(--primary); color: #fff; }
         .clickable { cursor: pointer; pointer-events: auto; }
         .nav-color { color: var(--nav); }
         .squad-color { color: var(--squad); }
@@ -286,7 +284,8 @@
         body.ar-mode #vector-canvas { width: 100vw !important; height: 100vh !important; }
 
         /* DOM overlays suppressed — canvas _drawARHUD() handles rendering */
-        body.ar-mode .top-hdg, body.ar-mode .left-avionics, body.ar-mode .right-stats, body.ar-mode #bottom-bar, body.ar-mode #music-strip,
+        body.ar-mode .top-hdg, body.ar-mode .left-avionics, body.ar-mode .right-stats,
+        body.ar-mode #trip-btn, body.ar-mode #bottom-bar, body.ar-mode #music-strip,
         body.ar-mode #wpt-add-btn, body.ar-mode #hud-pod::after { display: none !important; }
         body.ar-mode #svg-bezel { opacity: 0.2; }
         body.ar-mode canvas { z-index: 2; }
@@ -387,10 +386,19 @@
             opacity: 0.5;  /* de-emphasise bezel labels — content fills the screen now */
         }
         /* Trip and PTT buttons reposition in fullscreen */
+        body.fullscreen #trip-btn {
+            top: auto !important; bottom: max(24px, 3vh) !important;
+            left: 50% !important; transform: translateX(-50%) !important;
+            font-size: 13px !important; padding: 10px 22px !important;
+        }
+        body.fullscreen #ptt-btn {
+            top: 50% !important; transform: translate(-50%, -160%) !important;
+            font-size: 10px !important; padding: 5px 14px !important;
+        }
 
-        /* Music strip — below craft sprite, above ATS */
+        /* Music strip — directly below START TRIP button */
         #music-strip {
-            position: absolute; top: calc(50% + 44px); left: 50%; transform: translateX(-50%);
+            position: absolute; top: calc(50% + 72px); left: 50%; transform: translateX(-50%);
             display: flex; gap: 6px; align-items: center; z-index: 15;
             pointer-events: auto; background: rgba(0,0,0,0.4); border-radius: 12px; padding: 4px 8px;
         }
@@ -589,11 +597,9 @@
         <div class="overlay right-stats">
             <div class="speed-value" id="speed">0.0</div>
             <div class="speed-unit" id="speed-unit-label">MPH</div>
-
-            <!-- Secondary instrument — skydive: freefall speed; dive: NDL remaining -->
-            <div id="secondary-instrument" style="display:none;margin-top:2px;">
-                <div class="lbl" id="sec-lbl" style="margin-top:0;font-size:11px;">⬇ FALL</div>
-                <div class="val" id="sec-val" style="font-size:22px;line-height:1;">--</div>
+            <div id="secondary-instrument" style="display:none;margin-top:4px;text-align:center;">
+                <div class="lbl" id="sec-lbl" style="margin-top:0;font-size:11px;letter-spacing:1px;">⬇ FALL</div>
+                <div style="font-size:22px;font-weight:900;font-family:var(--font-mono);" id="sec-val">--</div>
                 <div class="sub-val" id="sec-sub" style="font-size:10px;"></div>
             </div>
 
@@ -657,7 +663,9 @@
             onmousedown="Comms.startTx(event)" onmouseup="Comms.stopTx(event)" onmouseleave="Comms.stopTx(event)"
             ontouchstart="Comms.startTx(event)" ontouchend="Comms.stopTx(event)">🎙️ PTT</button>
 
-        <!-- Music strip — centered below craft sprite (trip button removed, auto-start) -->
+        <button id="trip-btn" onclick="Engine.safeToggleTrip()">START TRIP</button>
+
+        <!-- Music strip — directly below START TRIP -->
         <div id="music-strip">
             <span id="music-genre-lbl" onclick="Radio.cycleGenre()" title="Tap to change genre" style="font-size:9px;color:var(--wind);font-weight:900;cursor:pointer;white-space:nowrap;padding:0 2px;user-select:none;">⚡</span>
             <button class="music-dot" id="mdot-0" title="DEF CON RADIO"></button>
@@ -900,7 +908,7 @@ const STATE = {
     windSpeed: 0, windDir: 0, wxCode: 0, wxIsDay: true,
     tempF: 0, humidity: 0, feelsLike: 0,
     radarImg: null, radarNextFetch: 0, // Rainviewer radar tile
-    _wxSpoken: false, _pendingWxSpeech: null,
+    _wxSpoken: false, _pendingWxSpeech: null, _pendingTripAudio: false, _pendingTripSpeech: null,
     gX: 0, gY: 0, gZ: 0, leanAngle: 0, pitchAngle: 0,
     gridScroll: 0, tcasAudioPlayed: false,
     isFullscreen: false, w: 320, h: 320, cx: 160, cy: 160, r: 155,
@@ -943,7 +951,7 @@ let watchId = null;
 let rafId = null;
 
 /* ═══════════════════════════════════════════════════════ HELPERS ══ */
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+function closeModal(id) { const _m=document.getElementById(id); if(_m)_m.style.display='none'; }
 
 function vibrate(pattern) {
     if (navigator.vibrate) try { navigator.vibrate(pattern); } catch(e) {}
@@ -973,22 +981,10 @@ const MathUtils = {
         u.rate = 1.05;
         window.speechSynthesis.speak(u);
     },
-    sayQueue(text, afterFn) {
-        if (!('speechSynthesis' in window)) { afterFn?.(); return; }
+    sayQueue(text) {
+        if (!('speechSynthesis' in window)) return;
         const u = new SpeechSynthesisUtterance(text);
         u.rate = 1.05;
-        // Duck music to 20% while speaking
-        const audio = document.getElementById('squad-music');
-        const origVol = audio ? audio.volume : 1;
-        if (audio && !audio.paused) audio.volume = 0.2;
-        u.onend = () => {
-            if (audio) audio.volume = origVol;
-            afterFn?.();
-        };
-        u.onerror = () => {
-            if (audio) audio.volume = origVol;
-            afterFn?.();
-        };
         window.speechSynthesis.speak(u);
     }
 };
@@ -1006,15 +1002,14 @@ const DOM = {
         this.wptBlock  = g('wpt-block'); this.wptAdd    = g('wpt-add-btn');
         this.wxBlock   = g('wx-block');  this.wxTemp    = g('wx-temp');
         this.wxFeels   = g('wx-feels');  this.wxHum     = g('wx-hum');
-        this.tripBtn   = null; /* trip-btn removed — auto-start only */ this.powerBlk  = g('power-block');
+        this.tripBtn   = g('trip-btn');  this.powerBlk  = g('power-block');
         this.wattsNow  = g('watts-now'); this.vo2Disp   = g('vo2-display');
-        this.secInst   = g('secondary-instrument');
-        this.secLbl    = g('sec-lbl');
-        this.secVal    = g('sec-val');
-        this.secSub    = g('sec-sub');
-        this.arVideo   = g('ar-video');  this.atsBadge  = g('ats-badge');
-        this.ctrlCraft = g('ctrl-craft-btn'); this.ctrlTheme = g('ctrl-theme-btn');
         this.svgGps    = g('svg-gps');   this.svgWx     = g('svg-wx');
+        this.arVideo   = g('ar-video');  this.atsBadge  = g('ats-badge');
+        this.svgGps    = g('svg-gps');   this.svgWx     = g('svg-wx');
+        this.secInst   = g('secondary-instrument');
+        this.secLbl    = g('sec-lbl'); this.secVal = g('sec-val'); this.secSub = g('sec-sub');
+        this.ctrlCraft = g('ctrl-craft-btn'); this.ctrlTheme = g('ctrl-theme-btn');
     }
 };
 const ThemeCache = {
@@ -1891,7 +1886,7 @@ window.Radio = {
     playStation(url, name) {
         this.currentStation = url;
         this.currentStationName = name;
-        const urlInput = document.getElementById('input-radio-url'); if (urlInput) urlInput.value = url;
+        const _ru=document.getElementById('input-radio-url'); if(_ru)_ru.value=url;
         this.audioEl.src = url;
         this.audioEl.currentTime = 0;
         // Flash station name in music strip genre label, restore after 3s
@@ -1903,8 +1898,9 @@ window.Radio = {
                 if (lbl) lbl.textContent = (Radio.GENRES[Radio.currentGenre]?.name||'⚡').split(' ')[0];
             }, 3000);
         }
-        this.audioEl.play().catch(() => {
-            // Auto-try next preset on CORS/stream failure
+        this.audioEl.play().catch(err => {
+            // Only retry on network/stream errors — NOT on NotAllowedError (autoplay policy)
+            if (err.name === 'NotAllowedError' || err.name === 'NotSupportedError') return;
             const idx = this.PRESETS.findIndex(([u]) => u === url);
             const next = this.PRESETS[(idx + 1) % this.PRESETS.length];
             if (next && next[0] !== url) {
@@ -2284,7 +2280,7 @@ const API = {
                 STATE.lastTemp = Math.round(cw.temperature);
             }
         } catch(e) {
-            if (DOM.svgWx) DOM.svgWx.textContent = '☁️ WX: ERR';
+            if(DOM.svgWx) DOM.svgWx.textContent = '☁️ WX: ERR';
         }
         // Kick off radar fetch (non-blocking, 5-min cache)
         this.fetchRadar(lat, lon);
@@ -2343,7 +2339,7 @@ const API = {
 window.Avionics = {
     toggleCraft() {
         STATE.craftMode = (STATE.craftMode + 1) % 5;
-        const svgEl   = document.getElementById('svg-craft'); // may be null — bezel text removed
+        const svgEl  = document.getElementById('svg-craft');
         const ctrlBtn = DOM.ctrlCraft;
         const icons = ['🛩️','🛸','🚴','🪂','🤿'];
         const names = ['avionics','alien technology','cyber bike','skydive','dive mode'];
@@ -2479,11 +2475,15 @@ const Graphics = {
         const highlightColor = isDark ? '#ff8888' : '#ffffff';
         const glassColor     = isDark ? 'rgba(20,0,0,0.9)' : 'rgba(15,23,42,0.85)';
 
+        // Gyro perspective
         const rawPitch = STATE.pitchAngle || 0;
         const pX = Math.max(-10, Math.min(10, (STATE.leanAngle || 0) * 0.3));
         const pY = Math.max(-12, Math.min(0, (rawPitch + 90) * -0.2));
+        // Foreshortening: wings squash as phone tilts toward upright
+        // sin(-90°)=-1 → abs=1 (flat=full wing). sin(0°)=0 → 0.2 (thin ellipse).
         const squash = Math.max(0.2, Math.abs(Math.sin(rawPitch * CFG.TO_RAD)));
 
+        // Layer helper — damps division to prevent off-screen shift
         const layer = (z, fn) => {
             ctx.save();
             ctx.translate(pX * z, (pY * z) / Math.max(0.65, squash));
@@ -2491,24 +2491,28 @@ const Graphics = {
             ctx.restore();
         };
 
-        // Z = -1: Ground shadow
+        // Z = -1: Ground shadow — squash flat, offset below-right
         layer(-1, () => {
             ctx.save(); ctx.scale(1, 0.28 * squash);
             ctx.globalAlpha = isDark ? 0.22 : 0.12; ctx.fillStyle = '#000';
-            ctx.beginPath(); ctx.ellipse(6, 60, 30, 4, 0, 0, Math.PI*2); ctx.fill();
-            ctx.beginPath(); ctx.ellipse(6, 60, 4, 14, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(6, 60, 30, 4, 0, 0, Math.PI*2); ctx.fill(); // wings
+            ctx.beginPath(); ctx.ellipse(6, 60, 4, 14, 0, 0, Math.PI*2); ctx.fill(); // fuselage
             ctx.globalAlpha = 1; ctx.restore();
         });
 
-        // Z = 0: Wings + horizontal stabilizer (squash Y — flat when viewed from above)
+        // Z = 0: Wings — squash Y axis so they flatten from circles to lines as tilt increases
         layer(0, () => {
             ctx.save(); ctx.scale(1, squash);
-            // Main wings
             ctx.fillStyle = shadeColor;
-            ctx.beginPath(); ctx.ellipse(0, 0, 35, 4, 0, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.ellipse(0, 0, 35, 4, 0, 0, Math.PI*2); ctx.fill(); // wing shadow base
             ctx.fillStyle = baseColor;
-            ctx.beginPath(); ctx.ellipse(0, 0, 35, 2.5, 0, 0, Math.PI*2); ctx.fill();
-            // Horizontal stabilizer (rear)
+            ctx.beginPath(); ctx.ellipse(0, 0, 35, 2.5, 0, 0, Math.PI*2); ctx.fill(); // wing top
+            ctx.restore();
+        });
+
+        // Z = 0: Tail horizontal stabilizer (smaller, further back)
+        layer(0, () => {
+            ctx.save(); ctx.scale(1, squash);
             ctx.fillStyle = shadeColor;
             ctx.beginPath(); ctx.ellipse(0, 14, 16, 3, 0, 0, Math.PI*2); ctx.fill();
             ctx.fillStyle = baseColor;
@@ -2516,15 +2520,15 @@ const Graphics = {
             ctx.restore();
         });
 
-        // Z = 0.5: Fuselage body + PROPELLER at nose — same layer keeps them attached
+        // Z = 0.5: Fuselage body — doesn't squash (it's cylindrical)
         layer(0.5, () => {
-            // Fuselage shaded shape
+            // Fuselage shaded sides
             ctx.fillStyle = shadeColor;
             ctx.beginPath();
             ctx.moveTo(0,-22); ctx.bezierCurveTo(6,-18,5,2,2,15);
             ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
             ctx.fill();
-            // Fuselage highlight
+            // Fuselage highlight stripe
             const fg = ctx.createLinearGradient(-5,0,5,0);
             fg.addColorStop(0,shadeColor); fg.addColorStop(0.3,highlightColor); fg.addColorStop(1,shadeColor);
             ctx.fillStyle = fg;
@@ -2532,10 +2536,9 @@ const Graphics = {
             ctx.moveTo(0,-22); ctx.bezierCurveTo(6,-18,5,2,2,15);
             ctx.lineTo(-2,15); ctx.bezierCurveTo(-5,2,-6,-18,0,-22);
             ctx.fill();
-
-            // Propeller — at nose (y=-22), same layer so it stays glued to fuselage
+            // Propeller — same z as nose, stays attached
             ctx.save(); ctx.translate(0, -22);
-            const pA = STATE.active ? Date.now() / Math.max(5, 20 - STATE.spdMph / 10 * 15) : Math.PI / 4;
+            const pA = STATE.active ? Date.now() / Math.max(5, 20 - STATE.spdMph/10*15) : Math.PI/4;
             const b1x = Math.cos(pA)*15, b1y = Math.sin(pA)*2;
             const b2x = Math.cos(pA+Math.PI/2)*15, b2y = Math.sin(pA+Math.PI/2)*2;
             ctx.strokeStyle = isDark ? '#ffaaaa' : '#1e293b'; ctx.lineWidth = 1.5;
@@ -2546,7 +2549,7 @@ const Graphics = {
             ctx.restore();
         });
 
-        // Z = 1.0: Vertical tail fin — rises above fuselage
+        // Z = 1.0: Tail fin (vertical) — rises above fuselage
         layer(1.0, () => {
             let tg = ctx.createLinearGradient(-1,0,1,0);
             tg.addColorStop(0,shadeColor); tg.addColorStop(1,highlightColor);
@@ -2563,7 +2566,9 @@ const Graphics = {
             ctx.fill();
         });
 
-        // Z = 0.5: Nav beacon (same layer as fuselage — tail stays attached)
+        // Propeller rendered inline in fuselage layer below
+
+        // Nav light — tail beacon
         layer(0.5, () => {
             ctx.beginPath(); ctx.arc(0,15,1.5,0,Math.PI*2);
             ctx.fillStyle = isDark ? '#ff0000' : '#ef4444'; ctx.fill();
@@ -3603,112 +3608,6 @@ const Graphics = {
             }
         }
 
-        // ── Speed-reactive visual effects — drawn BEFORE sprite so sprite sits on top ──
-        if (!AR.active && STATE.spdMph > 2) {
-            const spd = STATE.spdMph;
-            const sx = STATE.cx + craftShiftX, sy = STATE.cy + craftShiftY;
-            ctx.save();
-
-            if (STATE.craftMode === 1) {
-                // ── UFO: HYPERSPACE RAYS — Star Wars jump to lightspeed ──
-                // Radiate outward from craft center, length + intensity scale with speed
-                const rayCount = 32;
-                const maxSpd   = 80;
-                const intensity = Math.min(1, spd / maxSpd);
-                const pulse     = Math.sin(now / 120) * 0.5 + 0.5;
-                for (let i = 0; i < rayCount; i++) {
-                    const angle   = (i / rayCount) * Math.PI * 2;
-                    const rayLen  = (30 + intensity * 180) * (0.6 + Math.random() * 0.4);
-                    const rayWid  = 0.5 + intensity * 1.5;
-                    const alpha   = (0.08 + intensity * 0.55) * (0.7 + pulse * 0.3);
-                    // Alternate cyan / white / purple — Element 115 discharge palette
-                    const hue = i % 3 === 0 ? '0,255,255' : i % 3 === 1 ? '220,220,255' : '176,38,255';
-                    const x1 = sx + Math.cos(angle) * 12;
-                    const y1 = sy + Math.sin(angle) * 12;
-                    const x2 = sx + Math.cos(angle) * (12 + rayLen);
-                    const y2 = sy + Math.sin(angle) * (12 + rayLen);
-                    const grad = ctx.createLinearGradient(x1, y1, x2, y2);
-                    grad.addColorStop(0, `rgba(${hue},${alpha.toFixed(2)})`);
-                    grad.addColorStop(1, `rgba(${hue},0)`);
-                    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2);
-                    ctx.strokeStyle = grad; ctx.lineWidth = rayWid; ctx.stroke();
-                }
-                // Central bloom burst at high speed
-                if (intensity > 0.4) {
-                    const bloom = ctx.createRadialGradient(sx, sy, 0, sx, sy, 40 * intensity);
-                    bloom.addColorStop(0, `rgba(0,255,255,${(intensity*0.4).toFixed(2)})`);
-                    bloom.addColorStop(0.5, `rgba(176,38,255,${(intensity*0.15).toFixed(2)})`);
-                    bloom.addColorStop(1, 'rgba(0,0,0,0)');
-                    ctx.fillStyle = bloom;
-                    ctx.beginPath(); ctx.arc(sx, sy, 40 * intensity, 0, Math.PI*2); ctx.fill();
-                }
-
-            } else if (STATE.craftMode === 0) {
-                // ── PLANE: SLIPSTREAM STREAKS — air rushing past wings ──
-                const intensity = Math.min(1, spd / 120);
-                const streakCount = Math.floor(6 + intensity * 10);
-                for (let i = 0; i < streakCount; i++) {
-                    const seed   = (i * 2.7 + now / 400) % 1;
-                    const xOff   = (seed - 0.5) * 70;
-                    const yStart = sy - 30 - Math.random() * 20;
-                    const yEnd   = yStart + (20 + intensity * 60);
-                    const alpha  = intensity * (0.1 + Math.random() * 0.2);
-                    ctx.beginPath(); ctx.moveTo(sx + xOff, yStart); ctx.lineTo(sx + xOff, yEnd);
-                    ctx.strokeStyle = `rgba(200,220,255,${alpha.toFixed(2)})`;
-                    ctx.lineWidth = 0.8 + Math.random(); ctx.stroke();
-                }
-
-            } else if (STATE.craftMode === 2) {
-                // ── BIKE: WIND WISPS — horizontal streaks past rider ──
-                const intensity = Math.min(1, spd / 40);
-                const wispCount = Math.floor(4 + intensity * 8);
-                for (let i = 0; i < wispCount; i++) {
-                    const seed   = (i * 1.9 + now / 300) % 1;
-                    const yOff   = (seed - 0.5) * 50;
-                    const xStart = sx - (15 + intensity * 40) - Math.random() * 10;
-                    const xEnd   = sx + (15 + intensity * 40) + Math.random() * 10;
-                    const alpha  = intensity * (0.1 + Math.random() * 0.25);
-                    const col = i % 2 === 0 ? '180,220,255' : '56,189,248';
-                    ctx.beginPath(); ctx.moveTo(xStart, sy + yOff); ctx.lineTo(xEnd, sy + yOff);
-                    ctx.strokeStyle = `rgba(${col},${alpha.toFixed(2)})`;
-                    ctx.lineWidth = 0.6 + Math.random() * 0.8; ctx.stroke();
-                }
-
-            } else if (STATE.craftMode === 3) {
-                // ── SKYDIVE: FREEFALL PARTICLE STREAM — debris rushing upward ──
-                const intensity = Math.min(1, Math.abs(STATE._vsiFpm || 0) / 1200);
-                if (intensity > 0.05) {
-                    const pCount = Math.floor(intensity * 20);
-                    for (let i = 0; i < pCount; i++) {
-                        const seed  = (i * 3.1 + now / 200) % 1;
-                        const xOff  = (Math.random() - 0.5) * 60;
-                        const yOff  = -((seed * 80 + 10) * intensity);
-                        const alpha = intensity * (0.1 + Math.random() * 0.3);
-                        ctx.beginPath(); ctx.arc(sx + xOff, sy + yOff, 1 + Math.random(), 0, Math.PI*2);
-                        ctx.fillStyle = `rgba(255,255,255,${alpha.toFixed(2)})`; ctx.fill();
-                    }
-                }
-
-            } else if (STATE.craftMode === 4) {
-                // ── DIVE: CURRENT LINES — water streaming past body ──
-                const intensity = Math.min(1, STATE.diveDepthFt / 60); // deeper = more current
-                const cCount = Math.floor(3 + intensity * 8);
-                for (let i = 0; i < cCount; i++) {
-                    const seed   = (i * 2.3 + now / 800) % 1;
-                    const xOff   = (seed - 0.5) * 30;
-                    const yStart = sy - (30 + Math.random() * 40);
-                    const yEnd   = sy + (30 + Math.random() * 40);
-                    const alpha  = intensity * (0.08 + Math.random() * 0.15);
-                    ctx.beginPath(); ctx.moveTo(sx + xOff, yStart); ctx.lineTo(sx + xOff, yEnd);
-                    ctx.strokeStyle = `rgba(56,189,248,${alpha.toFixed(2)})`;
-                    ctx.lineWidth = 0.5 + Math.random() * 0.8;
-                    ctx.setLineDash([4 + Math.random()*6, 8 + Math.random()*12]);
-                    ctx.stroke(); ctx.setLineDash([]);
-                }
-            }
-            ctx.restore();
-        }
-
         // ── Craft sprite — fixed upright, world tilts around it ──
         if (!AR.active) {
             const sx = STATE.cx + craftShiftX, sy = STATE.cy + craftShiftY;
@@ -3745,29 +3644,24 @@ const Graphics = {
             Graphics._lastDomWrite = now;
             const unitEl = document.getElementById('speed-unit-label');
             if (STATE.craftMode === 3) {
-                // SKYDIVE: altitude primary + freefall speed secondary (both visible)
                 DOM.speed.innerText = Math.round(STATE.altFt).toLocaleString();
                 if (unitEl) unitEl.innerText = {ascent:'FT ↑',freefall:'FT ▼',canopy:'FT 🪂'}[STATE.skyPhase]||'FT';
                 if (DOM.secInst) {
                     DOM.secInst.style.display = 'block';
                     const ffMph = Math.round(Math.abs(STATE._vsiFpm||0)/88*60);
-                    const lbl3 = STATE.skyPhase==='freefall'?'⬇ FALL':STATE.skyPhase==='canopy'?'⬇ DESC':'⬆ CLIMB';
-                    const col3 = STATE.skyPhase==='freefall'?'#f59e0b':'var(--primary)';
-                    if (DOM.secLbl) DOM.secLbl.innerText = lbl3;
-                    if (DOM.secVal) { DOM.secVal.innerText = ffMph; DOM.secVal.style.color = col3; }
+                    if (DOM.secLbl) DOM.secLbl.innerText = STATE.skyPhase==='freefall'?'⬇ FALL':STATE.skyPhase==='canopy'?'⬇ DESC':'⬆ CLIMB';
+                    if (DOM.secVal) { DOM.secVal.innerText = ffMph; DOM.secVal.style.color = STATE.skyPhase==='freefall'?'#f59e0b':'var(--primary)'; }
                     if (DOM.secSub) DOM.secSub.innerText = 'MPH';
                 }
             } else if (STATE.craftMode === 4) {
-                // DIVE: depth primary + NDL secondary (both visible simultaneously)
                 DOM.speed.innerText = STATE.diveDepthFt.toFixed(1);
                 if (unitEl) unitEl.innerText = 'FT DEPTH';
                 if (DOM.secInst) {
                     DOM.secInst.style.display = 'block';
                     const ndl = STATE.diveNDLMin;
-                    const col4 = ndl<=5?'#ef4444':ndl<=15?'#f59e0b':'#00ffcc';
                     if (DOM.secLbl) DOM.secLbl.innerText = '⏱ NDL';
-                    if (DOM.secVal) { DOM.secVal.innerText = ndl >= 99 ? '∞' : ndl; DOM.secVal.style.color = col4; }
-                    if (DOM.secSub) DOM.secSub.innerText = ndl >= 99 ? 'SAFE' : 'MIN LEFT';
+                    if (DOM.secVal) { DOM.secVal.innerText = ndl>=99?'∞':ndl; DOM.secVal.style.color = ndl<=5?'#ef4444':ndl<=15?'#f59e0b':'#00ffcc'; }
+                    if (DOM.secSub) DOM.secSub.innerText = ndl>=99?'SAFE':'MIN LEFT';
                 }
             } else {
                 DOM.speed.innerText = STATE.spdMph.toFixed(1);
@@ -4026,8 +3920,9 @@ window.Engine = {
             // Second tap within 4 seconds = confirmed end
             clearTimeout(btn._confirmTimer);
             btn._confirmPending = false;
-            if (btn) { btn.innerText = 'END TRIP'; btn.style.borderColor='var(--danger)'; btn.style.color='var(--danger)'; }
-            
+            btn.innerText = 'END TRIP';
+            btn.style.borderColor = 'var(--danger)';
+            btn.style.color = 'var(--danger)';
             TripLogger._autoSave(); // save backup before ending
             Engine.toggleTrip();
             return;
@@ -4047,7 +3942,7 @@ window.Engine = {
     },
 
     async toggleTrip() {
-        const btn = DOM.tripBtn; // null when auto-start (no button)
+        const btn = DOM.tripBtn;
         if (!STATE.active) {
             STATE.dist = 0; STATE.maxSpd = 0; STATE.maxAltFt = 0; STATE.peakVsiFpm = 0;
             STATE.hazardCount = 0; STATE.tcasAudioPlayed = false;
@@ -4055,37 +3950,26 @@ window.Engine = {
             STATE.crumbs = []; STATE._altBuf = []; STATE._spdBuf = []; STATE._vsiBuf = []; STATE.altBuffer = [];
 
             STATE.active = true; STATE.startTs = Date.now();
-            if (DOM.tripBtn) { DOM.tripBtn.innerText = 'END TRIP'; DOM.tripBtn.style.borderColor='var(--danger)'; DOM.tripBtn.style.color='var(--danger)'; }
+            if (btn) { btn.innerText = 'END TRIP'; btn.style.borderColor='var(--danger)'; btn.style.color='var(--danger)'; }
 
-            // Build announcement: weather briefing (if pending) + trip start
-            const craftNames = ['aircraft','craft','bike','skydive rig','dive computer'];
-            const craft = craftNames[STATE.craftMode] || 'craft';
-            const wxLine = STATE._pendingWxSpeech || '';
-            STATE._pendingWxSpeech = null; STATE._wxSpoken = true;
-
-            // Chain: weather → trip announce → start radio (music ducks during TTS)
-            const startRadio = () => {
-                if (!Radio.currentStation && Radio.PRESETS[0]) {
-                    Radio.playStation(Radio.PRESETS[0][0], Radio.PRESETS[0][1]);
-                } else if (Radio.currentStation && document.getElementById('squad-music').paused) {
-                    Radio.togglePlayPause();
-                }
-            };
-            const announceTrip = () => {
-                const dist = STATE.dist > 0 ? `, ${STATE.dist.toFixed(1)} miles logged` : '';
-                MathUtils.sayQueue(`${craft} trip started. Good luck out there.${dist}`, startRadio);
-            };
-            if (wxLine) {
-                MathUtils.sayQueue(wxLine, announceTrip);
+            // Queue speech and radio — defer until first user gesture to satisfy autoplay policy
+            STATE._pendingTripAudio = true;
+            if (STATE._pendingWxSpeech) {
+                STATE._pendingTripSpeech = STATE._pendingWxSpeech;
+                STATE._pendingWxSpeech = null;
+                STATE._wxSpoken = true;
             } else {
-                announceTrip();
+                STATE._pendingTripSpeech = 'Flight log started';
             }
+            HazardEngine.showToast('✅ TRIP STARTED — tap to enable audio');
             vibrate([200]);
 
             try { if ('wakeLock' in navigator) STATE.wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
         } else {
             STATE.active = false;
-            if (btn) { btn.innerText = 'START TRIP'; btn.style.borderColor=''; btn.style.color=''; }
+            btn.innerText = 'START TRIP';
+            btn.style.borderColor = '';
+            btn.style.color = '';
 
             TripLogger.saveTrip();
             vibrate([100, 100, 300]);
@@ -4315,7 +4199,31 @@ window.Engine = {
             }
         });
 
-        // ── Trip data protection — warn before page unload/refresh ──
+        // ── Autoplay unlock — fires deferred trip audio on first user gesture ──
+        // Browsers block audio until a user gesture; this one-shot handler unlocks it.
+        const _audioUnlock = () => {
+            // Unlock the Web Audio context if AcousticSync created one
+            if (AcousticSync.ctx && AcousticSync.ctx.state === 'suspended') {
+                AcousticSync.ctx.resume().catch(()=>{});
+            }
+            // Fire pending trip announcement + start radio
+            if (STATE._pendingTripAudio) {
+                STATE._pendingTripAudio = false;
+                const speech = STATE._pendingTripSpeech;
+                STATE._pendingTripSpeech = null;
+                if (speech) {
+                    MathUtils.sayQueue(speech, () => {
+                        if (!Radio.currentStation) {
+                            Radio.playStation(Radio.PRESETS[0][0], Radio.PRESETS[0][1]);
+                        }
+                    });
+                } else if (!Radio.currentStation) {
+                    Radio.playStation(Radio.PRESETS[0][0], Radio.PRESETS[0][1]);
+                }
+            }
+        };
+        document.addEventListener('click',    _audioUnlock, { once: true, capture: true });
+        document.addEventListener('touchend', _audioUnlock, { once: true, capture: true });
         window.addEventListener('beforeunload', e => {
             if (STATE.active) {
                 e.preventDefault();
