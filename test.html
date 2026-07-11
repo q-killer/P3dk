@@ -4,11 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <!-- Cache buster meta tags -->
+    <!-- Aggressive Cache Busting -->
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ENGINE PROOF (V6.6)</title>
+    <title>PEAK // ENGINE PROOF (V6.7)</title>
     <style>
         :root { --bg: #050a15; --cyan: #00ffcc; --magenta: #ff00ff; --glass: rgba(10, 15, 30, 0.85); }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -38,14 +38,14 @@
     <div id="top-bar">
         <div class="logo">PEAK//</div>
         <div id="status-log">
-            <div class="log-line">SYSTEM READY (V6.6)</div>
+            <div class="log-line" style="color:var(--magenta)">SYSTEM READY (V6.7)</div>
         </div>
     </div>
 
     <div id="bottom-sheet">
-        <div style="margin-bottom: 15px; font-size: 0.85rem; font-weight: 600; color: #fff; letter-spacing: 1px;">THE TRUTH TEST (ESM ENGINE)</div>
-        <button class="btn" id="btn-native">1. TEST C++ CYLINDER</button>
-        <button class="btn" id="btn-csg">2. TEST C++ BOOLEAN CSG</button>
+        <div style="margin-bottom: 15px; font-size: 0.85rem; font-weight: 600; color: #fff; letter-spacing: 1px;">THE TRUTH TEST</div>
+        <button class="btn" id="btn-native">1. RUN CYLINDER (C++)</button>
+        <button class="btn" id="btn-csg">2. RUN BOOLEAN (C++)</button>
         <textarea id="scad-output" readonly>// Engine script will appear here</textarea>
     </div>
 
@@ -57,7 +57,7 @@
             log: (msg) => {
                 const log = document.getElementById('status-log');
                 log.innerHTML += `<div class="log-line">${msg}</div>`;
-                if(log.children.length > 8) log.removeChild(log.firstChild);
+                if(log.children.length > 10) log.removeChild(log.firstChild);
             },
             setCode: (text) => document.getElementById('scad-output').value = text,
             btnNative: document.getElementById('btn-native'),
@@ -130,31 +130,62 @@
         };
         Viewer.init();
 
-        // --- MODERN ESM WORKER ENGINE ---
+        // --- RELENTLESS CLASSIC WORKER ENGINE ---
         const Engine = {
             worker: null,
 
             async init() {
                 if(this.worker) return;
-                UI.log("ALLOCATING: ESM WORKER");
+                UI.log("ALLOCATING: CLASSIC WORKER");
                 
                 const workerCode = `
-                    import initManifold from 'https://esm.sh/manifold-3d@2.2.0';
                     let wasm = null;
 
                     self.onmessage = async (e) => {
                         if(e.data.cmd === 'init') {
                             try {
-                                self.postMessage({ cmd: 'log', msg: 'IMPORTING ESM MANIFOLD KERNEL...' });
+                                self.postMessage({ cmd: 'log', msg: 'HUNTING MANIFOLD CDN...' });
                                 
-                                // Explicitly map the WASM path just in case the Blob URL confuses esm.sh
-                                wasm = await initManifold({
-                                    locateFile: () => 'https://cdn.jsdelivr.net/npm/manifold-3d@2.2.0/manifold.wasm'
+                                // Reliable CDN hunter array (no versions, implied @latest)
+                                const cdns = [
+                                    'https://unpkg.com/manifold-3d/manifold.js',
+                                    'https://cdn.jsdelivr.net/npm/manifold-3d/manifold.js',
+                                    'https://cdnjs.cloudflare.com/ajax/libs/manifold-3d/2.2.0/manifold.js'
+                                ];
+                                
+                                let loadedUrl = null;
+                                for(let url of cdns) {
+                                    try {
+                                        self.postMessage({ cmd: 'log', msg: 'PING: ' + url.split('/')[2] });
+                                        importScripts(url);
+                                        loadedUrl = url;
+                                        self.postMessage({ cmd: 'log', msg: '-> <span style="color:#00ffcc">SUCCESS</span>' });
+                                        break; 
+                                    } catch(err) {
+                                        self.postMessage({ cmd: 'log', msg: '-> <span style="color:#ffaa00">SKIPPED</span>' });
+                                    }
+                                }
+                                
+                                if(!loadedUrl) {
+                                    throw new Error("All CDNs blocked or 404.");
+                                }
+
+                                self.postMessage({ cmd: 'log', msg: 'BOOTING WASM KERNEL...' });
+                                
+                                // Emscripten exposes either 'Module' or 'Manifold' globally
+                                const factory = typeof Module !== 'undefined' ? Module : (typeof Manifold !== 'undefined' ? Manifold : null);
+                                if(!factory) throw new Error("WASM Factory missing.");
+
+                                wasm = await factory({
+                                    locateFile: (path) => {
+                                        if(path.endsWith('.wasm')) return loadedUrl.replace('.js', '.wasm');
+                                        return path;
+                                    }
                                 });
                                 
                                 wasm.setup();
                                 
-                                self.postMessage({ cmd: 'log', msg: 'C++ KERNEL READY.' });
+                                self.postMessage({ cmd: 'log', msg: 'KERNEL READY.' });
                                 self.postMessage({ cmd: 'ready' });
                             } catch (err) {
                                 self.postMessage({ cmd: 'log', msg: '<span style="color:red">INIT ERROR: ' + err.message + '</span>' });
@@ -163,7 +194,7 @@
                         
                         if(e.data.cmd === 'build') {
                             try {
-                                self.postMessage({ cmd: 'log', msg: 'EXECUTING C++ MATH...' });
+                                self.postMessage({ cmd: 'log', msg: 'EXECUTING MATH...' });
                                 
                                 const func = new Function('wasm', e.data.script);
                                 const manifoldObj = func(wasm);
@@ -195,11 +226,13 @@
                 `;
                 
                 const blob = new Blob([workerCode], {type: 'application/javascript'});
-                // CRUCIAL: type: 'module' unlocks native import statements inside the worker
-                this.worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
+                // Reverting to Classic Worker (No 'type: module') to prevent Android WebView crash
+                this.worker = new Worker(URL.createObjectURL(blob));
                 
-                this.worker.onerror = (error) => {
-                    UI.log(`<span style="color:red">WORKER KILLED: ${error.message}</span>`);
+                this.worker.onerror = (e) => {
+                    // Safe error extraction in case e.message is null
+                    const msg = e.message ? e.message : 'Script blocked by Browser CORS/Network';
+                    UI.log(`<span style="color:red">WORKER KILLED: ${msg}</span>`);
                     UI.enableAll();
                 };
 
