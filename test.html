@@ -1,0 +1,264 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>PEAK // ENGINE PROOF</title>
+    <style>
+        :root { --bg: #050a15; --cyan: #00ffcc; --magenta: #ff00ff; --glass: rgba(10, 15, 30, 0.85); }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        canvas { display: block; width: 100vw; height: 100vh; position: absolute; top:0; left:0; z-index: 1; }
+
+        #top-bar { position: absolute; top: 0; left: 0; width: 100%; padding: 15px 20px; z-index: 20; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; box-sizing: border-box; }
+        .logo { color: var(--magenta); font-weight: 900; letter-spacing: 3px; font-size: 1.2rem; font-family: 'Courier New', monospace; text-shadow: 0 0 10px rgba(255,0,255,0.5); }
+        
+        #status-log { text-align: right; font-family: 'Courier New', monospace; font-size: 0.75rem; color: #00ffcc; text-shadow: 0 0 5px rgba(0,255,204,0.3); pointer-events: auto; max-width: 65%; display: flex; flex-direction: column; align-items: flex-end; }
+        .log-line { margin-bottom: 4px; opacity: 0.9; word-wrap: break-word; background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 4px; }
+
+        #bottom-sheet { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 90vw; max-width: 450px; z-index: 20; background: var(--glass); backdrop-filter: blur(12px); border: 1px solid rgba(0,255,204,0.3); border-radius: 12px; padding: 20px; box-sizing: border-box; box-shadow: 0 10px 40px rgba(0,0,0,0.8); }
+        
+        .btn { background: rgba(0, 255, 204, 0.1); color: var(--cyan); border: 1px solid var(--cyan); border-radius: 6px; padding: 12px; cursor: pointer; font-weight: 700; font-family: inherit; width: 100%; transition: 0.2s; font-size: 0.9rem; margin-bottom: 10px; }
+        .btn:hover:not(:disabled) { background: var(--cyan); color: #000; box-shadow: 0 0 15px rgba(0,255,204,0.4); }
+        .btn:disabled { border-color: rgba(255,255,255,0.2); color: rgba(255,255,255,0.4); background: transparent; cursor: wait; }
+
+        #btn-csg { border-color: var(--magenta); color: var(--magenta); background: rgba(255,0,255,0.1); }
+        #btn-csg:hover:not(:disabled) { background: var(--magenta); color: #000; box-shadow: 0 0 15px rgba(255,0,255,0.4); }
+
+        textarea { width: 100%; background: rgba(0,0,0,0.6); color: #aaa; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; padding: 10px; box-sizing: border-box; resize: none; font-size: 0.8rem; font-family: 'Courier New', monospace; height: 100px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <canvas id="viewer-canvas"></canvas>
+
+    <div id="top-bar">
+        <div class="logo">PEAK//</div>
+        <div id="status-log">
+            <div class="log-line">SYSTEM READY</div>
+        </div>
+    </div>
+
+    <div id="bottom-sheet">
+        <div style="margin-bottom: 15px; font-size: 0.85rem; font-weight: 600; color: #fff; letter-spacing: 1px;">THE TRUTH TEST (MANIFOLD)</div>
+        <button class="btn" id="btn-native">1. TEST C++ CYLINDER</button>
+        <button class="btn" id="btn-csg">2. TEST C++ BOOLEAN CSG</button>
+        <textarea id="scad-output" readonly>// Engine script will appear here</textarea>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'https://esm.sh/three@0.160.0';
+        import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+        const UI = {
+            log: (msg) => {
+                const log = document.getElementById('status-log');
+                log.innerHTML += `<div class="log-line">${msg}</div>`;
+                if(log.children.length > 8) log.removeChild(log.firstChild);
+            },
+            setCode: (text) => document.getElementById('scad-output').value = text,
+            btnNative: document.getElementById('btn-native'),
+            btnCsg: document.getElementById('btn-csg'),
+            disableAll: () => { UI.btnNative.disabled = true; UI.btnCsg.disabled = true; },
+            enableAll: () => { UI.btnNative.disabled = false; UI.btnCsg.disabled = false; }
+        };
+
+        // --- VIEWER ---
+        const Viewer = {
+            scene: new THREE.Scene(),
+            mesh: null,
+            init() {
+                this.scene.fog = new THREE.FogExp2(0x050a15, 0.01);
+                this.camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.1, 1000);
+                this.camera.position.set(40, 40, 50); 
+                
+                this.renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('viewer-canvas'), antialias: true, alpha: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                
+                this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.autoRotate = true;
+                this.controls.autoRotateSpeed = 2.0;
+                
+                const grid = new THREE.GridHelper(100, 100, 0x333333, 0x111111);
+                this.scene.add(grid, new THREE.AmbientLight(0xffffff, 1.0));
+                
+                const neon = new THREE.DirectionalLight(0x00ffcc, 4.0);
+                neon.position.set(20, 50, 20);
+                this.scene.add(neon);
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                this.animate = this.animate.bind(this);
+                requestAnimationFrame(this.animate);
+            },
+            setGeometry(positions, indices) {
+                if(this.mesh) { this.mesh.geometry.dispose(); this.scene.remove(this.mesh); }
+                
+                // Construct THREE geometry directly from WASM arrays (Zero-Copy efficiency)
+                const geometry = new THREE.BufferGeometry();
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setIndex(new THREE.BufferAttribute(indices, 1));
+                geometry.computeVertexNormals();
+
+                // Center object
+                geometry.computeBoundingBox();
+                const center = new THREE.Vector3();
+                geometry.boundingBox.getCenter(center);
+                geometry.translate(-center.x, -center.y, -center.z);
+
+                const mat = new THREE.MeshStandardMaterial({ color: 0x667788, metalness: 0.5, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1});
+                this.mesh = new THREE.Mesh(geometry, mat);
+                
+                const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0x00ffcc, linewidth: 1, transparent: true, opacity: 0.5 }));
+                this.mesh.add(edges);
+                this.mesh.position.y = 10; 
+                
+                this.scene.add(this.mesh);
+                this.controls.target.set(0, 10, 0);
+            },
+            animate() {
+                requestAnimationFrame(this.animate);
+                this.controls.update();
+                this.renderer.render(this.scene, this.camera);
+            }
+        };
+        Viewer.init();
+
+        // --- REAL MANIFOLD C++ WORKER ---
+        const Engine = {
+            worker: null,
+
+            async init() {
+                if(this.worker) return;
+                UI.log("ALLOCATING: manifold.worker.js");
+                
+                const workerCode = `
+                    let wasm = null;
+
+                    self.onmessage = async (e) => {
+                        if(e.data.cmd === 'init') {
+                            try {
+                                self.postMessage({ cmd: 'log', msg: 'PULLING MANIFOLD-3D WASM...' });
+                                importScripts('https://cdn.jsdelivr.net/npm/manifold-3d@2.2.0/manifold.js');
+                                
+                                self.postMessage({ cmd: 'log', msg: 'BOOTING C++ KERNEL...' });
+                                wasm = await Module();
+                                wasm.setup();
+                                
+                                self.postMessage({ cmd: 'log', msg: 'KERNEL READY.' });
+                                self.postMessage({ cmd: 'ready' });
+                            } catch (err) {
+                                self.postMessage({ cmd: 'log', msg: '<span style="color:red">INIT ERROR: ' + err.message + '</span>' });
+                            }
+                        }
+                        
+                        if(e.data.cmd === 'build') {
+                            try {
+                                self.postMessage({ cmd: 'log', msg: 'EXECUTING MATH...' });
+                                
+                                // Execute the dynamic script
+                                const func = new Function('wasm', e.data.script);
+                                const manifoldObj = func(wasm);
+                                
+                                self.postMessage({ cmd: 'log', msg: 'EXTRACTING MESH ARRAYS...' });
+                                const mesh = manifoldObj.getMesh();
+                                
+                                // Convert Manifold's complex interleaved arrays into pure Float32 arrays for Three.js
+                                const pos = new Float32Array(mesh.numVert * 3);
+                                for (let i = 0; i < mesh.numVert; i++) {
+                                    pos[i * 3] = mesh.vertProperties[i * mesh.numProp];
+                                    pos[i * 3 + 1] = mesh.vertProperties[i * mesh.numProp + 1];
+                                    pos[i * 3 + 2] = mesh.vertProperties[i * mesh.numProp + 2];
+                                }
+                                const indices = new Uint32Array(mesh.triVerts);
+                                
+                                self.postMessage({ cmd: 'log', msg: 'TRANSFERRING TO GPU...' });
+                                
+                                // ZERO-COPY TRANSFER: Hands memory directly to main thread
+                                self.postMessage({ 
+                                    cmd: 'complete', 
+                                    pos: pos, 
+                                    indices: indices 
+                                }, [pos.buffer, indices.buffer]);
+                                
+                            } catch (err) {
+                                self.postMessage({ cmd: 'log', msg: '<span style="color:red">MATH ERROR: ' + err.message + '</span>' });
+                            }
+                        }
+                    };
+                `;
+                
+                const blob = new Blob([workerCode], {type: 'application/javascript'});
+                this.worker = new Worker(URL.createObjectURL(blob));
+                
+                this.worker.onerror = (error) => {
+                    UI.log(`<span style="color:red">WORKER KILLED: ${error.message}</span>`);
+                    UI.enableAll();
+                };
+
+                return new Promise(resolve => {
+                    this.worker.onmessage = (e) => {
+                        if(e.data.cmd === 'log') UI.log(e.data.msg);
+                        if(e.data.cmd === 'ready') resolve();
+                    };
+                    this.worker.postMessage({ cmd: 'init' });
+                });
+            },
+
+            async run(script) {
+                return new Promise(resolve => {
+                    this.worker.onmessage = (e) => {
+                        if(e.data.cmd === 'log') UI.log(e.data.msg);
+                        if(e.data.cmd === 'complete') {
+                            resolve({ pos: e.data.pos, indices: e.data.indices });
+                        }
+                    };
+                    this.worker.postMessage({ cmd: 'build', script: script });
+                });
+            }
+        };
+
+        // --- EXECUTIONS ---
+        
+        UI.btnNative.addEventListener('click', async () => {
+            UI.disableAll();
+            const code = "return wasm.Manifold.cylinder(40, 5, 5, 64);";
+            UI.setCode(code);
+            
+            await Engine.init(); 
+            const data = await Engine.run(code);
+            Viewer.setGeometry(data.pos, data.indices);
+            
+            UI.log("<span style='color:var(--cyan); font-weight:bold;'>SUCCESS: C++ MESH RENDERED</span>");
+            UI.enableAll();
+        });
+
+        UI.btnCsg.addEventListener('click', async () => {
+            UI.disableAll();
+            // Boolean CSG: Subtract a 20x20 box from a Radius 15 Sphere
+            const code = `
+                const sphere = wasm.Manifold.sphere(15, 64);
+                const box = wasm.Manifold.cube([20, 20, 20], true).translate([10, 0, 0]);
+                return sphere.subtract(box);
+            `;
+            UI.setCode(code);
+            
+            await Engine.init(); 
+            const data = await Engine.run(code);
+            Viewer.setGeometry(data.pos, data.indices);
+            
+            UI.log("<span style='color:var(--magenta); font-weight:bold;'>SUCCESS: CSG BOOLEAN COMPLETED</span>");
+            UI.enableAll();
+        });
+
+    </script>
+</body>
+</html>
+
+
+```
