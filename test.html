@@ -53,7 +53,7 @@
             log: (msg) => {
                 const log = document.getElementById('status-log');
                 log.innerHTML += `<div class="log-line">${msg}</div>`;
-                if(log.children.length > 8) log.removeChild(log.firstChild);
+                if(log.children.length > 12) log.removeChild(log.firstChild);
             },
             setCode: (text) => document.getElementById('scad-output').value = text,
             btnNative: document.getElementById('btn-native'),
@@ -140,14 +140,46 @@
                 const workerCode = `
                     let wasm = null;
 
+                    // The Relentless CDN Hunter
+                    function safeImport(cdns, name) {
+                        for(let url of cdns) {
+                            try {
+                                self.postMessage({ cmd: 'log', msg: 'Pinging ' + name + ': ' + url.split('/')[2] });
+                                importScripts(url);
+                                self.postMessage({ cmd: 'log', msg: '-> Success' });
+                                return url;
+                            } catch(err) {
+                                // Fall through to next URL if 404
+                            }
+                        }
+                        throw new Error("All CDNs failed to load " + name);
+                    }
+
                     self.onmessage = async (e) => {
                         if(e.data.cmd === 'init') {
                             try {
-                                self.postMessage({ cmd: 'log', msg: 'PULLING MANIFOLD-3D WASM...' });
-                                importScripts('https://cdn.jsdelivr.net/npm/manifold-3d@2.2.0/manifold.js');
+                                self.postMessage({ cmd: 'log', msg: 'HUNTING MANIFOLD-3D...' });
                                 
+                                // Cycle until we find a live CDN
+                                const loadedUrl = safeImport([
+                                    'https://unpkg.com/manifold-3d/manifold.js',
+                                    'https://cdn.jsdelivr.net/npm/manifold-3d/manifold.js',
+                                    'https://unpkg.com/manifold-3d@2.2.0/manifold.js',
+                                    'https://cdn.jsdelivr.net/npm/manifold-3d@2.2.0/manifold.js'
+                                ], 'manifold-3d');
+
                                 self.postMessage({ cmd: 'log', msg: 'BOOTING C++ KERNEL...' });
-                                wasm = await Module();
+                                
+                                // Force the engine to grab the WASM file from the exact same CDN
+                                const wasmUrl = loadedUrl.replace('.js', '.wasm');
+                                
+                                wasm = await Module({
+                                    locateFile: (path) => {
+                                        if(path.endsWith('.wasm')) return wasmUrl;
+                                        return path;
+                                    }
+                                });
+                                
                                 wasm.setup();
                                 
                                 self.postMessage({ cmd: 'log', msg: 'KERNEL READY.' });
