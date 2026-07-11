@@ -8,7 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V11)</title>
+    <title>PEAK // ANTI-SAAS CAD (V11.1)</title>
     <style>
         /* PREMIUM NATIVE APP AESTHETIC */
         :root { 
@@ -227,7 +227,7 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (WASM BINARY FIX) ---
+        // --- OPENSCAD CAD ENGINE (WASM HUNTER) ---
         const CadEngine = {
             worker: null,
             async init() {
@@ -240,23 +240,41 @@
                         if(e.data.cmd === 'init') {
                             try {
                                 importScripts('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
+                                self.postMessage({ cmd: 'log', msg: 'Hunting WASM Binary (Blob Bypass)...' });
                                 
-                                const jsUrl = 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@latest/dist/openscad.js';
-                                const wasmUrl = 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@latest/dist/openscad.wasm';
+                                // The Pair Hunter: If WASM 404s, move to the next pair
+                                const pairs = [
+                                    { js: 'https://unpkg.com/@jwc/openscad-wasm/dist/openscad.js', wasm: 'https://unpkg.com/@jwc/openscad-wasm/dist/openscad.wasm' },
+                                    { js: 'https://unpkg.com/openscad-wasm/openscad.js', wasm: 'https://unpkg.com/openscad-wasm/openscad.wasm' },
+                                    { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.wasm' },
+                                    { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.wasm' },
+                                    { js: 'https://ochafik.com/openscad-wasm/openscad.js', wasm: 'https://ochafik.com/openscad-wasm/openscad.wasm' }
+                                ];
                                 
-                                self.postMessage({ cmd: 'log', msg: 'Downloading WASM Binary (Blob Bypass)...' });
+                                let wasmBuffer = null;
+                                let jsUrl = null;
                                 
-                                // 1. Manually fetch the WASM as an ArrayBuffer to completely bypass Emscripten's broken Blob URL router
-                                const wasmRes = await fetch(wasmUrl);
-                                if (!wasmRes.ok) throw new Error("WASM Binary 404");
-                                const wasmBuffer = await wasmRes.arrayBuffer();
+                                for(let pair of pairs) {
+                                    try {
+                                        self.postMessage({ cmd: 'log', msg: 'Pinging ' + pair.wasm.split('/')[2] + '...' });
+                                        const res = await fetch(pair.wasm);
+                                        if (res.ok) {
+                                            wasmBuffer = await res.arrayBuffer();
+                                            jsUrl = pair.js;
+                                            self.postMessage({ cmd: 'log', msg: '-> Binary Secured!' });
+                                            break;
+                                        }
+                                    } catch(err) {}
+                                }
+                                
+                                if (!wasmBuffer) throw new Error("All WASM endpoints 404'd.");
 
                                 self.postMessage({ cmd: 'log', msg: 'Loading OpenSCAD Runtime...' });
                                 importScripts(jsUrl);
 
                                 self.postMessage({ cmd: 'log', msg: 'Booting Kernel...' });
                                 
-                                // 2. Pass the raw binary buffer directly into OpenSCAD
+                                // Direct Memory Injection Bypass
                                 oc = await OpenSCAD({
                                     noInitialRun: true,
                                     wasmBinary: wasmBuffer 
