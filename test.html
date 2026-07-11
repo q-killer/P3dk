@@ -4,7 +4,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>PEAK // ENGINE PROOF</title>
+    <!-- Cache buster meta tags -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>PEAK // ENGINE PROOF (V6.6)</title>
     <style>
         :root { --bg: #050a15; --cyan: #00ffcc; --magenta: #ff00ff; --glass: rgba(10, 15, 30, 0.85); }
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
@@ -34,12 +38,12 @@
     <div id="top-bar">
         <div class="logo">PEAK//</div>
         <div id="status-log">
-            <div class="log-line">SYSTEM READY</div>
+            <div class="log-line">SYSTEM READY (V6.6)</div>
         </div>
     </div>
 
     <div id="bottom-sheet">
-        <div style="margin-bottom: 15px; font-size: 0.85rem; font-weight: 600; color: #fff; letter-spacing: 1px;">THE TRUTH TEST (MANIFOLD)</div>
+        <div style="margin-bottom: 15px; font-size: 0.85rem; font-weight: 600; color: #fff; letter-spacing: 1px;">THE TRUTH TEST (ESM ENGINE)</div>
         <button class="btn" id="btn-native">1. TEST C++ CYLINDER</button>
         <button class="btn" id="btn-csg">2. TEST C++ BOOLEAN CSG</button>
         <textarea id="scad-output" readonly>// Engine script will appear here</textarea>
@@ -53,7 +57,7 @@
             log: (msg) => {
                 const log = document.getElementById('status-log');
                 log.innerHTML += `<div class="log-line">${msg}</div>`;
-                if(log.children.length > 12) log.removeChild(log.firstChild);
+                if(log.children.length > 8) log.removeChild(log.firstChild);
             },
             setCode: (text) => document.getElementById('scad-output').value = text,
             btnNative: document.getElementById('btn-native'),
@@ -62,7 +66,6 @@
             enableAll: () => { UI.btnNative.disabled = false; UI.btnCsg.disabled = false; }
         };
 
-        // --- VIEWER ---
         const Viewer = {
             scene: new THREE.Scene(),
             mesh: null,
@@ -99,13 +102,11 @@
             setGeometry(positions, indices) {
                 if(this.mesh) { this.mesh.geometry.dispose(); this.scene.remove(this.mesh); }
                 
-                // Construct THREE geometry directly from WASM arrays (Zero-Copy efficiency)
                 const geometry = new THREE.BufferGeometry();
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                 geometry.setIndex(new THREE.BufferAttribute(indices, 1));
                 geometry.computeVertexNormals();
 
-                // Center object
                 geometry.computeBoundingBox();
                 const center = new THREE.Vector3();
                 geometry.boundingBox.getCenter(center);
@@ -129,60 +130,31 @@
         };
         Viewer.init();
 
-        // --- REAL MANIFOLD C++ WORKER ---
+        // --- MODERN ESM WORKER ENGINE ---
         const Engine = {
             worker: null,
 
             async init() {
                 if(this.worker) return;
-                UI.log("ALLOCATING: manifold.worker.js");
+                UI.log("ALLOCATING: ESM WORKER");
                 
                 const workerCode = `
+                    import initManifold from 'https://esm.sh/manifold-3d@2.2.0';
                     let wasm = null;
-
-                    // The Relentless CDN Hunter
-                    function safeImport(cdns, name) {
-                        for(let url of cdns) {
-                            try {
-                                self.postMessage({ cmd: 'log', msg: 'Pinging ' + name + ': ' + url.split('/')[2] });
-                                importScripts(url);
-                                self.postMessage({ cmd: 'log', msg: '-> Success' });
-                                return url;
-                            } catch(err) {
-                                // Fall through to next URL if 404
-                            }
-                        }
-                        throw new Error("All CDNs failed to load " + name);
-                    }
 
                     self.onmessage = async (e) => {
                         if(e.data.cmd === 'init') {
                             try {
-                                self.postMessage({ cmd: 'log', msg: 'HUNTING MANIFOLD-3D...' });
+                                self.postMessage({ cmd: 'log', msg: 'IMPORTING ESM MANIFOLD KERNEL...' });
                                 
-                                // Cycle until we find a live CDN
-                                const loadedUrl = safeImport([
-                                    'https://unpkg.com/manifold-3d/manifold.js',
-                                    'https://cdn.jsdelivr.net/npm/manifold-3d/manifold.js',
-                                    'https://unpkg.com/manifold-3d@2.2.0/manifold.js',
-                                    'https://cdn.jsdelivr.net/npm/manifold-3d@2.2.0/manifold.js'
-                                ], 'manifold-3d');
-
-                                self.postMessage({ cmd: 'log', msg: 'BOOTING C++ KERNEL...' });
-                                
-                                // Force the engine to grab the WASM file from the exact same CDN
-                                const wasmUrl = loadedUrl.replace('.js', '.wasm');
-                                
-                                wasm = await Module({
-                                    locateFile: (path) => {
-                                        if(path.endsWith('.wasm')) return wasmUrl;
-                                        return path;
-                                    }
+                                // Explicitly map the WASM path just in case the Blob URL confuses esm.sh
+                                wasm = await initManifold({
+                                    locateFile: () => 'https://cdn.jsdelivr.net/npm/manifold-3d@2.2.0/manifold.wasm'
                                 });
                                 
                                 wasm.setup();
                                 
-                                self.postMessage({ cmd: 'log', msg: 'KERNEL READY.' });
+                                self.postMessage({ cmd: 'log', msg: 'C++ KERNEL READY.' });
                                 self.postMessage({ cmd: 'ready' });
                             } catch (err) {
                                 self.postMessage({ cmd: 'log', msg: '<span style="color:red">INIT ERROR: ' + err.message + '</span>' });
@@ -191,16 +163,14 @@
                         
                         if(e.data.cmd === 'build') {
                             try {
-                                self.postMessage({ cmd: 'log', msg: 'EXECUTING MATH...' });
+                                self.postMessage({ cmd: 'log', msg: 'EXECUTING C++ MATH...' });
                                 
-                                // Execute the dynamic script
                                 const func = new Function('wasm', e.data.script);
                                 const manifoldObj = func(wasm);
                                 
-                                self.postMessage({ cmd: 'log', msg: 'EXTRACTING MESH ARRAYS...' });
+                                self.postMessage({ cmd: 'log', msg: 'EXTRACTING MESH...' });
                                 const mesh = manifoldObj.getMesh();
                                 
-                                // Convert Manifold's complex interleaved arrays into pure Float32 arrays for Three.js
                                 const pos = new Float32Array(mesh.numVert * 3);
                                 for (let i = 0; i < mesh.numVert; i++) {
                                     pos[i * 3] = mesh.vertProperties[i * mesh.numProp];
@@ -211,7 +181,6 @@
                                 
                                 self.postMessage({ cmd: 'log', msg: 'TRANSFERRING TO GPU...' });
                                 
-                                // ZERO-COPY TRANSFER: Hands memory directly to main thread
                                 self.postMessage({ 
                                     cmd: 'complete', 
                                     pos: pos, 
@@ -226,7 +195,8 @@
                 `;
                 
                 const blob = new Blob([workerCode], {type: 'application/javascript'});
-                this.worker = new Worker(URL.createObjectURL(blob));
+                // CRUCIAL: type: 'module' unlocks native import statements inside the worker
+                this.worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
                 
                 this.worker.onerror = (error) => {
                     UI.log(`<span style="color:red">WORKER KILLED: ${error.message}</span>`);
@@ -254,8 +224,6 @@
                 });
             }
         };
-
-        // --- EXECUTIONS ---
         
         UI.btnNative.addEventListener('click', async () => {
             UI.disableAll();
@@ -272,7 +240,6 @@
 
         UI.btnCsg.addEventListener('click', async () => {
             UI.disableAll();
-            // Boolean CSG: Subtract a 20x20 box from a Radius 15 Sphere
             const code = `
                 const sphere = wasm.Manifold.sphere(15, 64);
                 const box = wasm.Manifold.cube([20, 20, 20], true).translate([10, 0, 0]);
