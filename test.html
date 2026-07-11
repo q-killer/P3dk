@@ -8,7 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V11.1)</title>
+    <title>PEAK // ANTI-SAAS CAD (V12.0)</title>
     <style>
         /* PREMIUM NATIVE APP AESTHETIC */
         :root { 
@@ -227,64 +227,68 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (WASM HUNTER) ---
+        // --- OPENSCAD CAD ENGINE (OMNI-BLOB BYPASS) ---
         const CadEngine = {
             worker: null,
             async init() {
                 if(this.worker) return;
-                UI.log("Mounting C++ OpenSCAD Environment...");
+                UI.log("Mounting Omni-Blob Architecture...");
                 
-                const workerCode = `
+                // 1. The Main Thread securely fetches all required components as raw strings/buffers
+                //    This completely bypasses the Worker's importScripts() CORB restrictions.
+                const pairs = [
+                    { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/openscad.wasm' },
+                    { js: 'https://unpkg.com/openscad-wasm/openscad.js', wasm: 'https://unpkg.com/openscad-wasm/openscad.wasm' },
+                    { js: 'https://ochafik.com/openscad-wasm/openscad.js', wasm: 'https://ochafik.com/openscad-wasm/openscad.wasm' }
+                ];
+                
+                let jsCode = null;
+                let wasmBuffer = null;
+                
+                for(let pair of pairs) {
+                    try {
+                        UI.log('Pinging ' + pair.js.split('/')[2] + '...');
+                        const [resJs, resWasm] = await Promise.all([ fetch(pair.js), fetch(pair.wasm) ]);
+                        if(resJs.ok && resWasm.ok) {
+                            jsCode = await resJs.text();
+                            wasmBuffer = await resWasm.arrayBuffer();
+                            UI.log("-> Binary Secured.");
+                            break;
+                        }
+                    } catch(e) {}
+                }
+                
+                if(!jsCode || !wasmBuffer) throw new Error("All NPM CDNs blocked by network.");
+
+                UI.log("Fetching FFlate Utilities...");
+                const fflateRes = await fetch('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
+                const fflateCode = await fflateRes.text();
+
+                // 2. We inject the raw code strings directly into the Worker Blob
+                const workerLogic = `
                     let oc = null;
                     self.onmessage = async (e) => {
                         if(e.data.cmd === 'init') {
                             try {
-                                importScripts('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
-                                self.postMessage({ cmd: 'log', msg: 'Hunting WASM Binary (Blob Bypass)...' });
+                                self.postMessage({ cmd: 'log', msg: 'Booting WebAssembly Kernel...' });
                                 
-                                // The Pair Hunter: If WASM 404s, move to the next pair
-                                const pairs = [
-                                    { js: 'https://unpkg.com/@jwc/openscad-wasm/dist/openscad.js', wasm: 'https://unpkg.com/@jwc/openscad-wasm/dist/openscad.wasm' },
-                                    { js: 'https://unpkg.com/openscad-wasm/openscad.js', wasm: 'https://unpkg.com/openscad-wasm/openscad.wasm' },
-                                    { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.wasm' },
-                                    { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.wasm' },
-                                    { js: 'https://ochafik.com/openscad-wasm/openscad.js', wasm: 'https://ochafik.com/openscad-wasm/openscad.wasm' }
-                                ];
-                                
-                                let wasmBuffer = null;
-                                let jsUrl = null;
-                                
-                                for(let pair of pairs) {
-                                    try {
-                                        self.postMessage({ cmd: 'log', msg: 'Pinging ' + pair.wasm.split('/')[2] + '...' });
-                                        const res = await fetch(pair.wasm);
-                                        if (res.ok) {
-                                            wasmBuffer = await res.arrayBuffer();
-                                            jsUrl = pair.js;
-                                            self.postMessage({ cmd: 'log', msg: '-> Binary Secured!' });
-                                            break;
-                                        }
-                                    } catch(err) {}
-                                }
-                                
-                                if (!wasmBuffer) throw new Error("All WASM endpoints 404'd.");
+                                // Emscripten attaches to different globals depending on build params
+                                const factory = typeof OpenSCAD !== 'undefined' ? OpenSCAD : (typeof Module !== 'undefined' ? Module : null);
+                                if (!factory) throw new Error("C++ Factory not found in payload.");
 
-                                self.postMessage({ cmd: 'log', msg: 'Loading OpenSCAD Runtime...' });
-                                importScripts(jsUrl);
-
-                                self.postMessage({ cmd: 'log', msg: 'Booting Kernel...' });
-                                
-                                // Direct Memory Injection Bypass
-                                oc = await OpenSCAD({
+                                oc = await factory({
                                     noInitialRun: true,
-                                    wasmBinary: wasmBuffer 
+                                    wasmBinary: e.data.wasm 
                                 });
 
-                                self.postMessage({ cmd: 'log', msg: 'Mounting BOSL2 Architecture...' });
+                                self.postMessage({ cmd: 'log', msg: 'Downloading BOSL2 Library...' });
                                 const res = await fetch('https://codeload.github.com/BelfrySCAD/BOSL2/zip/refs/heads/master');
-                                const unzipped = fflate.unzipSync(new Uint8Array(await res.arrayBuffer()));
+                                const zipBuf = await res.arrayBuffer();
                                 
-                                try { oc.FS.mkdir('/libraries'); oc.FS.mkdir('/libraries/BOSL2'); } catch(e) {}
+                                self.postMessage({ cmd: 'log', msg: 'Unzipping to Virtual FS...' });
+                                const unzipped = fflate.unzipSync(new Uint8Array(zipBuf));
+                                
+                                try { oc.FS.mkdir('/libraries'); oc.FS.mkdir('/libraries/BOSL2'); } catch(err) {}
                                 
                                 for (const [path, data] of Object.entries(unzipped)) {
                                     if (!data.length) continue; 
@@ -294,7 +298,7 @@
                                     let currentDir = '/libraries/BOSL2';
                                     for (const p of parts.slice(0, -1)) {
                                         currentDir += '/' + p;
-                                        try { oc.FS.mkdir(currentDir); } catch(e) {}
+                                        try { oc.FS.mkdir(currentDir); } catch(err) {}
                                     }
                                     oc.FS.writeFile('/libraries/BOSL2/' + cleanPath, data);
                                 }
@@ -308,10 +312,9 @@
                         
                         if(e.data.cmd === 'build') {
                             try {
-                                self.postMessage({ cmd: 'log', msg: 'Compiling SCAD to STL...' });
+                                self.postMessage({ cmd: 'log', msg: 'Compiling SCAD...' });
                                 oc.FS.writeFile('/in.scad', e.data.scad);
                                 
-                                // --enable=manifold invokes the hyperfast boolean backend!
                                 oc.callMain(['--enable=manifold', '-I', '/libraries', '/in.scad', '-o', '/out.stl']);
                                 
                                 const rawStlBytes = oc.FS.readFile('/out.stl');
@@ -326,15 +329,17 @@
                     };
                 `;
                 
-                const blob = new Blob([workerCode], {type: 'application/javascript'});
-                this.worker = new Worker(URL.createObjectURL(blob));
+                // 3. Assemble the Mega Blob
+                const megaBlob = new Blob([fflateCode, '\\n\\n', jsCode, '\\n\\n', workerLogic], {type: 'application/javascript'});
+                this.worker = new Worker(URL.createObjectURL(megaBlob));
 
                 return new Promise(resolve => {
                     this.worker.onmessage = (e) => {
                         if(e.data.cmd === 'log') UI.log(e.data.msg, e.data.error);
                         if(e.data.cmd === 'ready') resolve();
                     };
-                    this.worker.postMessage({ cmd: 'init' });
+                    // Pass the WASM binary buffer to the worker without copying (Zero-Copy)
+                    this.worker.postMessage({ cmd: 'init', wasm: wasmBuffer }, [wasmBuffer]);
                 });
             },
             async run(script) {
