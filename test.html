@@ -8,7 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V18.0)</title>
+    <title>PEAK // ANTI-SAAS CAD (V19.0)</title>
     <style>
         :root { 
             --bg: #03050a; 
@@ -77,7 +77,7 @@
             <div id="status-indicator"></div>
         </div>
         <div id="log-feed">
-            <div class="log-line">SYSTEM READY (V18.0).</div>
+            <div class="log-line">SYSTEM READY (V19.0).</div>
         </div>
         <div id="progress-bar"><div id="progress-fill"></div></div>
     </div>
@@ -110,7 +110,6 @@
         import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
         import { STLLoader } from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/STLLoader.js';
 
-        // --- UI CONTROLLER ---
         const UI = {
             log: (msg, isError = false) => {
                 const feed = document.getElementById('log-feed');
@@ -148,7 +147,6 @@
             }
         };
 
-        // --- 3D VIEWER ---
         const Viewer = {
             scene: new THREE.Scene(),
             mesh: null,
@@ -222,76 +220,80 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (THE SCATTERGUN ARCHITECTURE) ---
+        // --- OPENSCAD CAD ENGINE (SMART-PARSER ARCHITECTURE) ---
         const CadEngine = {
             oc: null,
             async init() {
                 if(this.oc) return;
                 
-                UI.log("Broadcasting Scattergun Scanner (9 Endpoints)...");
+                UI.log("Broadcasting to CDNs...");
                 
-                // We test every major fork and folder structure simultaneously.
                 const ENDPOINTS = [
-                    { js: 'https://unpkg.com/@dschroer/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/@dschroer/openscad-wasm@latest/dist/openscad.wasm' },
-                    { js: 'https://cdn.jsdelivr.net/npm/@dschroer/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@dschroer/openscad-wasm/dist/openscad.wasm' },
-                    { js: 'https://unpkg.com/@jwc/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/@jwc/openscad-wasm@latest/dist/openscad.wasm' },
-                    { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.wasm' },
-                    { js: 'https://unpkg.com/openscad-wasm@latest/openscad.js', wasm: 'https://unpkg.com/openscad-wasm@latest/openscad.wasm' },
-                    { js: 'https://unpkg.com/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/openscad-wasm@latest/dist/openscad.wasm' },
-                    { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.wasm' },
-                    { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm/dist/openscad.wasm' },
-                    { js: 'https://cdn.jsdelivr.net/gh/ochafik/openscad-wasm@master/openscad.js', wasm: 'https://cdn.jsdelivr.net/gh/ochafik/openscad-wasm@master/openscad.wasm' }
+                    { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@1.0.1/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@1.0.1/dist/openscad.wasm' },
+                    { js: 'https://unpkg.com/@jwc/openscad-wasm@1.0.1/dist/openscad.js', wasm: 'https://unpkg.com/@jwc/openscad-wasm@1.0.1/dist/openscad.wasm' },
+                    { js: 'https://ochafik.github.io/openscad-wasm/openscad.js', wasm: 'https://ochafik.github.io/openscad-wasm/openscad.wasm' },
+                    { js: 'https://unpkg.com/openscad-wasm/openscad.js', wasm: 'https://unpkg.com/openscad-wasm/openscad.wasm' }
                 ];
                 
-                let validPair = null;
-                let validBuffer = null;
+                let result = null;
 
                 try {
-                    // Promise.any blasts all requests at once and returns the FIRST one that succeeds
-                    const result = await Promise.any(ENDPOINTS.map(async (pair) => {
-                        const res = await fetch(pair.wasm);
-                        if (!res.ok) throw new Error("404");
-                        const buf = await res.arrayBuffer();
-                        return { pair, buf };
+                    // Promise.any blasts all endpoints. We download the JS file as pure text to parse it manually.
+                    result = await Promise.any(ENDPOINTS.map(async (pair) => {
+                        const [jRes, wRes] = await Promise.all([ fetch(pair.js), fetch(pair.wasm) ]);
+                        if (!jRes.ok || !wRes.ok) throw new Error("404");
+                        return { pair, jsText: await jRes.text(), wasmBuf: await wRes.arrayBuffer() };
                     }));
                     
-                    validPair = result.pair;
-                    validBuffer = result.buf;
-                    
-                    // Show exactly which endpoint won the race
-                    const urlPath = new URL(validPair.wasm);
-                    UI.log(`-> Target Acquired: ${urlPath.hostname}${urlPath.pathname}`);
+                    const urlPath = new URL(result.pair.wasm);
+                    UI.log(`-> Target: ${urlPath.hostname}`);
                 } catch(e) {
                     UI.log("FATAL: All endpoints 404'd.", true);
                     throw new Error("No binaries found.");
                 }
 
-                UI.log("Injecting Kernel Script...");
-                await new Promise((resolve, reject) => {
+                UI.log("Analyzing Factory Format...");
+                let factory = null;
+
+                // Smart Parser: Check if the downloaded file is a Modern ES Module or a Classic Global
+                if (result.jsText.includes('export default') || result.jsText.includes('export {')) {
+                    UI.log("-> ES Module Detected. Booting...");
+                    // It's a module. Wrap it in a Blob and import it correctly.
+                    const blob = new Blob([result.jsText], { type: 'application/javascript' });
+                    const mod = await import(URL.createObjectURL(blob));
+                    factory = mod.default || mod.OpenSCAD || mod;
+                } else {
+                    UI.log("-> Classic Script Detected. Booting...");
+                    // It's a classic script. Inject it into the window.
                     const s = document.createElement('script');
-                    s.src = validPair.js;
-                    s.onload = resolve;
-                    s.onerror = reject;
+                    s.textContent = result.jsText;
                     document.head.appendChild(s);
-                });
+                    factory = typeof OpenSCAD !== 'undefined' ? OpenSCAD : (typeof Module !== 'undefined' ? Module : null);
+                }
 
-                const factory = typeof OpenSCAD !== 'undefined' ? OpenSCAD : (typeof Module !== 'undefined' ? Module : null);
-                if(!factory) throw new Error("C++ Factory missing from script.");
+                if(!factory || typeof factory !== 'function') {
+                    UI.log("Fatal: Factory missing from parsed script.", true);
+                    throw new Error("C++ Factory missing.");
+                }
 
-                UI.log("Booting OpenSCAD Instance...");
                 this.oc = await factory({
                     noInitialRun: true,
-                    wasmBinary: validBuffer,
-                    locateFile: () => validPair.wasm // Backup locator just in case
+                    wasmBinary: result.wasmBuf // Bypass streaming rules completely
                 });
 
                 UI.log("Fetching BOSL2 Library...");
-                const { unzipSync } = await import('https://esm.sh/fflate@0.8.2');
+                
+                // Fetch fflate natively
+                const fflateRes = await fetch('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
+                const fs = document.createElement('script');
+                fs.textContent = await fflateRes.text();
+                document.head.appendChild(fs);
+
                 const res = await fetch('https://codeload.github.com/BelfrySCAD/BOSL2/zip/refs/heads/master');
                 const zipBuf = await res.arrayBuffer();
                 
                 UI.log("Mounting BOSL2 to Virtual FS...");
-                const unzipped = unzipSync(new Uint8Array(zipBuf));
+                const unzipped = window.fflate.unzipSync(new Uint8Array(zipBuf));
                 
                 try { this.oc.FS.mkdir('/libraries'); this.oc.FS.mkdir('/libraries/BOSL2'); } catch(err) {}
                 
@@ -363,8 +365,7 @@
                                 });
                                 let code = out[0].generated_text.trim();
                                 
-                                // Clean up any formatting wrappers the AI might try to use
-                                code = code.replace(/\\\`\\\`\\\`openscad/gi, '').replace(/\\\`\\\`\\\`/g, '').trim();
+                                code = code.replace(/\\x60\\x60\\x60openscad/gi, '').replace(/\\x60\\x60\\x60/g, '').trim();
                                 
                                 self.postMessage({ cmd: 'complete', code: code });
                             } catch (err) { self.postMessage({ cmd: 'error', error: err.message }); }
