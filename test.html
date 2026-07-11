@@ -8,7 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V16.0)</title>
+    <title>PEAK // ANTI-SAAS CAD (V18.0)</title>
     <style>
         :root { 
             --bg: #03050a; 
@@ -36,7 +36,6 @@
         .working { background: var(--magenta) !important; box-shadow: 0 0 10px var(--magenta) !important; animation: pulse 1s infinite alternate; }
         @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
 
-        /* Expanded log feed to see the scanner working */
         #log-feed { width: 100%; height: 64px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
         .log-line { font-family: 'SF Mono', 'Menlo', 'Courier New', monospace; font-size: 0.7rem; color: var(--text-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 16px; }
         .log-line:last-child { color: var(--cyan); font-weight: bold; }
@@ -78,7 +77,7 @@
             <div id="status-indicator"></div>
         </div>
         <div id="log-feed">
-            <div class="log-line">ENGINE IDLE.</div>
+            <div class="log-line">SYSTEM READY (V18.0).</div>
         </div>
         <div id="progress-bar"><div id="progress-fill"></div></div>
     </div>
@@ -119,7 +118,6 @@
                 line.className = 'log-line' + (isError ? ' log-error' : '');
                 line.innerHTML = msg;
                 feed.appendChild(line);
-                // Keep the last 4 messages to watch the scanner work
                 if (feed.children.length > 4) feed.removeChild(feed.firstChild);
             },
             setWorking: (isWorking) => {
@@ -224,79 +222,67 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (OMNI-SCANNER ARCHITECTURE) ---
+        // --- OPENSCAD CAD ENGINE (THE SCATTERGUN ARCHITECTURE) ---
         const CadEngine = {
             oc: null,
             async init() {
                 if(this.oc) return;
                 
-                UI.log("Initializing Omni-Scanner...");
+                UI.log("Broadcasting Scattergun Scanner (9 Endpoints)...");
                 
-                // THE MASTER ENDPOINT LIST
-                // Includes direct GitHub proxy mirrors to completely bypass NPM versioning flaws
-                const CDNS = [
-                    'https://cdn.jsdelivr.net/gh/ochafik/openscad-wasm@main/',
-                    'https://cdn.jsdelivr.net/gh/ochafik/openscad-wasm@main/dist/',
-                    'https://cdn.jsdelivr.net/gh/jwc/openscad-wasm@main/',
-                    'https://cdn.jsdelivr.net/gh/jwc/openscad-wasm@main/dist/',
-                    'https://unpkg.com/openscad-wasm@latest/',
-                    'https://unpkg.com/openscad-wasm@latest/dist/',
-                    'https://cdn.jsdelivr.net/npm/openscad-wasm@latest/',
-                    'https://cdn.jsdelivr.net/npm/openscad-wasm@latest/dist/',
-                    'https://unpkg.com/@jwc/openscad-wasm@latest/',
-                    'https://unpkg.com/@jwc/openscad-wasm@latest/dist/',
-                    'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@latest/',
-                    'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@latest/dist/'
+                // We test every major fork and folder structure simultaneously.
+                const ENDPOINTS = [
+                    { js: 'https://unpkg.com/@dschroer/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/@dschroer/openscad-wasm@latest/dist/openscad.wasm' },
+                    { js: 'https://cdn.jsdelivr.net/npm/@dschroer/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@dschroer/openscad-wasm/dist/openscad.wasm' },
+                    { js: 'https://unpkg.com/@jwc/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/@jwc/openscad-wasm@latest/dist/openscad.wasm' },
+                    { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm/dist/openscad.wasm' },
+                    { js: 'https://unpkg.com/openscad-wasm@latest/openscad.js', wasm: 'https://unpkg.com/openscad-wasm@latest/openscad.wasm' },
+                    { js: 'https://unpkg.com/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/openscad-wasm@latest/dist/openscad.wasm' },
+                    { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.wasm' },
+                    { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm/dist/openscad.wasm' },
+                    { js: 'https://cdn.jsdelivr.net/gh/ochafik/openscad-wasm@master/openscad.js', wasm: 'https://cdn.jsdelivr.net/gh/ochafik/openscad-wasm@master/openscad.wasm' }
                 ];
                 
-                let activeBase = null;
+                let validPair = null;
+                let validBuffer = null;
 
-                for (let base of CDNS) {
-                    try {
-                        let logUrl = base.replace('https://', '').substring(0, 30) + '...';
-                        UI.log(`Ping: ${logUrl}`);
-                        
-                        // Fast HEAD request to verify the massive WASM file actually exists before we try to boot
-                        const wasmRes = await fetch(base + 'openscad.wasm', { method: 'HEAD' });
-                        
-                        if (wasmRes.ok) {
-                            UI.log("-> Binary Exists. Injecting Script...");
-                            
-                            await new Promise((resolve, reject) => {
-                                const s = document.createElement('script');
-                                s.src = base + 'openscad.js';
-                                s.onload = resolve;
-                                s.onerror = reject;
-                                document.head.appendChild(s);
-                            });
-
-                            activeBase = base;
-                            UI.log("-> Target Secured!");
-                            break; 
-                        }
-                    } catch(err) {
-                        // Network/CORS block. Ignore and try next.
-                    }
+                try {
+                    // Promise.any blasts all requests at once and returns the FIRST one that succeeds
+                    const result = await Promise.any(ENDPOINTS.map(async (pair) => {
+                        const res = await fetch(pair.wasm);
+                        if (!res.ok) throw new Error("404");
+                        const buf = await res.arrayBuffer();
+                        return { pair, buf };
+                    }));
+                    
+                    validPair = result.pair;
+                    validBuffer = result.buf;
+                    
+                    // Show exactly which endpoint won the race
+                    const urlPath = new URL(validPair.wasm);
+                    UI.log(`-> Target Acquired: ${urlPath.hostname}${urlPath.pathname}`);
+                } catch(e) {
+                    UI.log("FATAL: All endpoints 404'd.", true);
+                    throw new Error("No binaries found.");
                 }
 
-                if(!activeBase) {
-                    UI.log("FATAL: All endpoints failed.", true);
-                    throw new Error("No endpoints available.");
-                }
+                UI.log("Injecting Kernel Script...");
+                await new Promise((resolve, reject) => {
+                    const s = document.createElement('script');
+                    s.src = validPair.js;
+                    s.onload = resolve;
+                    s.onerror = reject;
+                    document.head.appendChild(s);
+                });
 
-                UI.log("Booting WASM Kernel...");
-                
-                // Emscripten exposes either 'OpenSCAD' or 'Module'
                 const factory = typeof OpenSCAD !== 'undefined' ? OpenSCAD : (typeof Module !== 'undefined' ? Module : null);
-                if(!factory) throw new Error("C++ Factory not found.");
+                if(!factory) throw new Error("C++ Factory missing from script.");
 
+                UI.log("Booting OpenSCAD Instance...");
                 this.oc = await factory({
                     noInitialRun: true,
-                    // Direct the locator to the exact active base URL that succeeded
-                    locateFile: (path) => {
-                        if (path.endsWith('.wasm')) return activeBase + 'openscad.wasm';
-                        return path;
-                    }
+                    wasmBinary: validBuffer,
+                    locateFile: () => validPair.wasm // Backup locator just in case
                 });
 
                 UI.log("Fetching BOSL2 Library...");
@@ -322,7 +308,7 @@
                     this.oc.FS.writeFile('/libraries/BOSL2/' + cleanPath, data);
                 }
                 
-                UI.log("Kernel Online.");
+                UI.log("BOSL2 Mounted. Engine Ready.");
             },
             
             async run(script) {
@@ -332,11 +318,10 @@
                 try {
                     this.oc.FS.writeFile('/in.scad', script);
                     
-                    // Native call. --enable=manifold is CRITICAL for fast booleans.
+                    // --enable=manifold invokes the hyperfast CSG boolean backend!
                     this.oc.callMain(['--enable=manifold', '-I', '/libraries', '/in.scad', '-o', '/out.stl']);
                     
                     const stlBytes = this.oc.FS.readFile('/out.stl');
-                    // CRITICAL: .slice() creates a safe copy out of the WebAssembly memory heap
                     const stlSafeCopy = stlBytes.slice(); 
                     this.oc.FS.unlink('/out.stl');
                     
@@ -378,8 +363,8 @@
                                 });
                                 let code = out[0].generated_text.trim();
                                 
-                                // Safely strip markdown to prevent string literal crash
-                                code = code.replace(/\\x60\\x60\\x60openscad/gi, '').replace(/\\x60\\x60\\x60/g, '').trim();
+                                // Clean up any formatting wrappers the AI might try to use
+                                code = code.replace(/\\\`\\\`\\\`openscad/gi, '').replace(/\\\`\\\`\\\`/g, '').trim();
                                 
                                 self.postMessage({ cmd: 'complete', code: code });
                             } catch (err) { self.postMessage({ cmd: 'error', error: err.message }); }
