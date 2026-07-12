@@ -8,7 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V20.0)</title>
+    <title>PEAK // ANTI-SAAS CAD (V21.0)</title>
     <style>
         :root { 
             --bg: #03050a; 
@@ -77,7 +77,7 @@
             <div id="status-indicator"></div>
         </div>
         <div id="log-feed">
-            <div class="log-line">SYSTEM READY (V20.0).</div>
+            <div class="log-line">SYSTEM READY (V21.0).</div>
         </div>
         <div id="progress-bar"><div id="progress-fill"></div></div>
     </div>
@@ -222,102 +222,70 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (UNIVERSAL EXTRACTOR ARCHITECTURE) ---
+        // --- OPENSCAD CAD ENGINE (PURE ESM ARCHITECTURE) ---
         const CadEngine = {
             oc: null,
             async init() {
                 if(this.oc) return;
                 
-                UI.log("Mounting Universal Kernel Extractor...");
-                
-                // Endpoints known to host the OpenSCAD WASM builds
-                const CDNS = [
-                    'https://unpkg.com/@jwc/openscad-wasm@1.0.1/dist/openscad.js',
-                    'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@1.0.1/dist/openscad.js',
-                    'https://unpkg.com/openscad-wasm/openscad.js',
-                    'https://cdn.jsdelivr.net/npm/openscad-wasm/openscad.js',
-                    'https://ochafik.github.io/openscad-wasm/openscad.js'
-                ];
-                
-                let factory = null;
-                let wasmBuffer = null;
-                let activeUrl = null;
-
-                for (let jsUrl of CDNS) {
-                    try {
-                        UI.log(`Ping: ${jsUrl.split('/')[2]}...`);
-                        
-                        // 1. Fetch WASM first to bypass Emscripten 302 stream bugs
-                        const wasmUrl = jsUrl.replace('.js', '.wasm');
-                        const wRes = await fetch(wasmUrl);
-                        if (!wRes.ok) continue; // Skip if 404
-                        
-                        wasmBuffer = await wRes.arrayBuffer();
-                        UI.log("-> Binary Secured.");
-
-                        // 2. Try ES Module Import (For modern @jwc forks)
-                        try {
-                            const mod = await import(jsUrl);
-                            factory = mod.default || mod.OpenSCAD || (typeof mod === 'function' ? mod : null);
-                            if (factory) UI.log("-> Extracted via ES Module.");
-                        } catch (e) {
-                            // 3. Fallback to Classic Script Injection (For older ochafik forks)
-                            await new Promise((resolve, reject) => {
-                                const s = document.createElement('script');
-                                s.src = jsUrl;
-                                s.onload = resolve;
-                                s.onerror = reject;
-                                document.head.appendChild(s);
-                            });
-                            factory = window.OpenSCAD || window.Module;
-                            if (factory) UI.log("-> Extracted via Global Context.");
-                        }
-
-                        if (typeof factory === 'function') {
-                            activeUrl = jsUrl;
-                            break; 
-                        }
-                    } catch(err) {
-                        // Skip and try the next CDN
-                    }
-                }
-
-                if (!factory || !wasmBuffer) {
-                    UI.log("FATAL: Engine extraction failed.", true);
-                    throw new Error("No endpoints available.");
-                }
-
-                UI.log("Booting OpenSCAD Instance...");
-                this.oc = await factory({
-                    noInitialRun: true,
-                    wasmBinary: wasmBuffer, // Feed the arraybuffer directly to bypass broken fetch attempts
-                    locateFile: (path) => path.endsWith('.wasm') ? activeUrl.replace('.js', '.wasm') : path
-                });
-
-                UI.log("Fetching BOSL2 Library...");
-                const { unzipSync } = await import('https://esm.sh/fflate@0.8.2');
-                const res = await fetch('https://codeload.github.com/BelfrySCAD/BOSL2/zip/refs/heads/master');
-                const zipBuf = await res.arrayBuffer();
-                
-                UI.log("Mounting BOSL2 to Virtual FS...");
-                const unzipped = unzipSync(new Uint8Array(zipBuf));
-                
-                try { this.oc.FS.mkdir('/libraries'); this.oc.FS.mkdir('/libraries/BOSL2'); } catch(err) {}
-                
-                for (const [path, data] of Object.entries(unzipped)) {
-                    if (!data.length) continue; 
-                    const parts = path.split('/'); parts.shift(); if (!parts.length) continue;
-                    const cleanPath = parts.join('/');
+                try {
+                    UI.log("Importing OpenSCAD ES Module...");
                     
-                    let currentDir = '/libraries/BOSL2';
-                    for (const p of parts.slice(0, -1)) {
-                        currentDir += '/' + p;
-                        try { this.oc.FS.mkdir(currentDir); } catch(err) {}
+                    // 1. Native ES Module import via ESM.sh (handles all resolution perfectly)
+                    const mod = await import('https://esm.sh/@jwc/openscad-wasm@1.0.1');
+                    const factory = mod.default || mod.OpenSCAD || mod;
+                    
+                    if (typeof factory !== 'function') {
+                        throw new Error("Module imported, but exported Factory is invalid.");
                     }
-                    this.oc.FS.writeFile('/libraries/BOSL2/' + cleanPath, data);
+
+                    UI.log("Fetching WASM Binary ArrayBuffer...");
+                    
+                    // 2. Fetch the raw WASM file from unpkg
+                    const wasmRes = await fetch('https://unpkg.com/@jwc/openscad-wasm@1.0.1/dist/openscad.wasm');
+                    if (!wasmRes.ok) throw new Error("WASM Binary returned 404.");
+                    const wasmBuffer = await wasmRes.arrayBuffer();
+
+                    UI.log("Booting OpenSCAD Instance...");
+                    
+                    // 3. Inject the raw binary into the factory
+                    this.oc = await factory({
+                        noInitialRun: true,
+                        wasmBinary: wasmBuffer
+                    });
+
+                    UI.log("Fetching BOSL2 Library...");
+                    
+                    // 4. Fetch FFLate entirely as an ES Module
+                    const { unzipSync } = await import('https://esm.sh/fflate@0.8.2');
+                    
+                    const res = await fetch('https://codeload.github.com/BelfrySCAD/BOSL2/zip/refs/heads/master');
+                    const zipBuf = await res.arrayBuffer();
+                    
+                    UI.log("Mounting BOSL2 to Virtual FS...");
+                    const unzipped = unzipSync(new Uint8Array(zipBuf));
+                    
+                    try { this.oc.FS.mkdir('/libraries'); this.oc.FS.mkdir('/libraries/BOSL2'); } catch(err) {}
+                    
+                    for (const [path, data] of Object.entries(unzipped)) {
+                        if (!data.length) continue; 
+                        const parts = path.split('/'); parts.shift(); if (!parts.length) continue;
+                        const cleanPath = parts.join('/');
+                        
+                        let currentDir = '/libraries/BOSL2';
+                        for (const p of parts.slice(0, -1)) {
+                            currentDir += '/' + p;
+                            try { this.oc.FS.mkdir(currentDir); } catch(err) {}
+                        }
+                        this.oc.FS.writeFile('/libraries/BOSL2/' + cleanPath, data);
+                    }
+                    
+                    UI.log("BOSL2 Mounted. Engine Ready.");
+                    
+                } catch (e) {
+                    UI.log(`Init Error: ${e.message}`, true);
+                    throw e;
                 }
-                
-                UI.log("BOSL2 Mounted. Engine Ready.");
             },
             
             async run(script) {
@@ -420,7 +388,7 @@
                 await CadEngine.init(); 
                 Viewer.setGeometry(await CadEngine.run(code));
                 UI.log("Mesh Rendered.");
-            } catch(e) { UI.log('Compile Error: ' + e.message, true); }
+            } catch(e) { UI.log(`Compile Error: ${e.message}`, true); }
             UI.enableAll();
         });
 
@@ -432,7 +400,7 @@
                 await CadEngine.init(); 
                 Viewer.setGeometry(await CadEngine.run(code));
                 UI.log("Mesh Rendered.");
-            } catch(e) { UI.log('Compile Error: ' + e.message, true); }
+            } catch(e) { UI.log(`Compile Error: ${e.message}`, true); }
             UI.enableAll();
         });
 
@@ -455,7 +423,7 @@
                 Viewer.setGeometry(await CadEngine.run(aiCode));
                 UI.log("AI Mesh Applied.");
             } catch (e) {
-                UI.log(`Compile Error: ` + (e.message || e), true);
+                UI.log(`Compile Error: ${e.message || e}`, true);
             }
             UI.enableAll();
         });
