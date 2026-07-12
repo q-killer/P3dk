@@ -8,18 +8,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V22.0)</title>
-    
-    <!-- THE SHIM: Prevents NPM packages from hiding their variables -->
-    <script>
-        window.module = { exports: {} };
-        window.exports = window.module.exports;
-    </script>
-    
-    <!-- 100% STATIC DEPENDENCIES (No Dynamic Imports) -->
-    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
-    <script src="https://ochafik.github.io/openscad-wasm/openscad.js"></script>
-
+    <title>PEAK // ANTI-SAAS CAD (V23.0)</title>
     <style>
         :root { 
             --bg: #03050a; 
@@ -47,7 +36,7 @@
         .working { background: var(--magenta) !important; box-shadow: 0 0 10px var(--magenta) !important; animation: pulse 1s infinite alternate; }
         @keyframes pulse { from { opacity: 0.5; } to { opacity: 1; } }
 
-        #log-feed { width: 100%; height: 64px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
+        #log-feed { width: 100%; height: 80px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; }
         .log-line { font-family: 'SF Mono', 'Menlo', 'Courier New', monospace; font-size: 0.7rem; color: var(--text-muted); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 16px; }
         .log-line:last-child { color: var(--cyan); font-weight: bold; }
         .log-error { color: #ff3366 !important; }
@@ -88,7 +77,7 @@
             <div id="status-indicator"></div>
         </div>
         <div id="log-feed">
-            <div class="log-line">SYSTEM READY (V22.0).</div>
+            <div class="log-line">SYSTEM READY (V23.0).</div>
         </div>
         <div id="progress-bar"><div id="progress-fill"></div></div>
     </div>
@@ -129,7 +118,7 @@
                 line.className = 'log-line' + (isError ? ' log-error' : '');
                 line.innerHTML = msg;
                 feed.appendChild(line);
-                if (feed.children.length > 4) feed.removeChild(feed.firstChild);
+                if (feed.children.length > 5) feed.removeChild(feed.firstChild);
             },
             setWorking: (isWorking) => {
                 const dot = document.getElementById('status-indicator');
@@ -233,45 +222,94 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (IRONCLAD ARCHITECTURE) ---
+        // --- OPENSCAD CAD ENGINE (THE GOD-TIER EXTRACTOR) ---
         const CadEngine = {
             oc: null,
             async init() {
                 if(this.oc) return;
                 
                 try {
-                    UI.log("Booting Static Scripts...");
+                    UI.log("Mounting God-Tier Extractor...");
                     
-                    // The factory is guaranteed to be here because of the synchronous <script> tags in the <head>
-                    const factory = window.OpenSCAD || window.Module || window.module?.exports?.OpenSCAD || window.module?.exports;
+                    const CDNS = [
+                        { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm@latest/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm@latest/openscad.wasm' },
+                        { js: 'https://cdn.jsdelivr.net/npm/openscad-wasm@latest/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/openscad-wasm@latest/dist/openscad.wasm' },
+                        { js: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@latest/dist/openscad.js', wasm: 'https://cdn.jsdelivr.net/npm/@jwc/openscad-wasm@latest/dist/openscad.wasm' },
+                        { js: 'https://unpkg.com/openscad-wasm@latest/dist/openscad.js', wasm: 'https://unpkg.com/openscad-wasm@latest/dist/openscad.wasm' }
+                    ];
                     
-                    if (typeof factory !== 'function') {
-                        throw new Error("C++ Factory not found. Ensure script tags loaded in <head>.");
+                    let jsText = null;
+                    let wasmBuffer = null;
+                    let activeWasmUrl = null;
+
+                    for (let c of CDNS) {
+                        try {
+                            const domain = c.js.includes('npm') ? 'jsdelivr' : 'unpkg';
+                            UI.log(`Ping: ${domain}...`);
+                            const [resJs, resWasm] = await Promise.all([fetch(c.js), fetch(c.wasm)]);
+                            if (resJs.ok && resWasm.ok) {
+                                jsText = await resJs.text();
+                                wasmBuffer = await resWasm.arrayBuffer();
+                                activeWasmUrl = c.wasm;
+                                UI.log("-> Payload Secured!");
+                                break;
+                            }
+                        } catch(err) {}
                     }
 
-                    UI.log("Fetching WebAssembly ArrayBuffer...");
-                    
-                    // Fetch the raw WASM file from GitHub Pages to bypass Emscripten 302 stream bugs
-                    const wasmRes = await fetch('https://ochafik.github.io/openscad-wasm/openscad.wasm');
-                    if (!wasmRes.ok) throw new Error("WASM Binary returned 404.");
-                    const wasmBuffer = await wasmRes.arrayBuffer();
+                    if (!jsText || !wasmBuffer) {
+                        UI.log("FATAL: All endpoints 404'd.", true);
+                        throw new Error("No endpoints available.");
+                    }
 
-                    UI.log("Booting OpenSCAD Instance...");
+                    UI.log("Extracting C++ Factory...");
                     
-                    // Inject the raw binary into the factory
+                    // 1. Physically strip ES6 exports so 'new Function' won't crash
+                    jsText = jsText.replace(/export\s+default\s+[a-zA-Z0-9_$]+;?/g, '');
+                    jsText = jsText.replace(/export\s+\{[^}]+\};?/g, '');
+                    
+                    // 2. Wrap it in our aggressive extractor block
+                    const extractorCode = jsText + `
+                        // Aggressively capture the factory no matter where the script hid it
+                        if (typeof OpenSCAD !== 'undefined') return OpenSCAD;
+                        if (typeof Module !== 'undefined' && typeof Module === 'function') return Module;
+                        if (typeof module !== 'undefined' && module.exports) return module.exports.OpenSCAD || module.exports;
+                        if (typeof window !== 'undefined') return window.OpenSCAD || window.Module;
+                        return null;
+                    `;
+                    
+                    // 3. Create a sandbox environment
+                    const env = { module: { exports: {} } };
+                    const factoryFunc = new Function('module', 'exports', 'window', extractorCode);
+                    const factory = factoryFunc(env.module, env.module.exports, window);
+
+                    if (typeof factory !== 'function') {
+                        UI.log("Fatal: Factory missing from extracted script.", true);
+                        throw new Error("C++ Factory missing.");
+                    }
+                    UI.log("-> C++ Factory Extracted!");
+
+                    UI.log("Booting Kernel...");
                     this.oc = await factory({
                         noInitialRun: true,
-                        wasmBinary: wasmBuffer
+                        wasmBinary: wasmBuffer,
+                        locateFile: () => activeWasmUrl
                     });
 
                     UI.log("Fetching BOSL2 Library...");
                     
+                    // Natively fetch FFLate as text to avoid Dynamic Import crashes
+                    const fflateRes = await fetch('https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js');
+                    const fflateText = await fflateRes.text();
+                    const ffFunc = new Function('module', 'exports', 'window', fflateText + '\nreturn module.exports || window.fflate;');
+                    const ffEnv = { module: { exports: {} } };
+                    const fflate = ffFunc(ffEnv.module, ffEnv.module.exports, window);
+
                     const res = await fetch('https://codeload.github.com/BelfrySCAD/BOSL2/zip/refs/heads/master');
                     const zipBuf = await res.arrayBuffer();
                     
                     UI.log("Mounting BOSL2 to Virtual FS...");
-                    // fflate is loaded synchronously in the <head>
-                    const unzipped = window.fflate.unzipSync(new Uint8Array(zipBuf));
+                    const unzipped = fflate.unzipSync(new Uint8Array(zipBuf));
                     
                     try { this.oc.FS.mkdir('/libraries'); this.oc.FS.mkdir('/libraries/BOSL2'); } catch(err) {}
                     
@@ -348,7 +386,7 @@
                                 });
                                 let code = out[0].generated_text.trim();
                                 
-                                // Safely strip markdown using unicode escapes to prevent template literal crashes
+                                // Safely strip markdown
                                 code = code.replace(/\\u0060\\u0060\\u0060openscad/gi, '').replace(/\\u0060\\u0060\\u0060/g, '').trim();
                                 
                                 self.postMessage({ cmd: 'complete', code: code });
