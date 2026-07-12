@@ -8,7 +8,18 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <title>PEAK // ANTI-SAAS CAD (V21.0)</title>
+    <title>PEAK // ANTI-SAAS CAD (V22.0)</title>
+    
+    <!-- THE SHIM: Prevents NPM packages from hiding their variables -->
+    <script>
+        window.module = { exports: {} };
+        window.exports = window.module.exports;
+    </script>
+    
+    <!-- 100% STATIC DEPENDENCIES (No Dynamic Imports) -->
+    <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
+    <script src="https://ochafik.github.io/openscad-wasm/openscad.js"></script>
+
     <style>
         :root { 
             --bg: #03050a; 
@@ -77,7 +88,7 @@
             <div id="status-indicator"></div>
         </div>
         <div id="log-feed">
-            <div class="log-line">SYSTEM READY (V21.0).</div>
+            <div class="log-line">SYSTEM READY (V22.0).</div>
         </div>
         <div id="progress-bar"><div id="progress-fill"></div></div>
     </div>
@@ -222,33 +233,32 @@
         };
         Viewer.init();
 
-        // --- OPENSCAD CAD ENGINE (PURE ESM ARCHITECTURE) ---
+        // --- OPENSCAD CAD ENGINE (IRONCLAD ARCHITECTURE) ---
         const CadEngine = {
             oc: null,
             async init() {
                 if(this.oc) return;
                 
                 try {
-                    UI.log("Importing OpenSCAD ES Module...");
+                    UI.log("Booting Static Scripts...");
                     
-                    // 1. Native ES Module import via ESM.sh (handles all resolution perfectly)
-                    const mod = await import('https://esm.sh/@jwc/openscad-wasm@1.0.1');
-                    const factory = mod.default || mod.OpenSCAD || mod;
+                    // The factory is guaranteed to be here because of the synchronous <script> tags in the <head>
+                    const factory = window.OpenSCAD || window.Module || window.module?.exports?.OpenSCAD || window.module?.exports;
                     
                     if (typeof factory !== 'function') {
-                        throw new Error("Module imported, but exported Factory is invalid.");
+                        throw new Error("C++ Factory not found. Ensure script tags loaded in <head>.");
                     }
 
-                    UI.log("Fetching WASM Binary ArrayBuffer...");
+                    UI.log("Fetching WebAssembly ArrayBuffer...");
                     
-                    // 2. Fetch the raw WASM file from unpkg
-                    const wasmRes = await fetch('https://unpkg.com/@jwc/openscad-wasm@1.0.1/dist/openscad.wasm');
+                    // Fetch the raw WASM file from GitHub Pages to bypass Emscripten 302 stream bugs
+                    const wasmRes = await fetch('https://ochafik.github.io/openscad-wasm/openscad.wasm');
                     if (!wasmRes.ok) throw new Error("WASM Binary returned 404.");
                     const wasmBuffer = await wasmRes.arrayBuffer();
 
                     UI.log("Booting OpenSCAD Instance...");
                     
-                    // 3. Inject the raw binary into the factory
+                    // Inject the raw binary into the factory
                     this.oc = await factory({
                         noInitialRun: true,
                         wasmBinary: wasmBuffer
@@ -256,14 +266,12 @@
 
                     UI.log("Fetching BOSL2 Library...");
                     
-                    // 4. Fetch FFLate entirely as an ES Module
-                    const { unzipSync } = await import('https://esm.sh/fflate@0.8.2');
-                    
                     const res = await fetch('https://codeload.github.com/BelfrySCAD/BOSL2/zip/refs/heads/master');
                     const zipBuf = await res.arrayBuffer();
                     
                     UI.log("Mounting BOSL2 to Virtual FS...");
-                    const unzipped = unzipSync(new Uint8Array(zipBuf));
+                    // fflate is loaded synchronously in the <head>
+                    const unzipped = window.fflate.unzipSync(new Uint8Array(zipBuf));
                     
                     try { this.oc.FS.mkdir('/libraries'); this.oc.FS.mkdir('/libraries/BOSL2'); } catch(err) {}
                     
@@ -444,4 +452,3 @@
 
 
 ```
-
