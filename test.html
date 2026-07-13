@@ -3,362 +3,322 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PEAK // CAD ENGINE TEST v2</title>
+<title>PEAK // CAD v4</title>
 <style>
-  :root{--bg:#03050a;--cyan:#00ffcc;--magenta:#ff00ff;--glass:rgba(15,20,30,.7);--muted:#8892b0}
+  :root{--bg:#03050a;--cy:#00ffcc;--mg:#ff00ff;--mut:#8892b0}
   *{box-sizing:border-box}
   body,html{margin:0;height:100%;overflow:hidden;background:var(--bg);color:#f0f0f5;
     font-family:-apple-system,"Segoe UI",Roboto,sans-serif}
   canvas{position:absolute;inset:0;width:100vw;height:100vh;z-index:1}
-  #console{position:absolute;top:env(safe-area-inset-top,10px);left:50%;transform:translateX(-50%);
-    width:94vw;max-width:440px;z-index:20;background:rgba(5,8,15,.88);backdrop-filter:blur(20px);
-    border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px 14px;pointer-events:none}
-  .logo{font-weight:800;letter-spacing:2px;font-size:.85rem;margin-bottom:5px}
-  .logo span{color:var(--cyan)}
-  #feed{height:110px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
-  .line{font-family:ui-monospace,Menlo,monospace;font-size:.65rem;color:var(--muted);
-    line-height:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .err{color:#ff3366!important}
-  .ok{color:#00ff88!important;font-weight:700}
-  .hi{color:var(--cyan);font-weight:700}
-  #panel{position:absolute;bottom:env(safe-area-inset-bottom,12px);left:50%;transform:translateX(-50%);
-    width:94vw;max-width:440px;z-index:20;background:var(--glass);backdrop-filter:blur(24px);
-    border:1px solid rgba(255,255,255,.08);border-radius:18px;padding:14px}
-  .title{font-size:.65rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);
-    margin-bottom:8px;font-weight:600}
-  .btn{display:block;width:100%;background:rgba(0,255,204,.1);color:var(--cyan);
-    border:1px solid rgba(0,255,204,.3);border-radius:9px;padding:10px;margin-bottom:6px;
-    font-weight:600;font-size:.8rem;cursor:pointer;transition:.15s;text-align:left}
-  .btn:active:not(:disabled){background:var(--cyan);color:#000;transform:scale(.98)}
-  .btn:disabled{opacity:.4;cursor:wait;filter:grayscale(1)}
-  .btn.m{background:rgba(255,0,255,.1);color:var(--magenta);border-color:rgba(255,0,255,.4)}
-  .btn.m:active:not(:disabled){background:var(--magenta);color:#fff}
-  #code{background:#000;border-radius:7px;padding:9px;font-family:ui-monospace,monospace;
-    font-size:.62rem;color:#889;height:62px;overflow-y:auto;white-space:pre-wrap;margin-top:6px}
+  #con{position:absolute;top:env(safe-area-inset-top,8px);left:50%;transform:translateX(-50%);
+    width:95vw;max-width:460px;z-index:20;background:rgba(5,8,15,.9);backdrop-filter:blur(18px);
+    border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:9px 13px;pointer-events:none}
+  .logo{font-weight:800;letter-spacing:2px;font-size:.8rem;margin-bottom:4px}
+  .logo span{color:var(--cy)}
+  #feed{height:130px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end}
+  .ln{font-family:ui-monospace,Menlo,monospace;font-size:.62rem;color:var(--mut);line-height:14px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .er{color:#ff3366!important}.ok{color:#00ff88!important;font-weight:700}
+  .hi{color:var(--cy)!important;font-weight:700}.wn{color:#ffaa00!important}
+  #pan{position:absolute;bottom:env(safe-area-inset-bottom,10px);left:50%;transform:translateX(-50%);
+    width:95vw;max-width:460px;z-index:20;background:rgba(15,20,30,.72);backdrop-filter:blur(22px);
+    border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:12px}
+  .t{font-size:.6rem;text-transform:uppercase;letter-spacing:1.4px;color:var(--mut);
+    margin-bottom:7px;font-weight:600}
+  .b{display:block;width:100%;background:rgba(0,255,204,.1);color:var(--cy);
+    border:1px solid rgba(0,255,204,.3);border-radius:8px;padding:9px;margin-bottom:5px;
+    font-weight:600;font-size:.76rem;cursor:pointer;text-align:left}
+  .b:active:not(:disabled){background:var(--cy);color:#000}
+  .b:disabled{opacity:.4;cursor:wait;filter:grayscale(1)}
+  .b.m{background:rgba(255,0,255,.1);color:var(--mg);border-color:rgba(255,0,255,.4)}
+  .b.m:active:not(:disabled){background:var(--mg);color:#fff}
+  #cd{background:#000;border-radius:6px;padding:8px;font-family:ui-monospace,monospace;
+    font-size:.6rem;color:#889;height:56px;overflow-y:auto;white-space:pre-wrap;margin-top:5px}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
-
-<div id="console">
-  <div class="logo">PEAK<span>//</span> ENGINE TEST v2</div>
-  <div id="feed"><div class="line hi">Run tests in order. Stop at first failure.</div></div>
+<div id="con">
+  <div class="logo">PEAK<span>//</span> CAD v4</div>
+  <div id="feed"><div class="ln hi">Press 1. Args are now minimal (the real fix).</div></div>
 </div>
-
-<div id="panel">
-  <div class="title">Acceptance Ladder</div>
-  <button class="btn" id="t0">0 · version check — is OpenSCAD ≥ 2021.01?</button>
-  <button class="btn" id="t1">1 · cube(10) — proves kernel</button>
-  <button class="btn" id="t2">2 · rebuild — proves noExitRuntime</button>
-  <button class="btn m" id="t3">3 · BOSL2 chamfered cuboid</button>
-  <button class="btn m" id="t4">4 · sphere + 2 chamfered holes</button>
-  <div id="code">// SCAD source appears here</div>
+<div id="pan">
+  <div class="t">Acceptance Ladder</div>
+  <button class="b" id="t1">1 · cube(10) — proves kernel</button>
+  <button class="b" id="t2">2 · rebuild — proves noExitRuntime</button>
+  <button class="b m" id="t3">3 · BOSL2 chamfered cuboid</button>
+  <button class="b m" id="t4">4 · sphere + 2 chamfered holes</button>
+  <button class="b" id="t0">0 · version probe (optional)</button>
+  <div id="cd">// source appears here</div>
 </div>
 
 <script type="module">
-import * as THREE       from 'https://esm.sh/three@0.160.0';
+import * as THREE        from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { STLLoader }     from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/STLLoader.js';
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   WHY THE PREVIOUS BUILD ABORTED (ptr 1024512) — ROOT CAUSE, CONFIRMED
-   ───────────────────────────────────────────────────────────────────────────
-   BOSL2/std.scad line 8 is a HARD VERSION ASSERT:
+   THE REAL BUG — found by reading openscad-wasm's OWN wrapper source.
+   Its canonical renderToStl() is:
 
-       assert(version_num()>=20210100,
-              "BOSL2 requires OpenSCAD version 2021.01 or later.");
+       instance.callMain(["/input.scad", "-o", "/output.stl"]);
 
-   ochafik.com hosts an OLD OpenSCAD build. When BOSL2's assert fires, OpenSCAD
-   calls abort() → the WASM traps → Emscripten throws a raw C++ pointer.
-   That pointer (1024512 / 1025200) IS the assertion failure. It was never an
-   OOM, and it was never the "-I" flag.
+   NO --enable=manifold. NO -I. This build ABORTS DURING ARGUMENT PARSING on
+   unrecognized flags — which happens BEFORE any output is written, so stderr
+   is EMPTY and Emscripten throws only a raw pointer. That is precisely why
+   every failure read "C++ abort (ptr …), no stderr" — even for cube(10).
 
-   NOTE: Gemini's INITIAL_MEMORY / TOTAL_MEMORY / ALLOW_MEMORY_GROWTH options are
-   NO-OPS here. Those are Emscripten COMPILE-TIME settings baked into the .wasm;
-   passing them to an already-compiled module does nothing.
+   (Gemini was right to drop -I. I was wrong to insist on it.)
 
-   THE FIX: use a MODERN build. openscad-wasm@0.0.4 (npm, published 2025-07)
-   embeds the wasm inside a single 13.6MB ES module — no sibling .wasm to
-   resolve, no locateFile, and jsDelivr's /npm/ endpoint sends CORS headers.
-   It exports { createOpenSCAD } (NOT a default export — that's why mod.default
-   was undefined), already sets noInitialRun + noExitRuntime, and exposes
-   getInstance() → the Emscripten module with .FS and .callMain.
+   THEREFORE:
+     • Default args are MINIMAL — exactly what the library itself uses.
+     • Extra flags are ESCALATED optionally and retried away on ANY abort,
+       never keyed off stderr (which is empty for arg-parse aborts).
+     • BOSL2 is mounted at /BOSL2 (root). Since /in.scad lives at /, the
+       include <BOSL2/std.scad> resolves relatively — no -I needed.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const CONFIG = {
-  // Modern build (2025). Single file, wasm embedded, CORS-clean, has manifold.
-  OPENSCAD_NPM: 'https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js',
-  // Legacy fallback ONLY. Known to be too old for BOSL2 (fails the version assert).
-  OPENSCAD_OLD: 'https://ochafik.com/openscad/openscad.js',
-  BOSL2_BASE:   'https://cdn.jsdelivr.net/gh/BelfrySCAD/BOSL2@master/'
-};
-
-/* BOSL2 — VERIFIED transitive closure of `include <BOSL2/std.scad>`, computed by
-   recursively parsing every include directive in the real repo. Exactly 32 files.
-   The old list fetched 3 files that DON'T EXIST (mutators/masks3d/masks2d → 404,
-   silently skipped) and OMITTED 3 that are required: masks, miscellaneous, builtins. */
-const BOSL2_FILES = [
-  'affine.scad','attachments.scad','beziers.scad','builtins.scad','color.scad',
-  'comparisons.scad','constants.scad','coords.scad','distributors.scad','drawing.scad',
-  'geometry.scad','linalg.scad','lists.scad','masks.scad','math.scad',
-  'miscellaneous.scad','partitions.scad','paths.scad','regions.scad','rounding.scad',
-  'shapes2d.scad','shapes3d.scad','skin.scad','std.scad','strings.scad',
-  'structs.scad','transforms.scad','trigonometry.scad','utility.scad','vectors.scad',
-  'version.scad','vnf.scad'
+const SOURCES = [
+  { name:'npm openscad-wasm@0.0.4 (2025, wasm embedded)',
+    url:'https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js',
+    pick:m=>m.createOpenSCAD, wrap:true },            // NAMED export; .default is undefined
+  { name:'your repo (raw.githack)',
+    url:'https://raw.githack.com/q-killer/P3dK/main/wasm/openscad.js',
+    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false },
+  { name:'ochafik (legacy)',
+    url:'https://ochafik.com/openscad/openscad.js',
+    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false }
 ];
 
-/* ── UI ─────────────────────────────────────────────────────────────────── */
+/* Exact transitive closure of `include <BOSL2/std.scad>` — 32 files, verified by
+   recursively parsing every include in the real repo. Confirmed mounting 32/32. */
+const BOSL2 = ['affine.scad','attachments.scad','beziers.scad','builtins.scad','color.scad',
+ 'comparisons.scad','constants.scad','coords.scad','distributors.scad','drawing.scad',
+ 'geometry.scad','linalg.scad','lists.scad','masks.scad','math.scad','miscellaneous.scad',
+ 'partitions.scad','paths.scad','regions.scad','rounding.scad','shapes2d.scad','shapes3d.scad',
+ 'skin.scad','std.scad','strings.scad','structs.scad','transforms.scad','trigonometry.scad',
+ 'utility.scad','vectors.scad','version.scad','vnf.scad'];
+const BOSL2_URL = 'https://cdn.jsdelivr.net/gh/BelfrySCAD/BOSL2@master/';
+
+const $ = id => document.getElementById(id);
 const UI = {
-  log(msg, cls = '') {
-    const feed = document.getElementById('feed');
-    const el = document.createElement('div');
-    el.className = 'line ' + cls;
-    el.textContent = msg;
-    feed.appendChild(el);
-    while (feed.children.length > 7) feed.removeChild(feed.firstChild);
-  },
-  code(t) { document.getElementById('code').textContent = t; },
-  busy(b) { document.querySelectorAll('.btn').forEach(x => x.disabled = b); }
+  log(m,c=''){ const f=$('feed'),e=document.createElement('div');
+    e.className='ln '+c; e.textContent=m; f.appendChild(e);
+    while(f.children.length>9) f.removeChild(f.firstChild); },
+  code(t){ $('cd').textContent=t; },
+  busy(b){ document.querySelectorAll('.b').forEach(x=>x.disabled=b); }
 };
 
 /* ── VIEWER ─────────────────────────────────────────────────────────────── */
-const Viewer = {
-  init() {
-    this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x03050a, 0.010);
-    this.cam = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 0.1, 2000);
-    this.cam.position.set(80, 80, 100);
-    this.r = new THREE.WebGLRenderer({ canvas: document.getElementById('cv'), antialias: true });
-    this.r.setSize(innerWidth, innerHeight);
-    this.r.setPixelRatio(Math.min(devicePixelRatio, 2));
-    this.r.toneMapping = THREE.ACESFilmicToneMapping;
-    this.ctl = new OrbitControls(this.cam, this.r.domElement);
-    this.ctl.enableDamping = true; this.ctl.autoRotate = true; this.ctl.autoRotateSpeed = 1.2;
-    this.scene.add(new THREE.GridHelper(300, 30, 0x111111, 0x0a0a0a));
-    this.scene.add(new THREE.AmbientLight(0xffffff, .6));
-    const k = new THREE.DirectionalLight(0x00ffcc, 3.5); k.position.set(40, 60, 40);
-    const f = new THREE.DirectionalLight(0xff00ff, 1.8); f.position.set(-40, -10, -40);
-    this.scene.add(k, f);
-    addEventListener('resize', () => {
-      this.cam.aspect = innerWidth / innerHeight; this.cam.updateProjectionMatrix();
-      this.r.setSize(innerWidth, innerHeight);
-    });
-    const loop = () => { requestAnimationFrame(loop); this.ctl.update(); this.r.render(this.scene, this.cam); };
+const V = {
+  init(){
+    this.s=new THREE.Scene(); this.s.fog=new THREE.FogExp2(0x03050a,.01);
+    this.c=new THREE.PerspectiveCamera(40,innerWidth/innerHeight,.1,2000);
+    this.c.position.set(80,80,100);
+    this.r=new THREE.WebGLRenderer({canvas:$('cv'),antialias:true});
+    this.r.setSize(innerWidth,innerHeight);
+    this.r.setPixelRatio(Math.min(devicePixelRatio,2));
+    this.r.toneMapping=THREE.ACESFilmicToneMapping;
+    this.o=new OrbitControls(this.c,this.r.domElement);
+    this.o.enableDamping=true; this.o.autoRotate=true; this.o.autoRotateSpeed=1.2;
+    this.s.add(new THREE.GridHelper(300,30,0x111111,0x0a0a0a));
+    this.s.add(new THREE.AmbientLight(0xffffff,.6));
+    const k=new THREE.DirectionalLight(0x00ffcc,3.5); k.position.set(40,60,40);
+    const f=new THREE.DirectionalLight(0xff00ff,1.8); f.position.set(-40,-10,-40);
+    this.s.add(k,f);
+    addEventListener('resize',()=>{ this.c.aspect=innerWidth/innerHeight;
+      this.c.updateProjectionMatrix(); this.r.setSize(innerWidth,innerHeight); });
+    const loop=()=>{ requestAnimationFrame(loop); this.o.update(); this.r.render(this.s,this.c); };
     loop();
   },
-  set(geo) {
-    if (this.mesh) { this.mesh.geometry.dispose(); this.scene.remove(this.mesh); }
-    geo.computeBoundingBox();
-    const c = new THREE.Vector3(); geo.boundingBox.getCenter(c);
-    geo.translate(-c.x, -c.y, -c.z);
-    geo.computeVertexNormals();
-    geo.computeBoundingSphere();
-    this.mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
-      color: 0x1a2030, metalness: .55, roughness: .35,
-      polygonOffset: true, polygonOffsetFactor: 1
-    }));
-    this.mesh.add(new THREE.LineSegments(
-      new THREE.EdgesGeometry(geo),
-      new THREE.LineBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: .35 })
-    ));
-    this.mesh.rotation.x = -Math.PI / 2;          // STL is Z-up
-    this.scene.add(this.mesh);
-    const rad = (geo.boundingSphere && geo.boundingSphere.radius) || 30;
-    this.cam.position.set(rad * 1.9, rad * 1.9, rad * 2.3);
-    this.ctl.target.set(0, 0, 0); this.ctl.update();
+  set(g){
+    if(this.m){ this.m.geometry.dispose(); this.s.remove(this.m); }
+    g.computeBoundingBox();
+    const c=new THREE.Vector3(); g.boundingBox.getCenter(c);
+    g.translate(-c.x,-c.y,-c.z); g.computeVertexNormals(); g.computeBoundingSphere();
+    this.m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({
+      color:0x1a2030,metalness:.55,roughness:.35,polygonOffset:true,polygonOffsetFactor:1}));
+    this.m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g),
+      new THREE.LineBasicMaterial({color:0x00ffcc,transparent:true,opacity:.35})));
+    this.m.rotation.x=-Math.PI/2;                    // STL is Z-up
+    this.s.add(this.m);
+    const rad=(g.boundingSphere&&g.boundingSphere.radius)||30;
+    this.c.position.set(rad*1.9,rad*1.9,rad*2.3);
+    this.o.target.set(0,0,0); this.o.update();
   }
 };
-Viewer.init();
+V.init();
 
-/* ── CAD ENGINE ─────────────────────────────────────────────────────────── */
+/* ── CAD ────────────────────────────────────────────────────────────────── */
 const Cad = {
-  inst: null,        // the Emscripten module (has .FS and .callMain)
-  bosl2: false,
-  manifold: true,    // flipped off automatically if the flag is rejected
-  out: '',           // captured stdout  (echo() lands here)
-  err: '',           // captured stderr  (assert messages land here)
+  inst:null, src:null, bosl2:false,
+  flags:null,          // discovered good flag set; null = not yet probed
+  out:'', err:'',
 
-  async initKernel() {
-    if (this.inst) return;
+  _opts(){ return {
+    noInitialRun:true, noExitRuntime:true,
+    print:    t=>{ this.out+=t+'\n'; console.log('[scad]',t); },
+    printErr: t=>{ this.err+=t+'\n'; console.warn('[scad:err]',t); }
+  }; },
 
-    const opts = {
-      print:    t => { this.out += t + '\n'; console.log('[SCAD]', t); },
-      printErr: t => { this.err += t + '\n'; console.warn('[SCAD:err]', t); }
-    };
-
-    // --- try the MODERN npm build first ---
-    try {
-      UI.log('Loading openscad-wasm@0.0.4 (13.6MB, wasm embedded)…');
-      const mod = await import(/* @vite-ignore */ CONFIG.OPENSCAD_NPM);
-      // NAMED export — NOT default. mod.default is undefined here.
-      const createOpenSCAD = mod.createOpenSCAD;
-      if (!createOpenSCAD) throw new Error('createOpenSCAD not exported');
-
-      const wrapper = await createOpenSCAD(opts);   // sets noInitialRun/noExitRuntime itself
-      this.inst = wrapper.getInstance();            // → Emscripten module
-      if (!this.inst || !this.inst.FS) throw new Error('getInstance() gave no FS');
-      UI.log('KERNEL READY (modern build)', 'ok');
-      return;
-    } catch (e) {
-      UI.log(`modern build failed: ${e.message}`, 'err');
+  async _boot(s){
+    const mod = await import(/* @vite-ignore */ s.url);
+    const f = s.pick(mod);
+    if(!f) throw new Error('no factory export');
+    if(s.wrap){
+      const w = await f(this._opts());       // createOpenSCAD → {getInstance, renderToStl}
+      const i = w.getInstance();
+      if(!i || !i.FS) throw new Error('getInstance() gave no FS');
+      return i;
     }
-
-    // --- fallback: legacy ochafik build (too old for BOSL2, but proves the kernel) ---
-    UI.log('Falling back to legacy build…', 'err');
-    const mod = await import(/* @vite-ignore */ CONFIG.OPENSCAD_OLD);
-    const factory = mod.default || mod.OpenSCAD ||
-                    Object.values(mod).find(v => typeof v === 'function');
-    if (!factory) throw new Error('No factory export in legacy openscad.js');
-    this.inst = await factory({ noInitialRun: true, noExitRuntime: true, ...opts });
-    if (!this.inst.FS) throw new Error('FS API missing');
-    UI.log('KERNEL READY (LEGACY — BOSL2 will likely fail)', 'err');
+    const i = await f(this._opts());
+    if(!i.FS) throw new Error('no FS API');
+    return i;
   },
 
-  /* Runs OpenSCAD and returns captured stdout. Used by the version probe. */
-  async probe(scad) {
-    this.out = ''; this.err = '';
-    this.inst.FS.writeFile('/probe.scad', scad);
-    try { this.inst.callMain(['/probe.scad', '-o', '/probe.echo']); }
-    catch (e) { /* echo-only scripts exit non-zero; that's fine */ }
-    return this.out + this.err;
+  async init(){
+    if(this.inst) return;
+    for(const s of SOURCES){
+      UI.log(`↓ ${s.name}`);
+      try{
+        this.inst = await this._boot(s);
+        this.src = s;
+        UI.log('KERNEL READY', 'ok');
+        return;
+      }catch(e){
+        UI.log(`   ✗ ${e.message}`, 'er');
+        console.error(`[${s.name}]`, e);
+      }
+    }
+    throw new Error('No kernel could be loaded.');
   },
 
-  /* BOSL2 mount — separate concern. A failure here must NEVER be reported as a
-     kernel failure (that misdiagnosis caused two bogus engine pivots). */
-  async mountBOSL2() {
-    if (this.bosl2) return;
-    UI.log(`Fetching BOSL2 (${BOSL2_FILES.length} files, ~2.7MB)…`);
-    try { this.inst.FS.mkdir('/libraries'); } catch {}
-    try { this.inst.FS.mkdir('/libraries/BOSL2'); } catch {}
-
-    const got = await Promise.all(BOSL2_FILES.map(async f => {
-      const r = await fetch(CONFIG.BOSL2_BASE + f);
-      if (!r.ok) { UI.log(`  ✗ ${f} → HTTP ${r.status}`, 'err'); return null; }
+  async mountBOSL2(){
+    if(this.bosl2) return;
+    UI.log(`Fetching BOSL2 (${BOSL2.length} files)…`);
+    // Mount at ROOT. /in.scad lives at /, so `include <BOSL2/std.scad>` resolves
+    // relative to it — no -I flag needed (and -I aborts this build).
+    try{ this.inst.FS.mkdir('/BOSL2'); }catch{}
+    const got = await Promise.all(BOSL2.map(async f=>{
+      const r = await fetch(BOSL2_URL+f);
+      if(!r.ok){ UI.log(`   ✗ ${f} → ${r.status}`,'er'); return null; }
       return [f, new Uint8Array(await r.arrayBuffer())];
     }));
-
-    let n = 0;
-    for (const hit of got) {
-      if (!hit) continue;
-      this.inst.FS.writeFile('/libraries/BOSL2/' + hit[0], hit[1]);
-      n++;
-    }
-    // Every file must land — ONE missing include aborts the parser.
-    if (n < BOSL2_FILES.length)
-      throw new Error(`BOSL2 incomplete: ${n}/${BOSL2_FILES.length}`);
-
+    let n=0;
+    for(const h of got){ if(h){ this.inst.FS.writeFile('/BOSL2/'+h[0], h[1]); n++; } }
+    if(n<BOSL2.length) throw new Error(`BOSL2 incomplete: ${n}/${BOSL2.length}`);
     this.bosl2 = true;
-    UI.log(`BOSL2 MOUNTED (${n}/${BOSL2_FILES.length})`, 'ok');
+    UI.log(`BOSL2 MOUNTED (${n}/${BOSL2.length})`, 'ok');
   },
 
-  async run(scad) {
-    if (scad.includes('BOSL2') && !this.bosl2)
-      throw new Error('BOSL2 not mounted');
+  /* One compile attempt with an exact arg list. Returns STL bytes or throws. */
+  _attempt(args){
+    this.out=''; this.err='';
+    try{ this.inst.FS.unlink('/out.stl'); }catch{}
+    let abort = null;
+    try{ this.inst.callMain(args); }
+    catch(e){ if(!(e && e.name==='ExitStatus' && e.status===0)) abort = e; }
 
-    this.out = ''; this.err = '';
+    let stl = null;
+    try{ stl = this.inst.FS.readFile('/out.stl'); }catch{}
+
+    if(stl && stl.length){ this.inst.FS.unlink('/out.stl'); return stl; }
+
+    const diag = (this.err||'').trim();
+    const ptr  = (typeof abort === 'number') ? ` (ptr ${abort})` : '';
+    const e = new Error(diag ? diag.split('\n')[0] : `abort${ptr}, no stderr`);
+    e.aborted = !!abort;
+    e.diag = diag;
+    throw e;
+  },
+
+  async run(scad){
+    if(scad.includes('BOSL2') && !this.bosl2) throw new Error('BOSL2 not mounted');
     this.inst.FS.writeFile('/in.scad', scad);
-    try { this.inst.FS.unlink('/out.stl'); } catch {}
 
-    const args = [];
-    if (this.manifold) args.push('--enable=manifold');
-    args.push('-I', '/libraries', '/in.scad', '-o', '/out.stl');
+    // ARG STRATEGIES, best → safest. The MINIMAL form is what the library's own
+    // renderToStl() uses, so it is guaranteed-valid for this build.
+    // We retry on ANY abort — NOT on stderr text — because an arg-parse abort
+    // produces no stderr at all. That's what defeated every earlier retry.
+    const S = [
+      { tag:'manifold', args:['--enable=manifold','/in.scad','-o','/out.stl'] },
+      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] }          // ← canonical
+    ];
+    // Once a strategy is known good, skip straight to it.
+    const list = this.flags ? [this.flags] : S;
 
-    UI.log(`Compiling${this.manifold ? ' [manifold]' : ' [CGAL]'}…`);
-    await new Promise(r => setTimeout(r, 20));   // let the UI paint
-
-    let aborted = null;
-    try {
-      this.inst.callMain(args);
-    } catch (e) {
-      if (e && e.name === 'ExitStatus' && e.status === 0) { /* clean */ }
-      else aborted = e;
-    }
-
-    // Surface the REAL reason. stderr holds the assert / parse message; the raw
-    // pointer alone is useless, which is exactly why this kept getting misread.
-    const diag = (this.err || '').trim();
-
-    if (aborted) {
-      if (/manifold/i.test(diag) && this.manifold) {
-        UI.log('manifold rejected — retrying on CGAL…', 'err');
-        this.manifold = false;
-        return this.run(scad);
+    let last = null;
+    for(const s of list){
+      UI.log(`Compiling [${s.tag}]…`);
+      await new Promise(r=>setTimeout(r,20));
+      try{
+        const stl = this._attempt(s.args);
+        if(!this.flags){ this.flags = s; UI.log(`args OK: ${s.tag}`, 'ok'); }
+        UI.log(`STL ${(stl.length/1024).toFixed(1)} KB`, 'ok');
+        return new STLLoader().parse(stl.slice().buffer);   // slice() → byteOffset 0
+      }catch(e){
+        last = e;
+        UI.log(`   [${s.tag}] ${e.message}`, 'wn');
+        // A REAL SCAD error (assert / syntax) will have stderr text. Don't keep
+        // retrying arg variants for that — surface it.
+        if(e.diag) break;
       }
-      if (/requires OpenSCAD version/i.test(diag))
-        throw new Error('BOSL2 version assert: this OpenSCAD build is < 2021.01');
-      const ptr = (typeof aborted === 'number') ? ` (ptr ${aborted})` : '';
-      throw new Error(diag ? `OpenSCAD: ${diag.split('\n')[0]}` : `C++ abort${ptr}, no stderr`);
     }
-
-    let stl;
-    try { stl = this.inst.FS.readFile('/out.stl'); }
-    catch {
-      if (/manifold/i.test(diag) && this.manifold) {
-        UI.log('manifold unsupported — retrying on CGAL…', 'err');
-        this.manifold = false;
-        return this.run(scad);
-      }
-      throw new Error(diag ? diag.split('\n')[0] : 'No STL produced');
-    }
-    if (!stl.length) throw new Error('Empty STL — geometry is null');
-    this.inst.FS.unlink('/out.stl');
-
-    UI.log(`STL ${(stl.length / 1024).toFixed(1)} KB — parsing…`);
-    return new STLLoader().parse(stl.slice().buffer);   // slice() → byteOffset 0
+    if(last && last.diag && /requires OpenSCAD version/i.test(last.diag))
+      throw new Error('BOSL2 assert: engine older than 2021.01');
+    throw last || new Error('compile failed');
   }
 };
 
 /* ── TESTS ──────────────────────────────────────────────────────────────── */
 const SRC = {
-  ver: 'echo(str("OPENSCAD_VERSION_NUM=", version_num()));\ncube(1);',
-  t1:  'cube(10);',
-  t3:  'include <BOSL2/std.scad>\ncuboid([20,20,20], chamfer=2);',
-  t4:  `include <BOSL2/std.scad>
-difference() {
-  sphere(d=76.2);              // 3 inch
-  zcyl(d=10, h=100, chamfer=6);
-  xcyl(d=12, h=100, chamfer=6);
-}`
+  t1:'cube(10);',
+  t3:'include <BOSL2/std.scad>\ncuboid([20,20,20], chamfer=2);',
+  t4:'include <BOSL2/std.scad>\ndifference() {\n  sphere(d=76.2);\n  zcyl(d=10, h=100, chamfer=6);\n  xcyl(d=12, h=100, chamfer=6);\n}'
 };
 
-/* TEST 0 — the diagnostic that would have saved days.
-   Prints the engine's version_num(). BOSL2 asserts >= 20210100. */
-document.getElementById('t0').onclick = async () => {
-  UI.busy(true); UI.code(SRC.ver);
-  try {
-    await Cad.initKernel();
-    const outp = await Cad.probe(SRC.ver);
-    const m = outp.match(/OPENSCAD_VERSION_NUM=(\d+)/);
-    if (!m) { UI.log('Could not read version — see console', 'err'); console.log(outp); }
-    else {
-      const v = parseInt(m[1], 10);
-      UI.log(`version_num() = ${v}`, 'hi');
-      if (v >= 20210100) UI.log('≥ 2021.01 → BOSL2 WILL WORK', 'ok');
-      else UI.log(`< 2021.01 → BOSL2 assert WILL abort (this was the bug)`, 'err');
-    }
-  } catch (e) { UI.log(e.message, 'err'); console.error(e); }
-  UI.busy(false);
-};
-
-async function runTest(scad, needBosl) {
+async function run(scad, bosl){
   UI.busy(true); UI.code(scad);
-  try {
-    await Cad.initKernel();
-    if (needBosl) await Cad.mountBOSL2();
-    Viewer.set(await Cad.run(scad));
-    UI.log('MESH RENDERED ✓', 'ok');
-  } catch (e) {
-    UI.log(String(e.message).split('\n')[0], 'err');
-    if (Cad.err) UI.log('stderr: ' + Cad.err.trim().split('\n')[0], 'err');
-    console.error(e, '\n--- stderr ---\n', Cad.err, '\n--- stdout ---\n', Cad.out);
+  try{
+    await Cad.init();
+    if(bosl) await Cad.mountBOSL2();
+    V.set(await Cad.run(scad));
+    UI.log('MESH RENDERED ✓','ok');
+  }catch(e){
+    UI.log(String(e.message).split('\n')[0],'er');
+    console.error(e,'\n--stderr--\n',Cad.err,'\n--stdout--\n',Cad.out);
   }
   UI.busy(false);
 }
 
-document.getElementById('t1').onclick = () => runTest(SRC.t1, false);
-document.getElementById('t2').onclick = () => runTest(SRC.t1, false);   // second call
-document.getElementById('t3').onclick = () => runTest(SRC.t3, true);
-document.getElementById('t4').onclick = () => runTest(SRC.t4, true);
+$('t1').onclick = () => run(SRC.t1,false);
+$('t2').onclick = () => run(SRC.t1,false);
+$('t3').onclick = () => run(SRC.t3,true);
+$('t4').onclick = () => run(SRC.t4,true);
+
+/* Optional: version probe. Uses MINIMAL args (a bogus -o suffix or an unknown
+   flag would abort during arg parsing and tell us nothing). */
+$('t0').onclick = async () => {
+  UI.busy(true); UI.code('echo(version());  // minimal args only');
+  try{
+    await Cad.init();
+    Cad.out=''; Cad.err='';
+    Cad.inst.FS.writeFile('/v.scad','echo(str("VER=",version_num()));\ncube(1);');
+    try{ Cad.inst.callMain(['/v.scad','-o','/v.stl']); }catch(e){}
+    const raw = Cad.out + Cad.err;
+    console.log('[version probe raw]', JSON.stringify(raw));
+    const m = raw.match(/VER=(\d+)/);
+    if(m){
+      const v = parseInt(m[1],10);
+      UI.log(`version_num() = ${v}`, 'hi');
+      UI.log(v>=20210100 ? '≥ 2021.01 → BOSL2 supported' : '< 2021.01 → BOSL2 will assert',
+             v>=20210100 ? 'ok':'er');
+    } else {
+      UI.log(raw.trim() ? 'output captured but no VER — see console' : 'no output captured', 'wn');
+    }
+  }catch(e){ UI.log(e.message,'er'); console.error(e); }
+  UI.busy(false);
+};
 </script>
 </body>
 </html>
