@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PEAK // CAD v4</title>
+<title>PEAK // CAD v5</title>
 <style>
   :root{--bg:#03050a;--cy:#00ffcc;--mg:#ff00ff;--mut:#8892b0}
   *{box-sizing:border-box}
@@ -39,8 +39,8 @@
 <body>
 <canvas id="cv"></canvas>
 <div id="con">
-  <div class="logo">PEAK<span>//</span> CAD v4</div>
-  <div id="feed"><div class="ln hi">Press 1. Args are now minimal (the real fix).</div></div>
+  <div class="logo">PEAK<span>//</span> CAD v5</div>
+  <div id="feed"><div class="ln hi">Fresh kernel per build — fixes the 2nd-click abort.</div></div>
 </div>
 <div id="pan">
   <div class="t">Acceptance Ladder</div>
@@ -151,8 +151,11 @@ V.init();
 
 /* ── CAD ────────────────────────────────────────────────────────────────── */
 const Cad = {
-  inst:null, src:null, bosl2:false,
-  flags:null,          // discovered good flag set; null = not yet probed
+  factory:null,        // the imported WASM factory — cached (import once)
+  wrap:false,          // does the factory return a {getInstance()} wrapper?
+  srcName:'',
+  bosl2:null,          // BOSL2 file BYTES cached in RAM — fetched once
+  flags:null,          // discovered-good arg set
   out:'', err:'',
 
   _opts(){ return {
@@ -161,29 +164,18 @@ const Cad = {
     printErr: t=>{ this.err+=t+'\n'; console.warn('[scad:err]',t); }
   }; },
 
-  async _boot(s){
-    const mod = await import(/* @vite-ignore */ s.url);
-    const f = s.pick(mod);
-    if(!f) throw new Error('no factory export');
-    if(s.wrap){
-      const w = await f(this._opts());       // createOpenSCAD → {getInstance, renderToStl}
-      const i = w.getInstance();
-      if(!i || !i.FS) throw new Error('getInstance() gave no FS');
-      return i;
-    }
-    const i = await f(this._opts());
-    if(!i.FS) throw new Error('no FS API');
-    return i;
-  },
-
-  async init(){
-    if(this.inst) return;
+  /* Import the factory ONCE. The 13.6MB module is cached by the browser, so
+     re-instantiating later is fast (no re-download). */
+  async initFactory(){
+    if(this.factory) return;
     for(const s of SOURCES){
       UI.log(`↓ ${s.name}`);
       try{
-        this.inst = await this._boot(s);
-        this.src = s;
-        UI.log('KERNEL READY', 'ok');
+        const mod = await import(/* @vite-ignore */ s.url);
+        const f = s.pick(mod);
+        if(!f) throw new Error('no factory export');
+        this.factory = f; this.wrap = s.wrap; this.srcName = s.name;
+        UI.log('FACTORY READY', 'ok');
         return;
       }catch(e){
         UI.log(`   ✗ ${e.message}`, 'er');
@@ -193,75 +185,97 @@ const Cad = {
     throw new Error('No kernel could be loaded.');
   },
 
-  async mountBOSL2(){
+  /* Fetch BOSL2 bytes ONCE, keep them in RAM. They get re-mounted into every
+     fresh instance (cheap — it's just FS.writeFile from memory). */
+  async initBOSL2(){
     if(this.bosl2) return;
     UI.log(`Fetching BOSL2 (${BOSL2.length} files)…`);
-    // Mount at ROOT. /in.scad lives at /, so `include <BOSL2/std.scad>` resolves
-    // relative to it — no -I flag needed (and -I aborts this build).
-    try{ this.inst.FS.mkdir('/BOSL2'); }catch{}
     const got = await Promise.all(BOSL2.map(async f=>{
       const r = await fetch(BOSL2_URL+f);
       if(!r.ok){ UI.log(`   ✗ ${f} → ${r.status}`,'er'); return null; }
       return [f, new Uint8Array(await r.arrayBuffer())];
     }));
+    const cache = {};
     let n=0;
-    for(const h of got){ if(h){ this.inst.FS.writeFile('/BOSL2/'+h[0], h[1]); n++; } }
-    if(n<BOSL2.length) throw new Error(`BOSL2 incomplete: ${n}/${BOSL2.length}`);
-    this.bosl2 = true;
-    UI.log(`BOSL2 MOUNTED (${n}/${BOSL2.length})`, 'ok');
+    for(const h of got){ if(h){ cache[h[0]] = h[1]; n++; } }
+    if(n < BOSL2.length) throw new Error(`BOSL2 incomplete: ${n}/${BOSL2.length}`);
+    this.bosl2 = cache;
+    UI.log(`BOSL2 CACHED (${n}/${BOSL2.length})`, 'ok');
   },
 
-  /* One compile attempt with an exact arg list. Returns STL bytes or throws. */
-  _attempt(args){
+  /* ═══════════════════════════════════════════════════════════════════════
+     A FRESH INSTANCE PER BUILD — this is the fix for the "second click aborts"
+     bug. OpenSCAD's main() is NOT re-entrant: its global C++ state is dirty
+     after one run, so a second callMain() on the same instance abort()s.
+     noExitRuntime keeps the RUNTIME alive but does NOT reset OpenSCAD itself.
+     So we throw the instance away and boot a clean one every time.
+     (Gemini's "ephemeral kernel" instinct was correct.)
+     ═══════════════════════════════════════════════════════════════════════ */
+  async _fresh(needBosl){
+    const inst = this.wrap
+      ? (await this.factory(this._opts())).getInstance()
+      :  await this.factory(this._opts());
+    if(!inst || !inst.FS) throw new Error('instance has no FS');
+
+    if(needBosl){
+      // Mount at ROOT: /in.scad lives at /, so `include <BOSL2/std.scad>`
+      // resolves relatively. NO -I flag — passing -I with a missing dir was
+      // what aborted every earlier build.
+      try{ inst.FS.mkdir('/BOSL2'); }catch{}
+      for(const [name,bytes] of Object.entries(this.bosl2))
+        inst.FS.writeFile('/BOSL2/'+name, bytes);
+    }
+    return inst;
+  },
+
+  _attempt(inst, args){
     this.out=''; this.err='';
-    try{ this.inst.FS.unlink('/out.stl'); }catch{}
-    let abort = null;
-    try{ this.inst.callMain(args); }
-    catch(e){ if(!(e && e.name==='ExitStatus' && e.status===0)) abort = e; }
+    let abort=null;
+    try{ inst.callMain(args); }
+    catch(e){ if(!(e && e.name==='ExitStatus' && e.status===0)) abort=e; }
 
-    let stl = null;
-    try{ stl = this.inst.FS.readFile('/out.stl'); }catch{}
+    let stl=null;
+    try{ stl = inst.FS.readFile('/out.stl'); }catch{}
+    if(stl && stl.length) return stl;
 
-    if(stl && stl.length){ this.inst.FS.unlink('/out.stl'); return stl; }
-
-    const diag = (this.err||'').trim();
-    const ptr  = (typeof abort === 'number') ? ` (ptr ${abort})` : '';
-    const e = new Error(diag ? diag.split('\n')[0] : `abort${ptr}, no stderr`);
-    e.aborted = !!abort;
-    e.diag = diag;
+    const diag=(this.err||'').trim();
+    const ptr=(typeof abort==='number')?` (ptr ${abort})`:'';
+    const e=new Error(diag ? diag.split('\n')[0] : `abort${ptr}, no stderr`);
+    e.diag=diag;
     throw e;
   },
 
   async run(scad){
-    if(scad.includes('BOSL2') && !this.bosl2) throw new Error('BOSL2 not mounted');
-    this.inst.FS.writeFile('/in.scad', scad);
+    const needBosl = scad.includes('BOSL2');
+    await this.initFactory();
+    if(needBosl) await this.initBOSL2();
 
-    // ARG STRATEGIES, best → safest. The MINIMAL form is what the library's own
-    // renderToStl() uses, so it is guaranteed-valid for this build.
-    // We retry on ANY abort — NOT on stderr text — because an arg-parse abort
-    // produces no stderr at all. That's what defeated every earlier retry.
     const S = [
       { tag:'manifold', args:['--enable=manifold','/in.scad','-o','/out.stl'] },
-      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] }          // ← canonical
+      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] }   // canonical fallback
     ];
-    // Once a strategy is known good, skip straight to it.
     const list = this.flags ? [this.flags] : S;
 
-    let last = null;
+    let last=null;
     for(const s of list){
-      UI.log(`Compiling [${s.tag}]…`);
-      await new Promise(r=>setTimeout(r,20));
+      // A FRESH INSTANCE FOR EVERY ATTEMPT. A failed callMain leaves OpenSCAD's
+      // C++ globals dirty, so even the retry needs virgin state.
+      UI.log(`Booting kernel [${s.tag}]…`);
+      await new Promise(r=>setTimeout(r,10));
+      let inst;
+      try{ inst = await this._fresh(needBosl); }
+      catch(e){ last=e; UI.log(`   boot failed: ${e.message}`,'er'); continue; }
+      inst.FS.writeFile('/in.scad', scad);
+
       try{
-        const stl = this._attempt(s.args);
-        if(!this.flags){ this.flags = s; UI.log(`args OK: ${s.tag}`, 'ok'); }
-        UI.log(`STL ${(stl.length/1024).toFixed(1)} KB`, 'ok');
-        return new STLLoader().parse(stl.slice().buffer);   // slice() → byteOffset 0
+        const stl = this._attempt(inst, s.args);
+        if(!this.flags){ this.flags=s; UI.log(`args OK: ${s.tag}`,'ok'); }
+        UI.log(`STL ${(stl.length/1024).toFixed(1)} KB`,'ok');
+        return new STLLoader().parse(stl.slice().buffer);
       }catch(e){
-        last = e;
-        UI.log(`   [${s.tag}] ${e.message}`, 'wn');
-        // A REAL SCAD error (assert / syntax) will have stderr text. Don't keep
-        // retrying arg variants for that — surface it.
-        if(e.diag) break;
+        last=e;
+        UI.log(`   [${s.tag}] ${e.message}`,'wn');
+        if(e.diag) break;   // a REAL scad error (assert/syntax) — don't cycle args
       }
     }
     if(last && last.diag && /requires OpenSCAD version/i.test(last.diag))
@@ -280,8 +294,6 @@ const SRC = {
 async function run(scad, bosl){
   UI.busy(true); UI.code(scad);
   try{
-    await Cad.init();
-    if(bosl) await Cad.mountBOSL2();
     V.set(await Cad.run(scad));
     UI.log('MESH RENDERED ✓','ok');
   }catch(e){
@@ -301,10 +313,11 @@ $('t4').onclick = () => run(SRC.t4,true);
 $('t0').onclick = async () => {
   UI.busy(true); UI.code('echo(version());  // minimal args only');
   try{
-    await Cad.init();
+    await Cad.initFactory();
+    const inst = await Cad._fresh(false);
     Cad.out=''; Cad.err='';
-    Cad.inst.FS.writeFile('/v.scad','echo(str("VER=",version_num()));\ncube(1);');
-    try{ Cad.inst.callMain(['/v.scad','-o','/v.stl']); }catch(e){}
+    inst.FS.writeFile('/v.scad','echo(str("VER=",version_num()));\ncube(1);');
+    try{ inst.callMain(['/v.scad','-o','/v.stl']); }catch(e){}
     const raw = Cad.out + Cad.err;
     console.log('[version probe raw]', JSON.stringify(raw));
     const m = raw.match(/VER=(\d+)/);
