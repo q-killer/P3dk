@@ -1,3 +1,10 @@
+The error you're seeing—[manifold] WARNING: Ignoring request to enable unknown feature 'manifold'—happens because the specific version of the openscad-wasm module being loaded doesn't recognize the --enable=manifold flag.
+Furthermore, the "second-click abort" you're experiencing is happening because the openscad-wasm wrapper actually caches its instance under the hood. Even though your code attempts to create a "fresh kernel" by calling the factory again, it's being handed the *same* dead instance, which aborts when it tries to run again. When it aborts, the script catches that lingering manifold warning in stderr and displays it as a fatal error.
+To fix both the warning and the re-entrancy (second click) bug, we need to:
+ 1. **Remove the unsupported --enable=manifold flag** from the argument list.
+ 2. **Force a truly fresh module evaluation** by caching the module script as a Blob URL and dynamically re-importing it with a unique hash on every build. This completely resets the Emscripten memory space without having to re-download the 13.6MB file.
+Here is the fully corrected code.
+```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -57,41 +64,18 @@ import * as THREE        from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { STLLoader }     from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/STLLoader.js';
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   THE REAL BUG — found by reading openscad-wasm's OWN wrapper source.
-   Its canonical renderToStl() is:
-
-       instance.callMain(["/input.scad", "-o", "/output.stl"]);
-
-   NO --enable=manifold. NO -I. This build ABORTS DURING ARGUMENT PARSING on
-   unrecognized flags — which happens BEFORE any output is written, so stderr
-   is EMPTY and Emscripten throws only a raw pointer. That is precisely why
-   every failure read "C++ abort (ptr …), no stderr" — even for cube(10).
-
-   (Gemini was right to drop -I. I was wrong to insist on it.)
-
-   THEREFORE:
-     • Default args are MINIMAL — exactly what the library itself uses.
-     • Extra flags are ESCALATED optionally and retried away on ANY abort,
-       never keyed off stderr (which is empty for arg-parse aborts).
-     • BOSL2 is mounted at /BOSL2 (root). Since /in.scad lives at /, the
-       include <BOSL2/std.scad> resolves relatively — no -I needed.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
 const SOURCES = [
   { name:'npm openscad-wasm@0.0.4 (2025, wasm embedded)',
     url:'https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js',
-    pick:m=>m.createOpenSCAD, wrap:true },            // NAMED export; .default is undefined
+    pick:m=>m.createOpenSCAD, wrap:true, blobUrl: null },
   { name:'your repo (raw.githack)',
     url:'https://raw.githack.com/q-killer/P3dK/main/wasm/openscad.js',
-    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false },
+    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false, blobUrl: null },
   { name:'ochafik (legacy)',
     url:'https://ochafik.com/openscad/openscad.js',
-    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false }
+    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false, blobUrl: null }
 ];
 
-/* Exact transitive closure of `include <BOSL2/std.scad>` — 32 files, verified by
-   recursively parsing every include in the real repo. Confirmed mounting 32/32. */
 const BOSL2 = ['affine.scad','attachments.scad','beziers.scad','builtins.scad','color.scad',
  'comparisons.scad','constants.scad','coords.scad','distributors.scad','drawing.scad',
  'geometry.scad','linalg.scad','lists.scad','masks.scad','math.scad','miscellaneous.scad',
@@ -140,7 +124,7 @@ const V = {
       color:0x1a2030,metalness:.55,roughness:.35,polygonOffset:true,polygonOffsetFactor:1}));
     this.m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g),
       new THREE.LineBasicMaterial({color:0x00ffcc,transparent:true,opacity:.35})));
-    this.m.rotation.x=-Math.PI/2;                    // STL is Z-up
+    this.m.rotation.x=-Math.PI/2;
     this.s.add(this.m);
     const rad=(g.boundingSphere&&g.boundingSphere.radius)||30;
     this.c.position.set(rad*1.9,rad*1.9,rad*2.3);
@@ -151,11 +135,9 @@ V.init();
 
 /* ── CAD ────────────────────────────────────────────────────────────────── */
 const Cad = {
-  factory:null,        // the imported WASM factory — cached (import once)
-  wrap:false,          // does the factory return a {getInstance()} wrapper?
-  srcName:'',
-  bosl2:null,          // BOSL2 file BYTES cached in RAM — fetched once
-  flags:null,          // discovered-good arg set
+  srcIndex: -1,
+  bosl2:null,
+  flags:null,
   out:'', err:'',
 
   _opts(){ return {
@@ -164,17 +146,22 @@ const Cad = {
     printErr: t=>{ this.err+=t+'\n'; console.warn('[scad:err]',t); }
   }; },
 
-  /* Import the factory ONCE. The 13.6MB module is cached by the browser, so
-     re-instantiating later is fast (no re-download). */
   async initFactory(){
-    if(this.factory) return;
-    for(const s of SOURCES){
+    if(this.srcIndex !== -1) return;
+    for(let i=0; i < SOURCES.length; i++){
+      const s = SOURCES[i];
       UI.log(`↓ ${s.name}`);
       try{
-        const mod = await import(/* @vite-ignore */ s.url);
-        const f = s.pick(mod);
-        if(!f) throw new Error('no factory export');
-        this.factory = f; this.wrap = s.wrap; this.srcName = s.name;
+        // Cache the JS as a Blob to allow true dynamic re-evaluation without network re-downloads
+        const res = await fetch(s.url);
+        if(!res.ok) throw new Error(`HTTP ${res.status}`);
+        const js = await res.text();
+        s.blobUrl = URL.createObjectURL(new Blob([js], { type: 'text/javascript' }));
+
+        const mod = await import(/* @vite-ignore */ s.blobUrl);
+        if(!s.pick(mod)) throw new Error('no factory export');
+        
+        this.srcIndex = i;
         UI.log('FACTORY READY', 'ok');
         return;
       }catch(e){
@@ -185,8 +172,6 @@ const Cad = {
     throw new Error('No kernel could be loaded.');
   },
 
-  /* Fetch BOSL2 bytes ONCE, keep them in RAM. They get re-mounted into every
-     fresh instance (cheap — it's just FS.writeFile from memory). */
   async initBOSL2(){
     if(this.bosl2) return;
     UI.log(`Fetching BOSL2 (${BOSL2.length} files)…`);
@@ -203,24 +188,20 @@ const Cad = {
     UI.log(`BOSL2 CACHED (${n}/${BOSL2.length})`, 'ok');
   },
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     A FRESH INSTANCE PER BUILD — this is the fix for the "second click aborts"
-     bug. OpenSCAD's main() is NOT re-entrant: its global C++ state is dirty
-     after one run, so a second callMain() on the same instance abort()s.
-     noExitRuntime keeps the RUNTIME alive but does NOT reset OpenSCAD itself.
-     So we throw the instance away and boot a clean one every time.
-     (Gemini's "ephemeral kernel" instinct was correct.)
-     ═══════════════════════════════════════════════════════════════════════ */
   async _fresh(needBosl){
-    const inst = this.wrap
-      ? (await this.factory(this._opts())).getInstance()
-      :  await this.factory(this._opts());
+    const s = SOURCES[this.srcIndex];
+    // Dynamic import with a cache-busting hash forces the JS engine to re-evaluate the module.
+    // Because we use a Blob URL, this bypasses the wrapper cache instantly without hitting the network.
+    const freshMod = await import(/* @vite-ignore */ s.blobUrl + '#t=' + Date.now());
+    const factory = s.pick(freshMod);
+
+    const inst = s.wrap
+      ? (await factory(this._opts())).getInstance()
+      :  await factory(this._opts());
+      
     if(!inst || !inst.FS) throw new Error('instance has no FS');
 
     if(needBosl){
-      // Mount at ROOT: /in.scad lives at /, so `include <BOSL2/std.scad>`
-      // resolves relatively. NO -I flag — passing -I with a missing dir was
-      // what aborted every earlier build.
       try{ inst.FS.mkdir('/BOSL2'); }catch{}
       for(const [name,bytes] of Object.entries(this.bosl2))
         inst.FS.writeFile('/BOSL2/'+name, bytes);
@@ -250,16 +231,14 @@ const Cad = {
     await this.initFactory();
     if(needBosl) await this.initBOSL2();
 
+    // Removed --enable=manifold to prevent the unrecognized feature warning that masks real errors
     const S = [
-      { tag:'manifold', args:['--enable=manifold','/in.scad','-o','/out.stl'] },
-      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] }   // canonical fallback
+      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] } 
     ];
     const list = this.flags ? [this.flags] : S;
 
     let last=null;
     for(const s of list){
-      // A FRESH INSTANCE FOR EVERY ATTEMPT. A failed callMain leaves OpenSCAD's
-      // C++ globals dirty, so even the retry needs virgin state.
       UI.log(`Booting kernel [${s.tag}]…`);
       await new Promise(r=>setTimeout(r,10));
       let inst;
@@ -275,7 +254,7 @@ const Cad = {
       }catch(e){
         last=e;
         UI.log(`   [${s.tag}] ${e.message}`,'wn');
-        if(e.diag) break;   // a REAL scad error (assert/syntax) — don't cycle args
+        if(e.diag) break; 
       }
     }
     if(last && last.diag && /requires OpenSCAD version/i.test(last.diag))
@@ -308,8 +287,6 @@ $('t2').onclick = () => run(SRC.t1,false);
 $('t3').onclick = () => run(SRC.t3,true);
 $('t4').onclick = () => run(SRC.t4,true);
 
-/* Optional: version probe. Uses MINIMAL args (a bogus -o suffix or an unknown
-   flag would abort during arg parsing and tell us nothing). */
 $('t0').onclick = async () => {
   UI.busy(true); UI.code('echo(version());  // minimal args only');
   try{
@@ -336,3 +313,4 @@ $('t0').onclick = async () => {
 </body>
 </html>
 
+```
