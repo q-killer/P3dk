@@ -1,10 +1,3 @@
-The error you're seeing—[manifold] WARNING: Ignoring request to enable unknown feature 'manifold'—happens because the specific version of the openscad-wasm module being loaded doesn't recognize the --enable=manifold flag.
-Furthermore, the "second-click abort" you're experiencing is happening because the openscad-wasm wrapper actually caches its instance under the hood. Even though your code attempts to create a "fresh kernel" by calling the factory again, it's being handed the *same* dead instance, which aborts when it tries to run again. When it aborts, the script catches that lingering manifold warning in stderr and displays it as a fatal error.
-To fix both the warning and the re-entrancy (second click) bug, we need to:
- 1. **Remove the unsupported --enable=manifold flag** from the argument list.
- 2. **Force a truly fresh module evaluation** by caching the module script as a Blob URL and dynamically re-importing it with a unique hash on every build. This completely resets the Emscripten memory space without having to re-download the 13.6MB file.
-Here is the fully corrected code.
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
