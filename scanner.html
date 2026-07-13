@@ -1,734 +1,1242 @@
-<!DOCTYPE html>
+<!doctype html>
+<!--
+  P3dK · DepthScan V24 — PHANTOM
+  ==========================================================================
+  Shell: Gemini's Phantom UI (transparent HUD, glass drawer) — adopted as-is.
+  Engine: v22b core, transplanted UNCUT. Twenty-two versions of field fixes
+  ride inside: SfM+neural hybrid w/ Otsu isolate + watertight plaque export,
+  metric WebXR TSDF w/ tap-to-place, SENSOR EYE depth inset, band table cut,
+  orbit coverage gate, candidate picker, lazy transformers boot, quality-auto.
+  Worker: Gemini's persistent-OffscreenCanvas fix adopted (per-frame realloc
+  eliminated). Integration rule held: their chrome, our physics.
+  ==========================================================================
+-->
 <html lang="en">
 <head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0,user-scalable=no">
-<title>P3dK WebXR Native Scanner</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/MarchingCubes.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/BufferGeometryUtils.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/SimplifyModifier.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/modifiers/EdgeSplitModifier.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/STLExporter.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/exporters/GLTFExporter.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>P3dK · DepthScan V24 · Phantom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
-* { box-sizing:border-box; margin:0; padding:0; touch-action:none; user-select:none; }
-body { background:#030712; color:#0ff; font-family:'Courier New',monospace; width:100vw; height:100dvh; overflow:hidden; font-size:12px; }
-#hud-root { position:absolute; inset:0; width:100vw; height:100dvh; overflow:hidden; pointer-events:none; }
-#hud-root * { pointer-events:auto; }
-#vid { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; z-index:1; opacity:0.85; }
-#hud { position:absolute; inset:0; z-index:2; pointer-events:none; }
-#inset { position:absolute; bottom:110px; right:12px; width:160px; height:160px; border:1.5px solid rgba(0,255,255,.4); z-index:10; background:#030712; transition:all 0.5s ease; }
-#inset.fullscreen { bottom:0; right:0; width:100vw; height:100vh; border:none; z-index:40; }
-#top, #bot { position:absolute; left:0; right:0; z-index:20; background:rgba(0,5,5,.85); border:1px solid rgba(0,255,255,.2); padding:8px 12px; }
-#top { top:0; display:flex; justify-content:space-between; align-items:center; }
-#bot { bottom:0; padding:10px 12px 16px; }
-#boot { position:absolute; inset:0; z-index:100; background:#030712; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px; }
-#done { position:absolute; inset:0; z-index:50; background:rgba(3,7,18,0.96); display:none; flex-direction:column; align-items:center; padding:20px; overflow-y:auto; pointer-events:none; }
-#done * { pointer-events:auto; }
-.btn { background:rgba(0,20,20,.6); border:1px solid rgba(0,255,255,.4); color:#0ff; font-family:inherit; padding:10px; cursor:pointer; font-weight:bold; border-radius:2px; width:100%; transition:.1s; margin-bottom:6px; font-size:11px; text-transform:uppercase; letter-spacing: 1px; }
-.btn:active { background:#0ff; color:#000; }
-.btn.go { border-color:#0f9; color:#0f9; }
-.btn.go2 { border-color:#ffb000; color:#ffb000; }
-.btn.go3 { border-color:#ff00ff; color:#ff00ff; }
-.dot { width:10px; height:10px; border-radius:50%; border:1px solid rgba(0,255,255,.3); background:rgba(0,0,0,.5); }
-.dot.active { background:#0ff; box-shadow:0 0 8px #0ff; transform:scale(1.2); }
-.slider-group { width:100%; max-width:320px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#888; }
-.slider-group input { width:60%; accent-color:#0f9; }
-#toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:#0f9; color:#000; padding:12px 24px; font-weight:bold; border-radius:3px; z-index:120; box-shadow:0 0 15px rgba(16,185,129,0.5); opacity:0; pointer-events:none; transition:opacity 0.3s, transform 0.3s; text-align:center; max-width:90vw; }
-#toast.show { opacity:1; transform:translate(-50%, -10px); }
-.loader-text { animation: pulse 1.5s infinite; }
-@keyframes pulse { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+  :root { --cy:#00f0ff; --mg:#ff2bd6; --gd:#39ff8b; --wrn:#ff9900; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; background:#000; color:var(--cy); font-family:'Share Tech Mono',monospace; overflow:hidden; user-select:none; -webkit-user-select:none; }
+  #stage { position:fixed; inset:0; z-index:10; }
+  canvas { display:block; }
+  #scanl { position:fixed; inset:0; pointer-events:none; z-index:50;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,.15) 0,rgba(0,0,0,.15) 1px,transparent 2px,transparent 3px); }
+  #vig { position:fixed; inset:0; pointer-events:none; z-index:49;
+    background:radial-gradient(ellipse at center,transparent 10%,rgba(0,0,0,0.6) 100%); }
+  .hud { position:fixed; z-index:60; }
+  #top { top:0; left:0; right:0; padding:max(16px,env(safe-area-inset-top)) 20px 16px;
+    display:flex; justify-content:space-between; align-items:flex-start; background:transparent;
+    font-family:'Orbitron',sans-serif; letter-spacing:2px; pointer-events:none; }
+  #top .ttl { font-weight:900; font-size:20px; color:var(--cy); text-shadow:0 2px 4px #000,0 0 12px var(--cy); line-height:1.1; }
+  #top .ttl b { color:var(--mg); text-shadow:0 2px 4px #000,0 0 12px var(--mg); }
+  #top .ttl s { color:var(--gd); font-size:10px; text-decoration:none; display:block; letter-spacing:3px; margin-top:4px; text-shadow:0 2px 4px #000,0 0 8px var(--gd); }
+  #stat-container { text-align:right; max-width:65%; font-family:'Share Tech Mono',monospace; }
+  #stat { font-size:13px; color:var(--mg); line-height:1.3; font-weight:bold; text-transform:uppercase; text-shadow:0 2px 4px #000,0 0 8px var(--mg); }
+  #sub-stat { font-size:11px; color:#fff; margin-top:4px; line-height:1.3; text-shadow:0 2px 4px #000,0 0 6px var(--cy); }
+  #imu-readout { font-size:10px; color:var(--gd); margin-top:5px; letter-spacing:1px; text-shadow:0 2px 4px #000,0 0 6px var(--gd); display:none; }
+  #cam { position:fixed; z-index:40; top:100px; left:16px; width:110px; border:1px solid rgba(255,43,214,0.5); border-radius:8px;
+    box-shadow:0 0 16px rgba(255,43,214,0.3); display:none; object-fit:cover; aspect-ratio:3/4; background:transparent; }
+  #det { position:fixed; z-index:41; top:100px; left:16px; width:110px; border:1px solid rgba(57,255,139,0.5); border-radius:8px;
+    box-shadow:0 0 16px rgba(57,255,139,0.3); display:none; pointer-events:none; background:transparent; object-fit:cover; aspect-ratio:3/4; }
+  #islPick { position:fixed; bottom:max(20px,env(safe-area-inset-bottom)); left:16px; z-index:40;
+    display:none; gap:6px; flex-wrap:wrap; max-width:70vw; pointer-events:auto; }
+  #meter-container { position:fixed; z-index:60; top:115px; left:50%; transform:translateX(-50%); width:85%; max-width:420px;
+    display:none; flex-direction:column; align-items:center; gap:8px; pointer-events:none; }
+  #meter-label { font-family:'Orbitron',sans-serif; font-size:11px; font-weight:700; color:#fff; text-shadow:0 2px 4px #000,0 0 8px var(--gd); letter-spacing:2px; text-transform:uppercase; }
+  #meter { width:100%; height:12px; border:1px solid rgba(57,255,139,0.6); border-radius:20px; background:rgba(0,0,0,0.5); overflow:hidden; position:relative; box-shadow:0 0 8px #000; }
+  #meterFill { position:absolute; left:0; top:0; bottom:0; width:0%; background:linear-gradient(90deg,var(--mg),var(--cy),var(--gd)); box-shadow:0 0 12px var(--gd); }
+  .hidden-toggle { display:none; }
+  #menu-btn { position:fixed; top:max(16px,env(safe-area-inset-top)); right:16px; z-index:100;
+    color:var(--cy); cursor:pointer; filter:drop-shadow(0 0 8px var(--cy)); transition:right .3s cubic-bezier(.16,1,.3,1); }
+  #drawer { position:fixed; top:0; right:-300px; bottom:0; width:280px;
+    background:rgba(0,0,0,0.45); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+    border-left:1px solid rgba(0,240,255,0.2); box-shadow:-4px 0 24px rgba(0,0,0,0.8);
+    z-index:90; display:flex; flex-direction:column; gap:10px;
+    padding:max(60px,env(safe-area-inset-top)) 16px max(20px,env(safe-area-inset-bottom));
+    overflow-y:auto; pointer-events:auto; transition:right .3s cubic-bezier(.16,1,.3,1); }
+  #drawer::-webkit-scrollbar { display:none; }
+  #menu-toggle:checked ~ #drawer { right:0; }
+  #menu-toggle:checked ~ #menu-btn { right:290px; }
+  .action-btn { font-family:'Orbitron',sans-serif; font-weight:700; letter-spacing:1.5px; font-size:13px;
+    color:#fff; background:transparent; border:1px solid rgba(255,255,255,0.3); border-radius:8px; padding:16px 8px; cursor:pointer; min-height:54px;
+    text-shadow:0 2px 4px #000,0 0 10px currentColor; transition:all .15s; box-shadow:0 4px 6px rgba(0,0,0,0.5); width:100%; display:block; }
+  .action-btn:active:not(:disabled) { transform:scale(.96); background:rgba(255,255,255,0.1); }
+  .action-btn:disabled { opacity:.25; border-style:dashed; cursor:not-allowed; text-shadow:none; box-shadow:none; }
+  .cy-glow { border-color:rgba(0,240,255,0.5); color:var(--cy); box-shadow:inset 0 0 10px rgba(0,240,255,0.1),0 0 10px rgba(0,240,255,0.2); }
+  .gd-glow { border-color:rgba(57,255,139,0.5); color:var(--gd); box-shadow:inset 0 0 10px rgba(57,255,139,0.1),0 0 10px rgba(57,255,139,0.2); }
+  .mg-glow { border-color:rgba(255,43,214,0.5); color:var(--mg); box-shadow:inset 0 0 10px rgba(255,43,214,0.1),0 0 10px rgba(255,43,214,0.2); }
+  .action-btn.armed { background:transparent; border-color:#fff; color:#fff; text-shadow:0 0 12px #fff; animation:pulse-border 1s infinite alternate; }
+  @keyframes pulse-border { from { box-shadow:inset 0 0 4px #fff,0 0 4px #fff; } to { box-shadow:inset 0 0 16px var(--mg),0 0 16px var(--mg); border-color:var(--mg); color:var(--mg); } }
+  .divider { color:#fff; text-shadow:0 2px 4px #000,0 0 8px #fff; text-align:left; margin:16px 0 4px; font-size:11px; font-family:'Orbitron'; letter-spacing:2px; padding-bottom:4px; border-bottom:1px solid rgba(255,255,255,0.1); }
+  .dial { background:transparent; padding:4px 0; }
+  .dial label { display:block; color:#fff; margin-bottom:8px; letter-spacing:1px; font-weight:bold; font-size:10px; text-shadow:0 2px 4px #000,0 0 6px var(--cy); }
+  .dial .v { color:var(--cy); float:right; font-family:'Orbitron',sans-serif; font-size:11px; text-shadow:none; }
+  .dial input[type=range] { -webkit-appearance:none; width:100%; background:rgba(255,255,255,0.2); height:4px; border-radius:2px; outline:none; box-shadow:0 1px 3px rgba(0,0,0,0.8); }
+  .dial input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; height:16px; width:16px; border-radius:50%; background:var(--cy); cursor:pointer; box-shadow:0 0 8px var(--cy); transition:transform .1s; }
+  .dial input[type=range]::-webkit-slider-thumb:active { transform:scale(1.3); background:var(--gd); box-shadow:0 0 12px var(--gd); }
+  .chk { display:flex; align-items:center; justify-content:flex-start; gap:10px; cursor:pointer; background:transparent; padding:8px 0; }
+  .chk input { accent-color:var(--mg); width:16px; height:16px; cursor:pointer; box-shadow:0 1px 3px rgba(0,0,0,0.8); }
+  .chk span { color:#fff; letter-spacing:1px; font-weight:bold; font-size:10px; text-shadow:0 2px 4px #000,0 0 6px var(--mg); }
+  #xrhud { display:none; position:fixed; inset:0; z-index:70; pointer-events:none; font-family:'Share Tech Mono',monospace; }
+  #xrtap { position:absolute; inset:0; pointer-events:auto; z-index:1; }
+  #xrtop { position:absolute; top:0; left:0; right:0; padding:20px 14px; text-align:center; color:var(--gd); font-size:13px; z-index:2;
+    text-shadow:0 2px 4px #000,0 0 10px var(--gd); background:linear-gradient(180deg,rgba(0,0,0,0.9),transparent); font-family:'Orbitron',sans-serif; letter-spacing:1px; pointer-events:none; }
+  #xrdepth { position:absolute; left:16px; top:60px; width:100px; height:75px; border:1px solid var(--cy); image-rendering:pixelated; opacity:.8; z-index:2; }
+  #xrdepth-label { position:absolute; left:16px; top:140px; font-size:9px; color:var(--cy); text-shadow:0 2px 4px #000; z-index:2; }
+  #xrbtn { position:absolute; bottom:max(30px,env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); pointer-events:auto; z-index:10;
+    font-family:'Orbitron',sans-serif; font-weight:900; font-size:16px; letter-spacing:2px; color:#fff; background:rgba(0,0,0,0.6); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    border:2px solid var(--gd); border-radius:10px; padding:18px 40px; box-shadow:inset 0 0 15px rgba(57,255,139,0.2),0 0 15px rgba(57,255,139,0.3); text-shadow:0 2px 4px #000,0 0 10px var(--gd); transition:all .1s; }
+  #xrbtn:active { transform:translateX(-50%) scale(.95); background:rgba(57,255,139,0.2); }
 </style>
-<script>
-window.addEventListener('error', function(e) {
-    const bs = document.getElementById('bs');
-    if (bs) { bs.innerText = "CRITICAL ERROR: " + (e.message || "Module failed"); bs.style.color = '#f55'; }
-});
-</script>
 </head>
 <body>
 
-<div id="hud-root">
-    <video id="vid" autoplay playsinline muted></video>
-    <canvas id="hud"></canvas>
-    <div id="inset"></div>
+<div id="stage"></div>
+<div id="scanl"></div>
+<div id="vig"></div>
 
-    <div id="top">
-        <div><span style="color:#0f9">▶</span> P3DK WEBXR NATIVE</div>
-        <div style="display:flex;align-items:center;gap:8px;">IDX: <span id="qv">--</span>
-            <svg width="16" height="16" viewBox="0 0 20 20" style="transform:rotate(-90deg)"><circle cx="10" cy="10" r="8" stroke="rgba(0,255,255,0.2)" stroke-width="2" fill="none"/><circle id="qr" cx="10" cy="10" r="8" stroke="#0ff" stroke-width="2" fill="none" stroke-dasharray="50.3" stroke-dashoffset="50.3"/></svg>
-        <span id="qb">WAIT</span></div>
-    </div>
-
-    <div id="bot">
-        <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:10px;">
-            <div id="legacy-ui">
-                <div style="font-size:9px; color:#888; margin-bottom:4px;">SECTORS</div>
-                <div id="sectors" style="display:flex;gap:6px;"></div>
-            </div>
-            <div style="text-align:right; display:flex; flex-direction:column; align-items:flex-end;">
-                <div id="cc" style="font-size:16px; font-weight:bold;">0 FRAMES</div>
-                <label id="lbl-tt" style="font-size:9px; color:#888; cursor:pointer; margin-top:4px;"><input type="checkbox" id="chk-tt" checked> TURNTABLE MODE</label>
-                <label style="font-size:9px; color:#888; cursor:pointer; margin-top:2px;"><input type="checkbox" id="chk-sym" checked> SYMMETRY FILL</label>
-            </div>
-        </div>
-        <div id="clg">READY. ALIGN SCANNER WITH OBJECT.</div>
-        <button id="btn-xr-finalize" class="btn go" style="display:none; margin-top:10px;">FINALIZE MESH</button>
-    </div>
-
-    <div id="boot">
-        <div style="font-size:18px; font-weight:bold; color:#0ff; margin-bottom:10px;">P3DK SYSTEM</div>
-        <button id="btn-start" class="btn go" style="width:200px;">START SCANNER</button>
-        <div style="width:200px; height:6px; border:1px solid #0ff; border-radius:3px; margin: 10px 0;"><div id="bp" style="width:0; height:100%; background:#0ff;"></div></div>
-        <div id="bs" style="font-size:10px; color:#fff; text-align:center;">CHECKING HARDWARE...</div>
-    </div>
-
-    <div id="done">
-        <div style="text-align:center; margin:10px 0 20px; z-index:60; pointer-events:none;">
-            <div style="color:#0f9; font-size:22px; font-weight:bold; text-shadow: 0 2px 10px #000;">✔ SCAN COMPLETE</div>
-            <div id="es" style="font-size:11px; color:#ccc; margin-top:4px; text-shadow: 0 1px 4px #000;">0 POINTS · 0 TRIANGLES</div>
-            <div id="async-status" class="loader-text" style="font-size:10px; color:#ffb000; margin-top:6px; font-weight:bold; text-shadow: 0 1px 4px #000; display:none;">PROCESSING...</div>
-        </div>
-        
-        <div style="flex-grow:1; min-height:80px;"></div> 
-
-        <div style="background:rgba(15,23,42,0.8); border:1px solid rgba(0,255,255,0.2); padding:16px; width:100%; max-width:360px; margin-bottom:16px;">
-            <div style="color:#0f9; font-weight:bold; margin-bottom:12px; font-size:11px;">FUSION CONFIGURATION</div>
-            <div class="slider-group"><span>RESOLUTION</span><input type="range" id="sl-res" min="32" max="128" step="8" value="64"></div>
-            <div class="slider-group"><span>BLOB SIZE</span><input type="range" id="sl-str" min="0.0001" max="0.01" step="0.0001" value="0.0015"></div>
-            <div class="slider-group"><span>TIGHTNESS</span><input type="range" id="sl-iso" min="10" max="200" step="5" value="80"></div>
-            <div class="slider-group"><span>FALLOFF</span><input type="range" id="sl-sub" min="1" max="20" step="1" value="8"></div>
-            <div class="slider-group"><span>DECIMATION</span><input type="range" id="sl-det" min="0.05" max="1.0" step="0.05" value="0.25"></div>
-            <div class="slider-group" style="margin-top:10px; justify-content:flex-end;">
-                <label style="color:#fff; cursor:pointer;"><input type="checkbox" id="chk-edge" checked> ENABLE EDGESPLIT</label>
-            </div>
-        </div>
-
-        <div style="width:100%; max-width:360px; display:flex; flex-direction:column;">
-            <button id="dl-stl" class="btn go">↓ EXPORT WATERTIGHT STL</button>
-            <button id="dl-glb" class="btn go3">↓ EXPORT COLOR GLB</button>
-            <button id="dl-ply" class="btn go2">↓ EXPORT COLOR PLY</button>
-            <button id="rs" class="btn" style="border:1px dashed #555; background:transparent; margin-top:8px;">⟳ SCAN ANOTHER</button>
-        </div>
-    </div>
-    <div id="toast">FILE GENERATED successfully!</div>
+<div id="top" class="hud">
+  <div class="ttl">P3dK<br><b>DEPTHSCAN</b><s>V24 PHANTOM</s></div>
+  <div id="stat-container">
+    <div id="stat">Booting Engine...</div>
+    <div id="sub-stat">Initialising Web API</div>
+    <div id="imu-readout">GYRO: OFF</div>
+  </div>
 </div>
 
+<div id="islPick" class="hud"></div>
+
+<video id="cam" autoplay playsinline muted></video>
+<canvas id="det"></canvas>
+
+<div id="meter-container">
+  <div id="meter-label">SIDE-STEP SLOWLY ◀ ▶</div>
+  <div id="meter"><div id="meterFill"></div></div>
+</div>
+
+<input type="checkbox" id="menu-toggle" class="hidden-toggle">
+<label for="menu-toggle" id="menu-btn">
+  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+</label>
+
+<div id="drawer">
+  <button id="bOne" class="action-btn gd-glow" style="font-size:15px;">⚡ ONE-TAP SCAN</button>
+  <button id="bXr" class="action-btn cy-glow">XR SCAN (360°)</button>
+  <button id="bScan" class="action-btn cy-glow" disabled>SFM SCAN (2.5D)</button>
+  <button id="bCam" class="action-btn gd-glow" disabled>CAMERA</button>
+  <button id="bDetect" class="action-btn gd-glow" disabled>DETECT (AI)</button>
+  <button id="bImu" class="action-btn mg-glow">GYRO (VIEW)</button>
+  <button id="bReset" class="action-btn mg-glow">CLEAR / RESET</button>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+    <button id="bExport" class="action-btn cy-glow" disabled>PLY</button>
+    <button id="bSolid" class="action-btn cy-glow" disabled>STL</button>
+  </div>
+  <button id="tabHybrid" class="hidden-toggle"></button>
+  <button id="tabXr" class="hidden-toggle"></button>
+
+  <div id="controlsHybrid" style="display:grid;gap:4px;">
+    <div class="divider">HYBRID SETTINGS</div>
+    <div class="dial"><label>FOV° (CALIB)<span class="v" id="vfov">60</span></label><input type="range" id="fov" min="30" max="100" step="1" value="60"></div>
+    <div class="dial"><label>FAR CULL<span class="v" id="vfc">0.05</span></label><input type="range" id="fc" min="0" max="0.5" step="0.01" value="0.05"></div>
+    <div class="dial"><label>EDGE REJECT<span class="v" id="ver">0.12</span></label><input type="range" id="er" min="0" max="0.5" step="0.01" value="0.12"></div>
+    <div class="dial"><label>Z-STRETCH<span class="v" id="vzs">1.00</span></label><input type="range" id="zs" min="0.05" max="3.0" step="0.05" value="1.0"></div>
+    <div class="dial" id="zoomWrap" style="display:none;"><label>CAM ZOOM<span class="v" id="vzm">1.0</span></label><input type="range" id="zm" min="1" max="8" step="0.1" value="1"></div>
+    <label class="chk"><input type="checkbox" id="inv"><span>INVERT Z MATRIX</span></label>
+    <label class="chk"><input type="checkbox" id="iso" checked><span>AUTO ISOLATE BG</span></label>
+  </div>
+
+  <div id="controlsXr" style="display:grid;gap:4px;">
+    <div class="divider">XR SETTINGS</div>
+    <div class="dial"><label>BOUNDS SIZE m<span class="v" id="vvs">0.60</span></label><input type="range" id="vs" min="0.2" max="1.2" step="0.05" value="0.6"></div>
+    <div class="dial"><label>VOXEL RES<span class="v" id="vvr">96</span></label><input type="range" id="vr" min="64" max="128" step="32" value="96"></div>
+    <label class="chk"><input type="checkbox" id="tc" checked><span>CUT TABLE PLANE</span></label>
+  </div>
+</div>
+
+<div id="xrhud">
+  <div id="xrtap"></div>
+  <div id="xrtop">AIM AT TARGET · TAP TO PLACE VOLUME</div>
+  <canvas id="xrdepth" width="80" height="60"></canvas>
+  <div id="xrdepth-label">SENSOR EYE · magenta = blind</div>
+  <button id="xrbtn">■ FINISH</button>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+}}
+</script>
+<script async src="https://docs.opencv.org/4.x/opencv.js"></script>
 <script type="module">
-import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.0';
 
-const MAX_P = 8, RES = 45, V_SZ = 0.015, R2D = 180 / Math.PI, tanH = Math.tan(Math.PI / 6);
-const $ = id => document.getElementById(id), lC = m => $('clg').innerText = m;
-const showToast = msg => { const t=$('toast'); if(!t)return; t.innerText=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 4500); };
-const yieldLoop = () => new Promise(r => setTimeout(r, 0)); 
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { MarchingCubes } from 'three/addons/objects/MarchingCubes.js';
+/* v22b: transformers is LAZY — a static import held boot hostage to the CDN.
+   Loaded on first hybrid depth request; XR path never pays for it. */
+let pipeline, env, RawImage, _tfP=null;
+const loadTF=()=>_tfP||(_tfP=import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2')
+  .then(m=>{ ({pipeline,env,RawImage}=m); env.allowLocalModels=false; }));
 
-const state = { mode: '', pipe:null, rmbg:null, pht:[], rawPts:[], dsPts:[], spatialHash:new Map(), cR:new THREE.Quaternion(), lQ:null, sQ:null, aV:0, lCap:0, lck:false, wMesh:null, scan:false, vw:640, vh:480, scaleFactor:1, mnX:0, mnY:0, mnZ:0, lastCamPos: null };
+const $ = id => document.getElementById(id);
+const stat = m => $('stat').innerHTML = m;
+const subStat = m => $('sub-stat').innerHTML = m;
 
-let iScn, iCam, iRnd, iCtl, hCtx, ManifoldClass = null;
-const arCam = new THREE.PerspectiveCamera(60, 1, 0.01, 10);
-const dCtx = document.createElement('canvas').getContext('2d', {willReadFrequently:true}); dCtx.canvas.width = dCtx.canvas.height = 128;
-const eBuf = new Uint8ClampedArray(128*128*4);
-
-function resizeHUD() {
-    const v = $('vid'), h = $('hud');
-    if (v && h) {
-        state.vw = v.videoWidth || window.innerWidth; state.vh = v.videoHeight || window.innerHeight;
-        h.width = v.clientWidth || window.innerWidth; h.height = v.clientHeight || window.innerHeight;
-    }
-}
-
-function initThreeJS() {
-    hCtx = $('hud').getContext('2d');
-    iScn = new THREE.Scene(); iScn.background = new THREE.Color('#020617');
-    iCam = new THREE.PerspectiveCamera(45, 1, 0.05, 10); iCam.position.set(0.35, 0.35, 0.35);
-    iRnd = new THREE.WebGLRenderer({ antialias:true, alpha:true }); iRnd.setSize(160, 160); 
-    
-    iRnd.toneMapping = THREE.ACESFilmicToneMapping; iRnd.outputEncoding = THREE.sRGBEncoding;
-    const pmrem = new THREE.PMREMGenerator(iRnd); iScn.environment = pmrem.fromScene(new THREE.Scene(), 0.04).texture;
-
-    $('inset').appendChild(iRnd.domElement);
-    iCtl = new THREE.OrbitControls(iCam, iRnd.domElement); iCtl.enableDamping = true; iCtl.autoRotate = true;
-    
-    const ambient = new THREE.AmbientLight(0xffffff, 0.8);
-    const dl1 = new THREE.DirectionalLight(0x06b6d4, 1.5); dl1.position.set(1, 2, 1);
-    iScn.add(ambient, dl1);
-}
-
-// ----------------------------------------------------------------------
-// THE 3-TIER ARCHITECTURE ROUTER
-// ----------------------------------------------------------------------
-$('btn-start').onclick = async () => {
-    $('btn-start').style.display = 'none';
-    $('bs').innerText = 'INITIALIZING SYSTEM...';
-    try { initThreeJS(); } catch (err) { $('bs').innerText = "THREE.JS INIT FAILED: " + err.message; return; }
-
-    // Tier 1: WebXR AR + Metric Depth (Android ARCore)
-    if (navigator.xr && await navigator.xr.isSessionSupported('immersive-ar')) {
-        try {
-            $('bs').innerText = 'REQUESTING ARCORE SENSORS...';
-            const session = await navigator.xr.requestSession('immersive-ar', {
-                requiredFeatures: ['depth-sensing'],
-                optionalFeatures: ['dom-overlay'],
-                depthSensing: { usagePreference: ['cpu-optimized'], dataFormatPreference: ['luminance-alpha'] },
-                domOverlay: { root: document.getElementById('hud-root') }
-            });
-            state.mode = 'xr-depth';
-            return initXRSession(session);
-        } catch(e) {
-            console.warn("XR Metric Depth failed, dropping to Tier 3 Legacy Fallback", e);
-        }
-    }
-    
-    // Tier 3: Legacy Gyro + DA2 Neural Pipeline (iOS / Old Devices)
-    state.mode = 'gyro-da2';
-    bootLegacy();
+/* ---------- lazy neural depth ---------- */
+let depther=null;
+const getDepther = async ()=>{
+  if(depther) return depther;
+  stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Fetching inference engine…');
+  await loadTF();
+  const dev=('gpu' in navigator)?'webgpu':'wasm';
+  subStat(`Loading DA2 via ${dev.toUpperCase()}`);
+  depther=await pipeline('depth-estimation','onnx-community/depth-anything-v2-small',{ device:dev,
+    progress_callback:p=>{ if(p.status==='progress'&&p.total) subStat(`Downloading Model: ${(p.progress||0).toFixed(0)}%`); } });
+  return depther;
 };
 
-// ----------------------------------------------------------------------
-// TIER 1: WEBXR METRIC DEPTH LOOP
-// ----------------------------------------------------------------------
-function initXRSession(session) {
-    state.session = session;
-    $('boot').style.display = 'none';
-    $('vid').style.display = 'none'; // Passthrough handles background
-    $('legacy-ui').style.display = 'none';
-    $('lbl-tt').style.display = 'none';
-    $('btn-xr-finalize').style.display = 'block';
-    $('btn-xr-finalize').onclick = finalize;
-    document.body.style.background = 'transparent';
-    state.scan = true;
-    lC("WALK AROUND OBJECT. METRIC DEPTH ACTIVE.");
+/* ---------- viewer ---------- */
+const renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2)); renderer.setSize(innerWidth,innerHeight);
+$('stage').appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(55,innerWidth/innerHeight,0.001,5000); cam.position.set(0,0,4);
+const ctrl=new OrbitControls(cam,renderer.domElement); ctrl.enableDamping=true; ctrl.rotateSpeed=.7;
+const grid=new THREE.GridHelper(10,20,0x00f0ff,0x0a2a33);
+grid.position.y=-2; grid.material.transparent=true; grid.material.opacity=.25; scene.add(grid);
+scene.add(new THREE.AmbientLight(0xffffff,.6));
+const dl=new THREE.DirectionalLight(0xffffff,1.2); dl.position.set(1,2,1.5); scene.add(dl);
+let cloud=null, plyRows=null, cachedScan=null;
+addEventListener('resize',()=>{ cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth,innerHeight); });
+let gyroView=false, gyroQ=null, xrActive=false;
+(function loop(){ requestAnimationFrame(loop);
+  if(xrActive||document.hidden) return;   /* v20: never render behind AR session or hidden tab */
+  if(gyroView&&gyroQ){
+    const d=cam.position.distanceTo(ctrl.target);
+    cam.quaternion.copy(gyroQ);
+    cam.position.copy(ctrl.target).add(new THREE.Vector3(0,0,d).applyQuaternion(gyroQ));
+  } else ctrl.update();
+  renderer.render(scene,cam); })();
 
-    iRnd.xr.enabled = true;
-    iRnd.xr.setReferenceSpaceType('local');
-    iRnd.xr.setSession(session);
-    
-    iRnd.setAnimationLoop(renderXRLoop);
+/* ---------- mode tabs ---------- */
+let activeMode='hybrid', xrSupported=false;
+async function checkXrSupport(){
+  if(!navigator.xr){ $('tabXr').style.opacity='0.35'; $('tabXr').title='WebXR unavailable'; return; }
+  try{ xrSupported=await navigator.xr.isSessionSupported('immersive-ar'); }catch(e){}
+  if(!xrSupported){ $('tabXr').style.opacity='0.35'; $('tabXr').title='immersive-ar unsupported on this device'; }
+}
+$('tabHybrid').onclick=()=>selectMode('hybrid');
+const buzz=p=>{ try{ navigator.vibrate&&navigator.vibrate(p); }catch(e){} };
+$('bOne').onclick=async()=>{
+  buzz(15);
+  if(!window._uDial){  /* QUALITY AUTO: 0.35m @ 128³ = 2.7mm voxels */
+    $('vs').value='0.35'; $('vvs').textContent='0.35';
+    $('vr').value='128';  $('vvr').textContent='128';
+  }
+  if(xrSupported){ selectMode('xr'); $('bScan').click(); return; }
+  selectMode('hybrid');
+  if(!stream){ $('bCam').click();
+    for(let i=0;i<30&&!stream;i++) await new Promise(r=>setTimeout(r,100));
+    if(!stream) return; }
+  $('bScan').click();
+};
+$('tabXr').onclick=()=>{ if(xrSupported) selectMode('xr'); else subStat('METRIC XR needs Android Chrome + ARCore'); };
+function selectMode(mode){
+  if(accumulating) stopScan();
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud=null; }
+  activeMode=mode;
+  const hy = mode==='hybrid';
+  $('tabHybrid').classList.toggle('active',hy); $('tabXr').classList.toggle('active',!hy);
+  $('controlsHybrid').style.display=hy?'grid':'none'; $('controlsXr').style.display=hy?'none':'grid';
+  $('bImu').style.display=hy?'block':'none';
+  $('bDetect').style.display=hy?'block':'none';
+  if(!hy) stopDetect();
+  $('bCam').style.display=hy?'block':'none';
+  $('bScan').style.gridColumn=hy?'span 4':'span 6';
+  $('bScan').textContent=hy?'⚡ AUTO SCAN':'◎ START XR SCAN';
+  $('bReset').style.gridColumn=hy?'span 2':'span 4';
+  $('bExport').style.display=hy?'block':'none';
+  /* v12 fix: STL stays visible in XR mode — it IS the metric export */
+  $('bSolid').style.display='block'; $('bSolid').style.gridColumn=hy?'span 1':'span 2';
+  $('bSolid').disabled=true; $('bExport').disabled=true;
+  if(hy){ $('cam').style.display=stream?'block':'none'; if(stream&&!cloud) setPreviewLayout(true); $('bScan').disabled=!(stream&&cvReady);
+    subStat('Hybrid: front 2.5D relief (relative). MATTE, TEXTURED objects required for automatic SfM scaling. True 360° = METRIC XR.'); }
+  else { $('cam').style.display='none'; $('bScan').disabled=false;
+    subStat('Metric volumetric scan · watertight STL in millimetres'); }
 }
 
-function renderXRLoop(time, frame) {
-    if (!frame || !state.scan) return;
-    const refSpace = iRnd.xr.getReferenceSpace();
-    const pose = frame.getViewerPose(refSpace);
-    if (!pose) return;
-    
-    const view = pose.views[0];
-    const camMatrix = new THREE.Matrix4().fromArray(view.transform.matrix);
-    const invProj = new THREE.Matrix4().fromArray(view.projectionMatrix).invert();
-
-    // Auto Capture via True 6DoF Translation Delta
-    const camPos = new THREE.Vector3().setFromMatrixPosition(camMatrix);
-    if (!state.lastCamPos) state.lastCamPos = camPos.clone();
-    
-    if (camPos.distanceTo(state.lastCamPos) > 0.08) { // 8cm delta translation
-        state.lastCamPos.copy(camPos);
-        const depthInfo = frame.getDepthInformation(view);
-        if (depthInfo) {
-            accumulateDepthFrame(depthInfo, camMatrix, invProj);
-            state.pht.push({ pq: camMatrix }); // Dummy tracker for metrics
-            $('cc').innerText = `${state.pht.length} FRAMES`;
-            if (state.pht.length >= 60) finalize(); // Auto finalize at dense cap
-        }
+/* ---------- gyro (telemetry display ONLY — does not feed pose math) ---------- */
+const _zee=new THREE.Vector3(0,0,1), _e=new THREE.Euler(),
+      _q1=new THREE.Quaternion(-Math.sqrt(0.5),0,0,Math.sqrt(0.5)), _q0=new THREE.Quaternion();
+$('bImu').onclick=async()=>{
+  if(!gyroQ){
+    if(typeof DeviceOrientationEvent!=='undefined' && typeof DeviceOrientationEvent.requestPermission==='function'){
+      try{ if(await DeviceOrientationEvent.requestPermission()!=='granted'){ $('imu-readout').textContent='GYRO: DENIED'; $('imu-readout').style.display='block'; return; } }
+      catch(e){ $('imu-readout').textContent='GYRO: BLOCKED'; $('imu-readout').style.display='block'; return; }
     }
-    
-    iRnd.render(iScn, iCam); 
-}
-
-function accumulateDepthFrame(depth, camMatrix, invProj) {
-    const STEP = 0.02; // ~50x50 metric samples per frame
-    const addedPoints = [];
-    for (let ny = 0; ny < 1; ny += STEP) {
-        for (let nx = 0; nx < 1; nx += STEP) {
-            const d = depth.getDepthInMeters(nx, ny);  
-            if (!d || d < 0.1 || d > 1.5) continue; // Metric physical cutoff removes walls/desks naturally!
-            
-            const ndc = new THREE.Vector3(nx*2-1, (1-ny)*2-1, 0.5);
-            const ray = ndc.clone().applyMatrix4(invProj);
-            ray.divideScalar(ray.z === 0 ? 1 : -ray.z);  
-            const viewPt = ray.multiplyScalar(d);          
-            const world = viewPt.applyMatrix4(camMatrix);
-            
-            // Generate a scan-like gradient color based on physical depth limits
-            const normDist = Math.max(0, Math.min(1, (d - 0.1) / 1.4));
-            world.col = new THREE.Color().setHSL(0.5 + normDist*0.3, 0.8, 0.6); 
-            world.conf = 1.0; // Hardware depth is trusted fully
-            state.rawPts.push(world);
-            addedPoints.push(world);
-        }
-    }
-    
-    // Low-cost visual preview for AR Overlay
-    if (state.pht.length % 3 === 0 && addedPoints.length > 0) {
-        const pts = [], cols = [];
-        for(let i=0; i<addedPoints.length; i+=5) {
-            pts.push(addedPoints[i].x, addedPoints[i].y, addedPoints[i].z);
-            cols.push(addedPoints[i].col.r, addedPoints[i].col.g, addedPoints[i].col.b);
-        }
-        const bg=new THREE.BufferGeometry();
-        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3));
-        bg.setAttribute('color', new THREE.Float32BufferAttribute(cols,3));
-        iScn.add(new THREE.Points(bg, new THREE.PointsMaterial({vertexColors:true, size:0.01})));
-    }
-}
-
-// ----------------------------------------------------------------------
-// TIER 3: LEGACY GYRO + NEURAL DA2 LOOP
-// ----------------------------------------------------------------------
-function bootLegacy() {
-    for(let i=0; i<MAX_P; i++) $('sectors').innerHTML += `<div id="s${i}" class="dot"></div>`;
-    env.allowLocalModels = false; env.useBrowserCache = true;
-    if(env.backends && env.backends.onnx) env.backends.onnx.logLevel = 'fatal';
-
-    (async () => {
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            try {
-                let st = await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'},width:{ideal:1280}}}).catch(()=>navigator.mediaDevices.getUserMedia({video:true}));
-                $('vid').srcObject = st; 
-                await new Promise(r => { $('vid').onloadedmetadata = r; setTimeout(r, 2000); });
-                $('vid').play().catch(()=>{});
-            } catch(e) { lC("Camera fallback initialized."); }
-        }
-        resizeHUD(); window.addEventListener('resize', resizeHUD);
-    })();
-
-    try {
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            $('bs').innerText = 'TAP TO GRANT SENSOR PERMISSION';
-            const btnG = document.createElement('button'); btnG.className = 'btn go'; btnG.innerText = 'GRANT GYRO PERMISSIONS';
-            btnG.onclick = async () => {
-                btnG.style.display = 'none';
-                try { if (await DeviceOrientationEvent.requestPermission() === 'granted') setupSensors(); else fallbackSensors(); } catch(err) { fallbackSensors(); }
-                loadAIEngine();
-            };
-            $('boot').appendChild(btnG);
-        } else { setupSensors(); loadAIEngine(); }
-    } catch (e) { fallbackSensors(); loadAIEngine(); }
-}
-
-async function loadAIEngine() {
-    $('bs').innerText = 'DOWNLOADING AI...';
-    try {
-        const pCb = p => { if(p.status==='progress') { $('bp').style.width=Math.round(p.progress)+'%'; $('bs').innerText=`LOADING AI... ${(p.loaded/(1024**2)).toFixed(1)}MB`; } };
-        const optsGPU = { device: 'webgpu', dtype: 'fp16', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
-        const optsRmbgGPU = { device: 'webgpu', dtype: 'q8', progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
-        const optsCPU = { progress_callback: pCb, session_options: { logSeverityLevel: 4 } };
-        
-        try {
-            if (!navigator.gpu) throw new Error("No WebGPU");
-            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsGPU);
-            $('bp').style.width='0%';
-            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsRmbgGPU);
-        } catch(e) {
-            state.pipe = await pipeline('depth-estimation', 'onnx-community/depth-anything-v2-small', optsCPU);
-            $('bp').style.width='0%';
-            state.rmbg = await pipeline('image-segmentation', 'briaai/RMBG-1.4', optsCPU);
-        }
-        
-        $('boot').style.display='none'; state.scan=true;
-        requestAnimationFrame(loopLegacy); setInterval(evalQuality, 350); setInterval(captureGate, 120);
-    } catch(e) { $('bs').innerText="AI FAILURE: "+e.message; $('bs').style.color = '#f55'; }
-}
-
-function setupSensors() {
-    window.addEventListener('deviceorientation', e => {
-        state.gyroAvailable = true;
-        const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(THREE.MathUtils.degToRad(e.beta||0), THREE.MathUtils.degToRad(e.alpha||0), -THREE.MathUtils.degToRad(e.gamma||0), 'YXZ'))
-            .multiply(new THREE.Quaternion(-Math.SQRT1_2, 0, 0, Math.SQRT1_2))
-            .multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,0,1), -THREE.MathUtils.degToRad(window.orientation||0)));
-        if(!state.sQ) state.sQ=q.clone();
-        if(state.lQ) {
-            state.aV = 2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.lQ.clone().conjugate()).w)));
-            const chkT = $('chk-tt');
-            if(2*Math.acos(Math.min(1,Math.abs(q.clone().multiply(state.sQ.clone().conjugate()).w)))*R2D > 15 && chkT && chkT.checked) chkT.checked=false;
-        }
-        state.lQ=q.clone(); state.cR.copy(q);
+    gyroQ=new THREE.Quaternion();
+    window.addEventListener('deviceorientation',e=>{
+      const a=THREE.MathUtils.degToRad(e.alpha||0),b=THREE.MathUtils.degToRad(e.beta||0),g=THREE.MathUtils.degToRad(e.gamma||0);
+      const so=THREE.MathUtils.degToRad((screen.orientation&&screen.orientation.angle)||0);
+      _e.set(b,a,-g,'YXZ'); gyroQ.setFromEuler(_e); gyroQ.multiply(_q1); gyroQ.multiply(_q0.setFromAxisAngle(_zee,-so));
+      const now=performance.now();
+      if(now-(window._gT||0)>200){ window._gT=now;
+        $('imu-readout').style.display='block';
+        $('imu-readout').textContent=`GYRO: P:${Math.round(e.beta||0)}° R:${Math.round(e.gamma||0)}° Y:${Math.round(e.alpha||0)}°${gyroView?' · VIEW':''}`;
+        $('bImu').style.borderColor='var(--gd)'; $('bImu').style.background='rgba(57,255,139,.1)';
+      }
     });
+    gyroView=true;
+  } else gyroView=!gyroView;
+  ctrl.enabled=!gyroView;
+  $('bImu').textContent=gyroView?'⊛ GYRO·VIEW':'⊛ GYRO';
+};
+
+/* ---------- OpenCV gate ---------- */
+let cvReady=false;
+function whenCv(){
+  if(window.cv && cv.Mat){ cvReady=true; onCv(); }
+  else if(window.cv && cv.onRuntimeInitialized!==undefined){ cv.onRuntimeInitialized=()=>{ cvReady=true; onCv(); }; }
+  else setTimeout(whenCv,200);
 }
-function fallbackSensors() { state.gyroAvailable = false; }
-
-function evalQuality() {
-    if(!state.scan||!state.vw || state.mode !== 'gyro-da2') return; dCtx.drawImage($('vid'),0,0,128,128);
-    const px=dCtx.getImageData(0,0,128,128).data, gy=new Uint8Array(16384), la=new Float32Array(16384); let lS=0, lV=0, cr=0, tL=0, ovr=0, drk=0;
-    for(let i=0;i<16384;i++) { gy[i]=0.299*px[i*4]+0.587*px[i*4+1]+0.114*px[i*4+2]; tL+=gy[i]; if(gy[i]>235)ovr++; if(gy[i]<25)drk++; }
-    for(let y=1;y<127;y++) for(let x=1;x<127;x++) { let i=x+y*128, v=-4*gy[i]+gy[i-1]+gy[i+1]+gy[i-128]+gy[i+128]; la[i]=v; lS+=v; }
-    for(let y=1;y<127;y++) for(let x=1;x<127;x++) lV+=(la[x+y*128]-lS/15876)**2;
-    let bS = Math.min(100, (lV/15876)*1.8);
-
-    const ci=[[0,-3],[1,-3],[2,-2],[3,-1],[3,0],[3,1],[2,2],[1,3],[0,3],[-1,3],[-2,2],[-3,1],[-3,0],[-3,-1],[-2,-2],[-1,-3]];
-    for(let y=3;y<125;y+=3) for(let x=3;x<125;x+=3) {
-        let v=gy[x+y*128], br=0, dr=0, mb=0, md=0;
-        for(let i=0; i<32; i++) { let n=gy[(x+ci[i%16][0])+(y+ci[i%16][1])*128]; if(n>v+18){br++;mb=Math.max(mb,br)}else br=0; if(n<v-18){dr++;md=Math.max(md,dr)}else dr=0; }
-        if(mb>8||md>8) cr++;
-    }
-    let fS = Math.min(100, (cr/40)*100), mL = tL/16384, eS=100, l="OK";
-    if(mL<55){eS=40;l="DIM";} else if(mL>215){eS=55;l="BRIGHT";} else if(ovr/16384>.15){eS=30;l="OVER";} else if(drk/16384>.3){eS=20;l="DARK";}
-    
-    state.quality = bS*0.4 + fS*0.4 + eS*0.2;
-    $('qv').innerText = Math.round(state.quality); $('qr').style.strokeDashoffset = 50.3 - (state.quality/100)*50.3; $('qb').innerText = l; $('qb').style.color = state.quality>57 ? '#0f9' : '#f90';
+function onCv(){
+  if(activeMode==='hybrid'){ stat('System Online'); subStat('Hybrid Core active · Open camera'); $('bScan').disabled=!stream; }
+  $('bCam').disabled=false; checkXrSupport();
 }
+whenCv();
 
-function captureGate() {
-    if(!state.scan||state.lck||performance.now()-state.lCap<1400||state.quality<58 || state.mode !== 'gyro-da2') return;
-    if(state.aV>0.12) return lC("STABILIZE...");
-    if(state.pht.length>=MAX_P) return finalize();
-    const chkT = $('chk-tt');
-    if(!chkT || !chkT.checked) for(const p of state.pht) if(state.cR.angleTo(new THREE.Quaternion(...p.pq))*R2D < 22) return lC("ROTATE SCANNER...");
-    doCaptureLegacy();
+/* ---------- camera ---------- */
+let stream=null;
+/* v16: fullscreen framing view; corner thumbnail only once a mesh is on stage */
+function setPreviewLayout(full){
+  const geo = full
+    ? {top:'0',left:'0',right:'0',bottom:'0',width:'100%',height:'100%',border:'none',borderRadius:'0',objectFit:'cover'}
+    : {top:'84px',left:'auto',right:'16px',bottom:'auto',width:'100px',height:'auto',border:'',borderRadius:'8px',objectFit:'cover'};
+  Object.assign($('cam').style,geo,{zIndex:full?'15':'40'});
+  Object.assign($('det').style,geo,{zIndex:full?'16':'41',background:'transparent'});
 }
-
-function smoothDepthMap(raw, W, H) {
-    const sm = new Float32Array(raw.length); sm.set(raw);
-    for(let y=1; y<H-1; y++) {
-        for(let x=1; x<W-1; x++) {
-            let sum=0, val=0, c=0;
-            for(let dy=-1; dy<=1; dy++) for(let dx=-1; dx<=1; dx++) { val = raw[(y+dy)*W + (x+dx)]; if(Number.isFinite(val)) { sum+=val; c++; } }
-            sm[y*W+x] = c>0 ? sum/c : raw[y*W+x];
-        }
-    } return sm;
+async function tuneCamera(){
+  try{
+    const track=stream.getVideoTracks()[0];
+    const caps=track.getCapabilities?.()||{};
+    const adv=[];
+    if(caps.focusMode&&caps.focusMode.includes('continuous')) adv.push({focusMode:'continuous'});
+    if(caps.zoom){ adv.push({zoom:caps.zoom.min});               // kill default digital crop
+      const z=$('zm'); z.min=caps.zoom.min; z.max=caps.zoom.max; z.step=caps.zoom.step||0.1; z.value=caps.zoom.min;
+      $('vzm').textContent=(+caps.zoom.min).toFixed(1);
+      $('zoomWrap').style.display='block';
+      z.oninput=async e=>{ $('vzm').textContent=(+e.target.value).toFixed(1);
+        try{ await track.applyConstraints({advanced:[{zoom:+e.target.value}]}); }catch(x){} };
+    } else $('zoomWrap').style.display='none';
+    if(adv.length) await track.applyConstraints({advanced:adv});
+  }catch(e){ console.warn('camera tune',e); }
 }
-
-async function doCaptureLegacy() {
-    state.lck=true; state.lCap=performance.now(); lC("CAPTURING & SEGMENTING..."); navigator.vibrate?.([35]);
-    const mD=Math.min(state.vw, state.vh), sC=document.createElement('canvas'), sX=sC.getContext('2d'); sC.width=sC.height=512;
-    sX.drawImage($('vid'), (state.vw-mD)/2, (state.vh-mD)/2, mD, mD, 0, 0, 512, 512); 
-    
-    const rgb = sX.getImageData(0,0,512,512).data;
-    const aMask = new Uint8Array(262144); aMask.fill(255); 
-    try {
-        const maskRes = await state.rmbg(sC), mC = document.createElement('canvas'); mC.width=mC.height=512; const mCtx = mC.getContext('2d');
-        if (maskRes && maskRes.length && maskRes[0].mask && maskRes[0].mask.toCanvas) mCtx.drawImage(maskRes[0].mask.toCanvas(), 0, 0, 512, 512);
-        else if (maskRes && maskRes.toCanvas) mCtx.drawImage(maskRes.toCanvas(), 0, 0, 512, 512);
-        else if (maskRes && maskRes.canvas) mCtx.drawImage(maskRes.canvas, 0, 0, 512, 512);
-        const mData = mCtx.getImageData(0,0,512,512).data; for(let i=0; i<262144; i++) aMask[i] = mData[i*4]; 
-    } catch(err) {}
-
-    const res = await state.pipe(sC); 
-    const raw = smoothDepthMap(res.predicted_depth.data, res.predicted_depth.width, res.predicted_depth.height);
-    const sortedRaw = Float32Array.from(raw).sort(), medRaw = sortedRaw[Math.floor(raw.length/2)] || 0.001;
-    const depth = new Float32Array(raw.length); 
-    for(let i=0;i<raw.length;i++) {
-        let val = raw[i]; if (!Number.isFinite(val) || val === 0) val = 0.001; 
-        depth[i] = medRaw / val; if (!Number.isFinite(depth[i])) depth[i] = 1.0;
-    }
-    
-    const chkT = $('chk-tt');
-    let pq=[state.cR.x, state.cR.y, state.cR.z, state.cR.w];
-    if(chkT && chkT.checked) {
-        let fQ = new THREE.Quaternion(...pq).multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0), state.pht.length*(Math.PI/4)));
-        pq = [fQ.x, fQ.y, fQ.z, fQ.w];
-    }
-    
-    state.pht.push({ depth, aMask, dW:res.predicted_depth.width, dH:res.predicted_depth.height, pq, rgb, isT:(chkT && chkT.checked) });
-    let dot=$(`s${state.pht.length-1}`); if(dot) dot.classList.add('active'); $('cc').innerText=`${state.pht.length}/${MAX_P} PHOTOS`;
-    
-    if(state.pht.length===1) {
-        iScn.children.filter(c=>c.isPoints).forEach(m=>{m.geometry.dispose(); m.material.dispose(); iScn.remove(m);});
-        const pts=[], bg=new THREE.BufferGeometry();
-        for(let y=0;y<RES;y++) for(let x=0;x<RES;x++) {
-            let u = Math.floor((x/RES)*res.predicted_depth.width), v = Math.floor((y/RES)*res.predicted_depth.height);
-            let dv = depth[v * res.predicted_depth.width + u]; 
-            if (!Number.isFinite(dv)) dv = 1.0; 
-            pts.push((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
-        }
-        bg.setAttribute('position', new THREE.Float32BufferAttribute(pts,3)); iScn.add(new THREE.Points(bg, new THREE.PointsMaterial({color:0x0ff900, size:0.02})));
-    }
-    state.lck=false;
+$('bCam').onclick=async()=>{
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; $('cam').style.display='none';
+    $('bCam').textContent='◉ CAMERA'; $('bScan').disabled=true; $('bDetect').disabled=true; stopDetect(); stopScan(); return; }
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment',width:{ideal:1280}}});
+    const v=$('cam'); v.srcObject=stream; v.style.display='block';
+    $('bCam').textContent='◉ STOP CAM'; $('bScan').disabled=!cvReady; $('bDetect').disabled=false;
+    setPreviewLayout(true); tuneCamera();
+    stat('Optics Online'); subStat(cvReady?'Point at object, tap AUTO SCAN':'Waiting for Core…');
+  }catch(e){ stat('Camera Denied'); subStat(e.message); }
+};
+const PROC_W=480;
+function grab(){
+  const v=$('cam'); if(!v.videoWidth) return null;
+  const w=PROC_W,h=Math.round(PROC_W*v.videoHeight/v.videoWidth);
+  const c=document.createElement('canvas'); c.width=w; c.height=h;
+  const cx=c.getContext('2d'); cx.drawImage(v,0,0,w,h);
+  const id=cx.getImageData(0,0,w,h);
+  const rgba=cv.matFromImageData(id);
+  const gray=new cv.Mat(); cv.cvtColor(rgba,gray,cv.COLOR_RGBA2GRAY); rgba.delete();
+  return { gray, color:id.data, w, h };
+}
+function detect(gray,n){
+  const orb=new cv.ORB(n),kp=new cv.KeyPointVector(),des=new cv.Mat(),mask=new cv.Mat();
+  orb.detectAndCompute(gray,mask,kp,des); mask.delete(); orb.delete();
+  return { kp, des };
+}
+function matchPairs(desA,desB){
+  const bf=new cv.BFMatcher(cv.NORM_HAMMING,false),mm=new cv.DMatchVectorVector();
+  bf.knnMatch(desA,desB,mm,2);
+  const good=[];
+  for(let i=0;i<mm.size();i++){ const m=mm.get(i);
+    if(m.size()>=2){ const a=m.get(0),b=m.get(1); if(a.distance<0.75*b.distance) good.push({q:a.queryIdx,t:a.trainIdx}); m.delete?.(); } }
+  mm.delete(); bf.delete();
+  return good;
 }
 
-function loopLegacy() {
-    requestAnimationFrame(loopLegacy); iCtl.update(); iRnd.render(iScn, iCam);
-    if(!state.scan || !state.vw || !hCtx) return; const hw=$('hud').width, hh=$('hud').height; hCtx.clearRect(0,0,hw,hh);
-    dCtx.drawImage($('vid'), 0, 0, 128, 128); const p=dCtx.getImageData(0,0,128,128).data, g=new Uint8Array(16384), e=new Float32Array(16384), eV=[];
-    for(let i=0; i<16384; i++) g[i]=0.299*p[i*4]+0.587*p[i*4+1]+0.114*p[i*4+2];
-    for(let y=1; y<127; y++) for(let x=1; x<127; x++) {
-        let i=x+y*128, gx=(-g[i-129]-2*g[i-1]-g[i+127])+(g[i-127]+2*g[i+1]+g[i+129]), gy=(-g[i-129]-2*g[i-128]-g[i-127])+(g[i+127]+2*g[i+128]+g[i+129]), mg=Math.min(1,Math.sqrt(gx*gx+gy*gy)/128); e[i]=mg; eV.push(mg);
-    }
-    const aT=Math.max(0.27, eV.sort((a,b)=>a-b)[Math.floor(eV.length*0.85)]);
-    for(let i=0; i<16384; i++) { if(e[i]>aT){ eBuf[i*4]=0; eBuf[i*4+1]=195; eBuf[i*4+2]=160; eBuf[i*4+3]=Math.min(155,((e[i]-aT)/(1-aT))*430)|0; } else eBuf[i*4+3]=0; }
-    hCtx.putImageData(new ImageData(eBuf,128,128), 0, 0); 
+/* ================= MODE B: multi-frame SLAM (uncapped, high-water meter) ================= */
+const PAR_STEP=0.08;
+let accumulating=false, refFrame=null, accTimer=null;
+let anchorMap=null, keyframes=0, lastKfPar=0, refScaleSet=false, parHi=0;
+
+function stopScan(){
+  accumulating=false; if(accTimer){ clearTimeout(accTimer); accTimer=null; }
+  $('bScan').classList.remove('armed'); $('meter-container').style.display='none';
+  if(refFrame){ refFrame.gray.delete(); refFrame.kp.delete(); refFrame.des.delete(); refFrame=null; }
+  anchorMap=null;
 }
-
-// ----------------------------------------------------------------------
-// UNIFIED PIPELINE (MARCHING CUBES FUSION)
-// ----------------------------------------------------------------------
-function decimate(geo, targetRatio = 0.25) {
-    if (targetRatio >= 0.99) return geo;
-    const mod = new THREE.SimplifyModifier(), triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3, target = Math.floor(triCount * targetRatio);
-    try { return mod.modify(geo, target); } catch(e) { return geo; }
+function startHybridScan(){
+  const g=grab(); if(!g){ subStat('No video frame yet'); return; }
+  const det=detect(g.gray,1500);
+  if(det.des.rows<30){ g.gray.delete(); det.kp.delete(); det.des.delete(); subStat('Reference too featureless — aim at texture'); return; }
+  refFrame={ ...g, ...det };
+  anchorMap=new Map(); keyframes=0; lastKfPar=0; refScaleSet=false; parHi=0;
+  accumulating=true;
+  $('bScan').classList.add('armed'); $('bScan').textContent='■ FINISH SCAN';
+  $('meter-container').style.display='flex';
+  setPreviewLayout(true);
+  $('meter-label').textContent='SIDE-STEP SLOWLY ◀ ▶'; $('meter-label').style.color='var(--gd)';
+  stat('Reference Locked'); subStat('Side-step left/right · output = front 2.5D relief');
+  accStep();
 }
-
-async function finalize() {
-    state.scan=false;
-    
-    if (state.session) {
-        await state.session.end().catch(()=>{});
-        iRnd.xr.enabled = false;
-        iRnd.setAnimationLoop(null);
+function accStep(){
+  if(!accumulating) return;
+  let g=null,det=null;
+  try{
+    g=grab(); if(!g){ accTimer=setTimeout(accStep,200); return; }
+    det=detect(g.gray,1500);
+    const good=(refFrame.des.rows&&det.des.rows)?matchPairs(refFrame.des,det.des):[];
+    if(good.length<15){
+      det.kp.delete(); det.des.delete(); g.gray.delete();
+      if(keyframes>=2){ finishAccum(); return; }
+      /* v12: high-water — never zero the bar, just flag re-acquisition.
+         v19: watchdog — starved tracking auto-finishes neural-only after 7s */
+      if(!accStep.rt) accStep.rt=performance.now();
+      else if(performance.now()-accStep.rt>7000){
+        accStep.rt=0; subStat('tracking starved (low light / low texture) — meshing neural-only');
+        finishAccum(); return;
+      }
+      $('meter-label').textContent='RE-ACQUIRING — KEEP TARGET IN VIEW (auto-finish in 7s)'; $('meter-label').style.color='var(--wrn)';
+      accTimer=setTimeout(accStep,200); return;
     }
-    
-    $('inset').classList.add('fullscreen'); 
-    document.body.style.background = '#030712'; // Restore solid background if XR used
-    setTimeout(()=>{iRnd.setSize(window.innerWidth, window.innerHeight); iCam.aspect=window.innerWidth/window.innerHeight; iCam.updateProjectionMatrix();}, 500);
-    $('done').style.display='flex'; $('async-status').style.display='block';
-    $('btn-xr-finalize').style.display='none';
-    
-    await yieldLoop();
-
-    // 1. Point Cloud Construction (Legacy Extraction if needed)
-    if (state.mode === 'gyro-da2') {
-        let allD=[];
-        state.pht.forEach(ph=>{for(let i=0;i<ph.depth.length;i+=100)if(Number.isFinite(ph.depth[i]))allD.push(ph.depth[i]);});
-        const medZ = allD.sort((a,b)=>a-b)[Math.floor(allD.length/2)] || 0.35, sF = 0.35/medZ; state.scaleFactor = sF;
-
-        for(const ph of state.pht) {
-            ph.orbitPivot = medZ;
-            const sr=Array.from(ph.depth).filter(Number.isFinite).sort((a,b)=>a-b), p05=sr[Math.floor(sr.length*0.05)], p95=sr[Math.floor(sr.length*0.95)], q=new THREE.Quaternion(...ph.pq);
-            for(let y=0; y<RES; y++) for(let x=0; x<RES; x++) {
-                const u=Math.floor((x/RES)*ph.dW), v=Math.floor((y/RES)*ph.dH), dv=ph.depth[v*ph.dW+u];
-                if(ph.aMask[Math.floor((y/RES)*512)*512+Math.floor((x/RES)*512)] < 128) continue; 
-                if(dv<p05||dv>p95||!Number.isFinite(dv)) continue;
-                let pt = new THREE.Vector3((x/RES-0.5)*2*dv*tanH, (0.5-y/RES)*2*dv*tanH, -dv);
-                if(ph.isT) pt.z+=medZ; pt.applyQuaternion(q).multiplyScalar(sF);
-                
-                let grad = 0;
-                if (u > 0 && u < ph.dW - 1 && v > 0 && v < ph.dH - 1) {
-                    const dx = ph.depth[v*ph.dW + (u+1)] - ph.depth[v*ph.dW + (u-1)];
-                    const dy = ph.depth[(v+1)*ph.dW + u] - ph.depth[(v-1)*ph.dW + u];
-                    grad = Math.hypot(dx, dy);
-                }
-                pt.conf = Math.max(0.2, Math.min(1.0, 1.0 - (grad * 10)));
-                if(Number.isFinite(pt.x) && Number.isFinite(pt.y) && Number.isFinite(pt.z)) state.rawPts.push(pt);
-            }
-        }
-    }
-    
-    const rPts = state.rawPts;
-    
-    // Symmetry-Mirror Back-Fill 
-    if ($('chk-sym') && $('chk-sym').checked && rPts.length > 50) {
-        let cx=0,cy=0,cz=0; rPts.forEach(p=>{cx+=p.x;cy+=p.y;cz+=p.z;}); cx/=rPts.length; cy/=rPts.length; cz/=rPts.length;
-        let nx=0,ny=0,nz=0; 
-        if (state.pht.length > 0 && state.mode === 'gyro-da2') {
-            state.pht.forEach(ph=>{ const f=new THREE.Vector3(0,0,-1).applyQuaternion(new THREE.Quaternion(...ph.pq)); nx+=f.x;ny+=f.y;nz+=f.z; });
+    $('meter-label').style.color='var(--gd)'; accStep.rt=0;
+    const disps=[]; for(const m of good){ const a=refFrame.kp.get(m.q).pt,b=det.kp.get(m.t).pt; disps.push(Math.hypot(a.x-b.x,a.y-b.y)); }
+    disps.sort((x,y)=>x-y); const med=disps[disps.length>>1]/g.w;
+    parHi=Math.max(parHi,med);                                  // high-water mark (never decreases)
+    const n=anchorMap.size;
+    $('meterFill').style.width=Math.min(100,n)+'%';             // anchor-driven: monotonic, no bounce
+    $('meter-label').textContent=`KF ${keyframes} · Anchors ${n} · Peak par ${(parHi*100).toFixed(0)}%`;
+    if(med>=0.08 && med>=lastKfPar+PAR_STEP){
+      const res=poseAndTriangulate(refFrame,det,good);
+      if(res){
+        if(!refScaleSet){
+          for(const p of res.pts) anchorMap.set(p.qi,{px:p.px,py:p.py,z:p.z,n:1});
+          refScaleSet=true; keyframes=1; lastKfPar=med;
         } else {
-            nx = 0; ny = 0; nz = 1; // Default backwards for XR
-        }
-        const nl=Math.hypot(nx,ny,nz)||1; nx/=nl; ny/=nl; nz/=nl;
-        const mirrored=[];
-        for (const p of rPts) {
-            const dx=p.x-cx, dy=p.y-cy, dz=p.z-cz, d=dx*nx+dy*ny+dz*nz;
-            if (d < 0 || !Number.isFinite(d)) continue; 
-            const m = new THREE.Vector3(p.x-2*d*nx, p.y-2*d*ny, p.z-2*d*nz);
-            if (Number.isFinite(m.x) && Number.isFinite(m.y) && Number.isFinite(m.z)) {
-                m.conf = (p.conf||1) * 0.8; 
-                if(p.col) m.col = p.col;
-                mirrored.push(m);
+          const shared=res.pts.filter(p=>anchorMap.has(p.qi));
+          if(shared.length>=6){
+            const ratios=shared.map(p=>anchorMap.get(p.qi).z/p.z).filter(r=>isFinite(r)&&r>0).sort((a,b)=>a-b);
+            const s=ratios[ratios.length>>1];
+            if(isFinite(s)&&s>0){
+              for(const p of res.pts){ const zs=p.z*s;
+                if(anchorMap.has(p.qi)){ const e=anchorMap.get(p.qi); e.z=(e.z*e.n+zs)/(e.n+1); e.n++; }
+                else anchorMap.set(p.qi,{px:p.px,py:p.py,z:zs,n:1}); }
+              keyframes++; lastKfPar=med;
             }
-        } rPts.push(...mirrored);
+          }
+        }
+      }
+      det.kp.delete(); det.des.delete(); g.gray.delete();
+      accTimer=setTimeout(accStep,120); return;
     }
-    
-    // Adaptive Voxel Density Downsampling
-    const counts=new Map(), map=new Map(); let mnX=1e9,mnY=1e9,mnZ=1e9; rPts.forEach(p=>{mnX=Math.min(mnX,p.x); mnY=Math.min(mnY,p.y); mnZ=Math.min(mnZ,p.z);});
-    state.mnX = mnX; state.mnY = mnY; state.mnZ = mnZ;
-    
-    rPts.forEach(p=>{ const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; counts.set(k, (counts.get(k)||0)+1); });
-    rPts.forEach(p=>{ 
-        const k=`${Math.floor((p.x-mnX)/V_SZ)},${Math.floor((p.y-mnY)/V_SZ)},${Math.floor((p.z-mnZ)/V_SZ)}`; 
-        if(!map.has(k)) { p.density = counts.get(k); p.sumConf = p.conf||1; map.set(k,p); } else { map.get(k).sumConf += (p.conf||1); }
-    });
-    state.dsPts = Array.from(map.values()).map(p => { p.conf = p.sumConf / p.density; return p; });
-    state.spatialHash = map; 
-    
-    buildWatertightMesh();
+    det.kp.delete(); det.des.delete(); g.gray.delete();
+    accTimer=setTimeout(accStep,120);
+  }catch(e){
+    if(g){ try{g.gray.delete();}catch{} } if(det){ try{det.kp.delete();det.des.delete();}catch{} }
+    stat('Accum error'); subStat(e.message); console.error(e);
+    accumulating=false; $('meter-container').style.display='none'; $('bScan').textContent='⚡ AUTO SCAN'; $('bScan').classList.remove('armed');
+  }
+}
+function finishAccum(){
+  accumulating=false; if(accTimer){ clearTimeout(accTimer); accTimer=null; }
+  $('bScan').classList.remove('armed'); $('bScan').textContent='⚡ AUTO SCAN'; $('meter-container').style.display='none';
+  const A=refFrame?{ color:refFrame.color, w:refFrame.w, h:refFrame.h }:null;
+  if(refFrame){ refFrame.gray.delete(); refFrame.kp.delete(); refFrame.des.delete(); refFrame=null; }
+  if(!A){ stat('No reference frame'); subStat('Rescan'); anchorMap=null; return; }
+  const pairs=anchorMap?[...anchorMap.values()].map(e=>({px:e.px,py:e.py,z:e.z})):[];
+  anchorMap=null;
+  if(pairs.length<30){
+    /* v15: SfM failure is no longer fatal — mesh NEURAL-ONLY, hand depth shaping to the user */
+    stat('[FALLBACK] SfM anchors insufficient');
+    subStat(`${pairs.length} anchors — meshing NEURAL-ONLY. Matte, textured objects required for automatic SfM scaling. Shape depth with Z-STRETCH / INVERT.`);
+    setTimeout(()=>densify(A,{pairs:[]}),50); return;
+  }
+  stat('<span class="spin"></span>Phase 1: Fusing Data'); subStat(`${pairs.length} multi-view anchors...`);
+  setTimeout(()=>densify(A,{pairs}),50);
 }
 
-async function buildWatertightMesh() {
-    if (!state.dsPts || state.dsPts.length < 5) {
-        $('async-status').innerText = "ERROR: Insufficient spatial points.";
-        return;
+/* ================= pure-JS SfM math (bench-validated) ================= */
+const mul=(P,Q)=>{ const a=P.length,b=Q[0].length,c=Q.length,R=[]; for(let i=0;i<a;i++){R[i]=[];for(let j=0;j<b;j++){let s=0;for(let k=0;k<c;k++)s+=P[i][k]*Q[k][j];R[i][j]=s;}} return R; };
+const tT=M=>M[0].map((_,j)=>M.map(r=>r[j]));
+const mv3=(M,v)=>[M[0][0]*v[0]+M[0][1]*v[1]+M[0][2]*v[2], M[1][0]*v[0]+M[1][1]*v[1]+M[1][2]*v[2], M[2][0]*v[0]+M[2][1]*v[1]+M[2][2]*v[2]];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const nrm=v=>{ const n=Math.hypot(...v)||1; return v.map(x=>x/n); };
+const det3=M=>M[0][0]*(M[1][1]*M[2][2]-M[1][2]*M[2][1])-M[0][1]*(M[1][0]*M[2][2]-M[1][2]*M[2][0])+M[0][2]*(M[1][0]*M[2][1]-M[1][1]*M[2][0]);
+function jacobi(S){
+  const n=S.length; let A=S.map(r=>r.slice()); let V=A.map((_,i)=>A.map((_,j)=>i===j?1:0));
+  for(let sweep=0;sweep<24;sweep++){
+    let off=0; for(let p=0;p<n;p++)for(let q=p+1;q<n;q++) off+=A[p][q]*A[p][q];
+    if(off<1e-24) break;
+    for(let p=0;p<n;p++)for(let q=p+1;q<n;q++){
+      if(Math.abs(A[p][q])<1e-300) continue;
+      const phi=0.5*Math.atan2(2*A[p][q],A[p][p]-A[q][q]),c=Math.cos(phi),s=Math.sin(phi);
+      const J=A.map((_,i)=>A.map((_,j)=>i===j?1:0));
+      J[p][p]=c; J[q][q]=c; J[p][q]=-s; J[q][p]=s;
+      A=mul(mul(tT(J),A),J); V=mul(V,J);
     }
-    $('async-status').style.display='block'; $('async-status').innerText = "MARCHING CUBES..."; await yieldLoop();
-    
-    const xs = state.dsPts.map(p => p.x).sort((a,b)=>a-b), ys = state.dsPts.map(p => p.y).sort((a,b)=>a-b), zs = state.dsPts.map(p => p.z).sort((a,b)=>a-b), N = state.dsPts.length;
-    const b = { w:xs[Math.floor(N*.98)]-xs[Math.floor(N*.02)], h:ys[Math.floor(N*.98)]-ys[Math.floor(N*.02)], d:zs[Math.floor(N*.98)]-zs[Math.floor(N*.02)], cx:(xs[Math.floor(N*.98)]+xs[Math.floor(N*.02)])/2, cy:(ys[Math.floor(N*.98)]+ys[Math.floor(N*.02)])/2, cz:(zs[Math.floor(N*.98)]+zs[Math.floor(N*.02)])/2 }, sz = Math.max(b.w,b.h,b.d)*1.3 || 0.1;
-    
-    const mc = new THREE.MarchingCubes(parseInt($('sl-res').value), new THREE.MeshStandardMaterial(), true, true, 100000);
-    mc.isolation = parseFloat($('sl-iso').value); const str = parseFloat($('sl-str').value), sub = parseFloat($('sl-sub').value);
-    
-    for(let i=0; i<state.dsPts.length; i++) {
-        if (i%500===0) await yieldLoop(); 
-        const p = state.dsPts[i], nx=(p.x-b.cx)/sz+0.5, ny=(p.y-b.cy)/sz+0.5, nz=(p.z-b.cz)/sz+0.5;
-        if(nx>0&&nx<1&&ny>0&&ny<1&&nz>0&&nz<1) mc.addBall(nx, ny, nz, (str / Math.sqrt(p.density || 1)) * (p.conf || 1), sub); 
+  }
+  return { val:A.map((_,i)=>A[i][i]), V };
+}
+const colOf=(V,c)=>[V[0][c],V[1][c],V[2][c]];
+function nullVec(S){ const {val,V}=jacobi(S); let mi=0; for(let i=1;i<S.length;i++) if(val[i]<val[mi]) mi=i; return S.map((_,r)=>V[r][mi]); }
+function eightPoint(idx,x1,y1,x2,y2){
+  const M=Array.from({length:9},()=>new Array(9).fill(0));
+  for(const i of idx){ const r=[x1[i]*x2[i],y1[i]*x2[i],x2[i], x1[i]*y2[i],y1[i]*y2[i],y2[i], x1[i],y1[i],1];
+    for(let a=0;a<9;a++)for(let b=0;b<9;b++) M[a][b]+=r[a]*r[b]; }
+  const e=nullVec(M); return [[e[0],e[1],e[2]],[e[3],e[4],e[5]],[e[6],e[7],e[8]]];
+}
+const sampson=(E,a,b)=>{ const Ea=mv3(E,a),Etb=mv3(tT(E),b),num=(b[0]*Ea[0]+b[1]*Ea[1]+b[2]*Ea[2]);
+  const den=Ea[0]*Ea[0]+Ea[1]*Ea[1]+Etb[0]*Etb[0]+Etb[1]*Etb[1]; return num*num/(den||1e-12); };
+function decomposeE(E){
+  const ETE=mul(tT(E),E),{val,V}=jacobi(ETE); const ord=[0,1,2].sort((i,j)=>val[j]-val[i]);
+  const v1=colOf(V,ord[0]),v2=colOf(V,ord[1]),v3=colOf(V,ord[2]);
+  let Vm=[[v1[0],v2[0],v3[0]],[v1[1],v2[1],v3[1]],[v1[2],v2[2],v3[2]]];
+  let u1=nrm(mv3(E,v1)),u2=nrm(mv3(E,v2)),u3=cross(u1,u2);
+  let Um=[[u1[0],u2[0],u3[0]],[u1[1],u2[1],u3[1]],[u1[2],u2[2],u3[2]]];
+  if(det3(Um)<0){ Um=Um.map(r=>[r[0],r[1],-r[2]]); } if(det3(Vm)<0){ Vm=Vm.map(r=>[r[0],r[1],-r[2]]); }
+  const W=[[0,-1,0],[1,0,0],[0,0,1]],Vt=tT(Vm);
+  let Ra=mul(mul(Um,W),Vt),Rb=mul(mul(Um,tT(W)),Vt);
+  if(det3(Ra)<0) Ra=Ra.map(r=>r.map(x=>-x)); if(det3(Rb)<0) Rb=Rb.map(r=>r.map(x=>-x));
+  const t=[Um[0][2],Um[1][2],Um[2][2]],tn=t.map(x=>-x);
+  return [{R:Ra,t},{R:Ra,t:tn},{R:Rb,t},{R:Rb,t:tn}];
+}
+function triangulate(R,t,a,b){
+  const r3=[b[0]*R[2][0]-R[0][0], b[0]*R[2][1]-R[0][1], b[0]*R[2][2]-R[0][2], b[0]*t[2]-t[0]];
+  const r4=[b[1]*R[2][0]-R[1][0], b[1]*R[2][1]-R[1][1], b[1]*R[2][2]-R[1][2], b[1]*t[2]-t[1]];
+  const rows=[[-1,0,a[0],0],[0,-1,a[1],0],r3,r4];
+  const M=Array.from({length:4},()=>new Array(4).fill(0));
+  for(const rr of rows)for(let i=0;i<4;i++)for(let j=0;j<4;j++) M[i][j]+=rr[i]*rr[j];
+  const X=nullVec(M),w=X[3]; if(Math.abs(w)<1e-12) return null;
+  const P=[X[0]/w,X[1]/w,X[2]/w];
+  const z2=R[2][0]*P[0]+R[2][1]*P[1]+R[2][2]*P[2]+t[2];
+  return { P, z1:P[2], z2 };
+}
+/* v12: restored — this function was MISSING from v11 Pro (hybrid crashed at first keyframe) */
+function poseAndTriangulate(A,B,good){
+  try{
+    const n=good.length,w=A.w; if(n<20) return null;
+    const f=(0.5*w)/Math.tan(0.5*(+$('fov').value)*Math.PI/180),cx=w/2,cy=A.h/2;
+    const x1=[],y1=[],x2=[],y2=[];
+    for(const m of good){ const p=A.kp.get(m.q).pt,q=B.kp.get(m.t).pt;
+      x1.push((p.x-cx)/f); y1.push((p.y-cy)/f); x2.push((q.x-cx)/f); y2.push((q.y-cy)/f); }
+    const SAMP=2e-4; let bestE=null,bestIn=-1,bestMask=null;
+    for(let it=0;it<220;it++){
+      const s=new Set(); while(s.size<8) s.add((Math.random()*n)|0);
+      let E; try{ E=eightPoint([...s],x1,y1,x2,y2); }catch{ continue; }
+      let cnt=0; const mask=new Uint8Array(n);
+      for(let i=0;i<n;i++){ if(sampson(E,[x1[i],y1[i],1],[x2[i],y2[i],1])<SAMP){ mask[i]=1; cnt++; } }
+      if(cnt>bestIn){ bestIn=cnt; bestE=E; bestMask=mask; }
     }
-    
-    $('async-status').innerText = "DECIMATING & WELDING..."; await yieldLoop();
-    let geo = mc.generateBufferGeometry();
-    if (!geo || !geo.attributes.position || geo.attributes.position.count === 0) {
-        $('async-status').innerText = "ERROR: Empty surface extracted.";
-        return;
+    if(!bestE||bestIn<15) return null;
+    const inl=[]; for(let i=0;i<n;i++) if(bestMask[i]) inl.push(i);
+    const E=eightPoint(inl,x1,y1,x2,y2);
+    const cands=decomposeE(E); let best=null,bestFront=-1;
+    for(const c of cands){ let front=0;
+      for(const i of inl){ const r=triangulate(c.R,c.t,[x1[i],y1[i],1],[x2[i],y2[i],1]); if(r&&r.z1>0&&r.z2>0) front++; }
+      if(front>bestFront){ bestFront=front; best=c; } }
+    if(!best||bestFront<10) return null;
+    const pts=[];
+    for(const i of inl){ const r=triangulate(best.R,best.t,[x1[i],y1[i],1],[x2[i],y2[i],1]);
+      if(!r||r.z1<=0||r.z2<=0||!isFinite(r.P[0]+r.P[1]+r.P[2])) continue;
+      const p=A.kp.get(good[i].q).pt;
+      pts.push({ qi:good[i].q, px:p.x, py:p.y, z:r.z1 });
     }
+    return pts.length>=10?{ pts, inliers:bestIn }:null;
+  }catch(e){ console.error(e); return null; }
+}
 
-    geo.scale(sz/2, sz/2, sz/2); geo.translate(b.cx, b.cy, b.cz);
-    geo = THREE.BufferGeometryUtils.mergeVertices(geo);
-    geo = decimate(geo, parseFloat($('sl-det').value));
-    
-    try {
-        if(!ManifoldClass) { const mod = await import('https://cdn.jsdelivr.net/npm/manifold-3d@2.5.1/manifold.js'); const wasm = await mod.default(); wasm.setup(); ManifoldClass = wasm.Manifold; }
-        const mObj = { vertProperties: geo.attributes.position.array, triVerts: geo.index.array, numProp: 3 };
-        const solid = ManifoldClass.ofMesh(mObj).asOriginal(); const rep = solid.getMesh(); solid.delete();
-        const rp=[], ri=[];
-        for(let i=0; i<rep.vertProperties.length; i++) rp.push(rep.vertProperties[i]);
-        for(let i=0; i<rep.triVerts.length; i++) ri.push(rep.triVerts[i]);
-        geo.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3)); geo.setIndex(ri);
-    } catch(e) { console.warn("Manifold skipped.", e); }
-    
-    if($('chk-edge').checked) geo = new THREE.EdgeSplitModifier().modify(geo, 30 * Math.PI / 180);
-    geo.computeVertexNormals();
+/* ---------- robust affine ---------- */
+function robustAffine(xs,ys){
+  const n=xs.length; if(n<12) return null;
+  let xmin=Infinity,xmax=-Infinity,ymin=Infinity,ymax=-Infinity;
+  for(let i=0;i<n;i++){ if(xs[i]<xmin)xmin=xs[i]; if(xs[i]>xmax)xmax=xs[i]; if(ys[i]<ymin)ymin=ys[i]; if(ys[i]>ymax)ymax=ys[i]; }
+  if(xmax-xmin<0.08) return { reliable:false, why:'no disparity spread' };
+  const slopes=[],cap=20000,pe=n*(n-1)/2,step=pe>cap?Math.ceil(pe/cap):1;
+  for(let i=0;i<n;i++) for(let j=i+1;j<n;j+=step){ const dx=xs[j]-xs[i]; if(Math.abs(dx)<1e-3) continue; slopes.push((ys[j]-ys[i])/dx); }
+  if(slopes.length<10) return { reliable:false, why:'few slopes' };
+  slopes.sort((p,q)=>p-q); const a=slopes[slopes.length>>1];
+  const b=xs.map((x,i)=>ys[i]-a*x).sort((p,q)=>p-q)[n>>1];
+  const mad=(1.4826*xs.map((x,i)=>Math.abs(ys[i]-(a*x+b))).sort((p,q)=>p-q)[n>>1])||1e-9;
+  const signal=a*(xmax-xmin),invHi=a*xmax+b;
+  const reliable=a>0&&signal>4*mad&&invHi>1e-4;
+  return { a, b, reliable, anchors:n, snr:signal/mad };
+}
 
-    $('async-status').innerText = "PROJECTING VERTEX COLORS..."; await yieldLoop();
-    
-    const pos = geo.attributes.position.array, nrm = geo.attributes.normal.array, col = new Float32Array(pos.length);
-    const scale = state.scaleFactor || 1;
-
-    if (state.mode === 'gyro-da2') {
-        state.pht.forEach(ph => {
-            ph._q = new THREE.Quaternion(...ph.pq);
-            ph._qInv = ph._q.clone().invert();
-            ph._fwd = new THREE.Vector3(0,0,-1).applyQuaternion(ph._q);
+/* ---------- hybrid densify + instant reprojection ---------- */
+async function densify(A,sfm){
+  try{
+    const w=A.w,h=A.h;
+    const cnv=document.createElement('canvas'); cnv.width=w; cnv.height=h;
+    cnv.getContext('2d').putImageData(new ImageData(new Uint8ClampedArray(A.color),w,h),0,0);
+    const model=await getDepther();
+    stat('<span class="spin"></span>Phase 2: Neural Depth'); subStat('Inferring dense tensor array...');
+    await new Promise(r=>setTimeout(r,30));
+    const { predicted_depth }=await model(await RawImage.fromCanvas(cnv));
+    /* v16: target isolation — re-detect on the REFERENCE frame, crop to the locked label */
+    let crop=null;
+    if(selLabel&&detWorker){
+      try{
+        stat('<span class="spin"></span>Phase 2b: Target lock'); subStat(`Locating ${selLabel} in reference frame…`);
+        const res=await new Promise(res2=>{
+          targetResolve=res2;
+          createImageBitmap(cnv).then(bmp=>detWorker.postMessage({type:'frame',tag:'target',bitmap:bmp},[bmp]));
+          setTimeout(()=>{ if(targetResolve){ targetResolve(null); targetResolve=null; } },5000);
         });
-
-        for(let i=0; i<pos.length; i+=3) {
-            if(i%3000===0) await yieldLoop(); 
-            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]), n = new THREE.Vector3(nrm[i], nrm[i+1], nrm[i+2]);
-            const vUnscaled = v.clone().multiplyScalar(1/scale);
-            
-            let sumR=0, sumG=0, sumB=0, totalW=0.0001;
-            for(let ph of state.pht) {
-                const facing = n.dot(ph._fwd);
-                if(facing > 0.1) {
-                    const l = vUnscaled.clone().applyQuaternion(ph._qInv);
-                    if (ph.isT) l.z -= ph.orbitPivot;
-                    if(l.z < 0) {
-                        const u = (l.x / -l.z) / tanH, vv = (l.y / -l.z) / tanH;
-                        if(Math.abs(u)<1 && Math.abs(vv)<1 && ph.rgb) {
-                            const ix = Math.floor((u*.5+.5)*512), iy = Math.floor((.5-vv*.5)*512);
-                            if (ph.aMask[iy*512+ix] < 128) continue; 
-
-                            const w = Math.pow(facing, 4); 
-                            const idx=(iy*512+ix)*4;
-                            sumR += ph.rgb[idx]*w; sumG += ph.rgb[idx+1]*w; sumB += ph.rgb[idx+2]*w; totalW += w;
-                        }
-                    }
-                }
-            }
-            
-            let nearby = 0;
-            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
-            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
-                const k = `${gx+dx},${gy+dy},${gz+dz}`;
-                if(state.spatialHash.has(k)) nearby += state.spatialHash.get(k).density;
-            }
-            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
-
-            col[i] = (sumR/totalW/255)*aoCoeff; col[i+1] = (sumG/totalW/255)*aoCoeff; col[i+2] = (sumB/totalW/255)*aoCoeff;
+        if(res){
+          let best=null; for(const o of res.boxes) if(o.label===selLabel&&(!best||o.score>best.score)) best=o;
+          if(best){ const m=0.08, b=best.box;
+            crop={ x0:Math.max(0,b.xmin/res.w-m), x1:Math.min(1,b.xmax/res.w+m),
+                   y0:Math.max(0,b.ymin/res.h-m), y1:Math.min(1,b.ymax/res.h+m) }; }
         }
-    } else {
-        // XR Mode: Sample colors directly from spatial hash metric density mapping
-        for(let i=0; i<pos.length; i+=3) {
-            if(i%3000===0) await yieldLoop(); 
-            const v = new THREE.Vector3(pos[i], pos[i+1], pos[i+2]);
-            const gx = Math.floor((v.x-state.mnX)/V_SZ), gy = Math.floor((v.y-state.mnY)/V_SZ), gz = Math.floor((v.z-state.mnZ)/V_SZ);
-            let sR=0, sG=0, sB=0, cw=0, nearby=0;
-            for(let dx=-1;dx<=1;dx++) for(let dy=-1;dy<=1;dy++) for(let dz=-1;dz<=1;dz++) {
-                const k = `${gx+dx},${gy+dy},${gz+dz}`;
-                if(state.spatialHash.has(k)) {
-                    const pt = state.spatialHash.get(k);
-                    if(pt.col) { sR += pt.col.r; sG += pt.col.g; sB += pt.col.b; cw++; }
-                    nearby += pt.density;
-                }
-            }
-            const aoCoeff = Math.max(0.48, 1.0 - (nearby * 0.015)); 
-            if(cw > 0) { col[i] = (sR/cw)*aoCoeff; col[i+1] = (sG/cw)*aoCoeff; col[i+2] = (sB/cw)*aoCoeff; }
-            else { col[i] = 0.5*aoCoeff; col[i+1] = 0.5*aoCoeff; col[i+2] = 0.5*aoCoeff; }
-        }
+      }catch(e){ console.warn('target lock',e); }
     }
-    
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-
-    iScn.children.filter(c=>c.isMesh||c.isPoints).forEach(m=>{m.geometry.dispose();m.material.dispose();iScn.remove(m);});
-    state.wMesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors:true, metalness:0.12, roughness:0.58, envMapIntensity:1.0 })); 
-    iScn.add(state.wMesh);
-    
-    const sr = geo.boundingSphere || new THREE.Sphere(new THREE.Vector3(), 0.1);
-    iCam.position.set(0,0,sr.radius*2.8); iCtl.target.set(0,0,0); iCtl.autoRotate=true; iCtl.update();
-    
-    const triCount = geo.index ? geo.index.count/3 : geo.attributes.position.count/3;
-    $('es').innerText = `${state.pht.length || state.rawPts.length} FRAMES/POINTS · ${(geo.attributes.position.count/3).toLocaleString()} TRIANGLES`;
-    $('async-status').style.display='none';
+    cachedScan={ A, sfm, dims:predicted_depth.dims, D:predicted_depth.data, crop };
+    projectHybridMesh();
+  }catch(e){ stat('Densify error'); subStat(e.message); console.error(e); }
+}
+function projectHybridMesh(){
+  if(!cachedScan) return;
+  const { A, sfm, dims, D, crop }=cachedScan;
+  const dh=dims[dims.length-2],dw=dims[dims.length-1],w=A.w,h=A.h;
+  let mn=Infinity,mx=-Infinity; for(let i=0;i<D.length;i++){ const v=D[i]; if(v<mn)mn=v; if(v>mx)mx=v; }
+  const span=(mx-mn)||1,dn=i=>(D[i]-mn)/span;
+  stat('<span class="spin"></span>Phase 3: Meshing'); subStat('Mapping neural map to physical anchors...');
+  const xs=[],ys=[];
+  for(const p of sfm.pairs){
+    const sx=Math.min(dw-1,Math.max(0,Math.round(p.px/w*dw))),sy=Math.min(dh-1,Math.max(0,Math.round(p.py/h*dh)));
+    xs.push(dn(sy*dw+sx)); ys.push(1/p.z);
+  }
+  const fit=robustAffine(xs,ys);
+  const useAnchors=!!(fit&&fit.reliable);
+  const a=useAnchors?fit.a:1.0, b=useAnchors?fit.b:0.12;
+  const fov=+$('fov').value*Math.PI/180,f=(0.5*dw)/Math.tan(0.5*fov),cx=dw/2,cy=dh/2;
+  let cull=+$('fc').value;
+  if($('iso').checked){
+    /* Otsu split on the depth histogram: keep the near (foreground) cluster */
+    const hist=new Float32Array(64);
+    for(let i=0;i<D.length;i+=7) hist[Math.min(63,(dn(i)*64)|0)]++;
+    let tot=0,sum=0; for(let b=0;b<64;b++){ tot+=hist[b]; sum+=b*hist[b]; }
+    let wB=0,sB=0,best=0,bt=0;
+    for(let b=0;b<64;b++){ wB+=hist[b]; if(!wB) continue; const wF=tot-wB; if(!wF) break;
+      sB+=b*hist[b]; const mB=sB/wB,mF=(sum-sB)/wF,v2=wB*wF*(mB-mF)*(mB-mF);
+      if(v2>best){ best=v2; bt=b; } }
+    cull=Math.max(cull,(bt+0.5)/64);
+  }
+  const edge=+$('er').value,stride=Math.max(1,Math.round(Math.sqrt(dw*dh/100000)));
+  const gw=Math.floor((dw-1)/stride)+1,gh=Math.floor((dh-1)/stride)+1;
+  const vidx=new Int32Array(gw*gh).fill(-1);
+  const pos=[],col=[],vdn=[]; let vc=0;
+  for(let gy=0;gy<gh;gy++){ const y=gy*stride; if(y>=dh) continue;
+    for(let gx=0;gx<gw;gx++){ const x=gx*stride; if(x>=dw) continue;
+      const i=y*dw+x,d=dn(i);
+      if(crop){ const nx2=x/dw, ny2=y/dh; if(nx2<crop.x0||nx2>crop.x1||ny2<crop.y0||ny2>crop.y1) continue; }
+      if(d<cull) continue;
+      const invd=a*d+b; if(invd<=1e-3) continue;
+      const Z=1/invd;
+      vidx[gy*gw+gx]=vc++;
+      pos.push((x-cx)*Z/f,-(y-cy)*Z/f,-Z); vdn.push(d);
+      const cxp=Math.min(w-1,Math.round(x/dw*w)),cyp=Math.min(h-1,Math.round(y/dh*h)),o=(cyp*w+cxp)*4;
+      col.push(A.color[o]/255,A.color[o+1]/255,A.color[o+2]/255);
+    }
+  }
+  if(vc<50){ stat('Dense map empty'); subStat('No valid depths — rescan'); return; }
+  const index=[]; const tear=edge>0?edge:Infinity;
+  const GRAZE=0.10;
+  const P=k=>[pos[3*k],pos[3*k+1],pos[3*k+2]];
+  const grazeOk=(p,q,r)=>{
+    const Av=P(p),Bv=P(q),Cv=P(r);
+    const e1=[Bv[0]-Av[0],Bv[1]-Av[1],Bv[2]-Av[2]],e2=[Cv[0]-Av[0],Cv[1]-Av[1],Cv[2]-Av[2]];
+    const n=[e1[1]*e2[2]-e1[2]*e2[1],e1[2]*e2[0]-e1[0]*e2[2],e1[0]*e2[1]-e1[1]*e2[0]];
+    const c=[(Av[0]+Bv[0]+Cv[0])/3,(Av[1]+Bv[1]+Cv[1])/3,(Av[2]+Bv[2]+Cv[2])/3];
+    const nl=Math.hypot(...n)||1e-9,cl=Math.hypot(...c)||1e-9;
+    return Math.abs(n[0]*c[0]+n[1]*c[1]+n[2]*c[2])/(nl*cl)>GRAZE;
+  };
+  const ok3=(p,q,r)=>p>=0&&q>=0&&r>=0&&
+    Math.abs(vdn[p]-vdn[q])<=tear&&Math.abs(vdn[q]-vdn[r])<=tear&&Math.abs(vdn[p]-vdn[r])<=tear&&
+    grazeOk(p,q,r);
+  for(let gy=0;gy<gh-1;gy++) for(let gx=0;gx<gw-1;gx++){
+    const v00=vidx[gy*gw+gx],v10=vidx[gy*gw+gx+1],v01=vidx[(gy+1)*gw+gx],v11=vidx[(gy+1)*gw+gx+1];
+    if(ok3(v00,v10,v01)) index.push(v00,v10,v01);
+    if(ok3(v10,v11,v01)) index.push(v10,v11,v01);
+  }
+  drawMesh(pos,col,index);
+  const NV=vc.toLocaleString(),NF=(index.length/3).toLocaleString();
+  const tgt=(crop?` · ◎ ${selLabel}`:'')+($('iso').checked?` · iso ${(cull*100)|0}%`:'');
+  if(useAnchors){ stat('Hybrid Mesh Complete'); subStat(`${NV} verts · ${NF} faces · ${fit.anchors} anchors · 2.5D relief (Relative)${tgt}`); }
+  else { stat('[FALLBACK] NEURAL-ONLY'); subStat(`${NV} verts · ${NF} faces · 2.5D relief (Relative)${tgt} · matte/textured required for auto-scale · Z-STRETCH + INVERT live`); }
+}
+function drawMesh(pos,col,index){
+  setPreviewLayout(false);                       // result takes the stage; camera to corner
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setIndex(index);
+  g.computeBoundingSphere();
+  const s=g.boundingSphere.radius||1; g.scale(2/s,2/s,2/s); g.center();
+  cloud=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide}));
+  scene.add(cloud);
+  applyTransforms();
+  plyRows=()=>{
+    const p=g.attributes.position,c=g.attributes.color,zs=cloud.scale.z;
+    const verts=[]; for(let i=0;i<p.count;i++) verts.push(`${p.getX(i).toFixed(4)} ${p.getY(i).toFixed(4)} ${(p.getZ(i)*zs).toFixed(4)} ${(c.getX(i)*255)|0} ${(c.getY(i)*255)|0} ${(c.getZ(i)*255)|0}`);
+    const idx=g.index.array,faces=[]; for(let i=0;i<idx.length;i+=3) faces.push(`3 ${idx[i]} ${idx[i+1]} ${idx[i+2]}`);
+    return { verts, faces };
+  };
+  $('bExport').disabled=false; $('bSolid').disabled=false;
+}
+function applyTransforms(){
+  if(!cloud) return;
+  let sz=+$('zs').value; if($('inv').checked) sz=-sz;
+  cloud.scale.z=sz;
 }
 
-['sl-res','sl-str','sl-iso','sl-sub','sl-det','chk-edge'].forEach(id => { const e = $(id); if(e) e.onchange = buildWatertightMesh; });
-
-if($('dl-ply')) {
-    $('dl-ply').onclick = async () => {
-        if(!state.wMesh) return; const btn=$('dl-ply'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING PLY..."; await yieldLoop();
-        try {
-            const g = state.wMesh.geometry, pos = g.attributes.position, col = g.attributes.color, n = pos.count;
-            let head = `ply\nformat ascii 1.0\nelement vertex ${n}\nproperty float x\nproperty float y\nproperty float z\nproperty uchar red\nproperty uchar green\nproperty uchar blue\n`;
-            const idx = g.index ? g.index.array : null, fcount = idx ? idx.length/3 : n/3;
-            head += `element face ${fcount}\nproperty list uchar int vertex_index\nend_header\n`;
-            let body = '';
-            for(let i=0; i<n; i++) {
-                if(i%1000===0) await yieldLoop();
-                const r = col ? Math.round(col.getX(i)*255) : 200, gg = col ? Math.round(col.getY(i)*255) : 200, bb = col ? Math.round(col.getZ(i)*255) : 200;
-                body += `${pos.getX(i)} ${pos.getY(i)} ${pos.getZ(i)} ${r} ${gg} ${bb}\n`;
-            }
-            for(let i=0; i<fcount; i++) { if(i%1000===0) await yieldLoop(); const a = idx?idx[i*3]:i*3, b = idx?idx[i*3+1]:i*3+1, c = idx?idx[i*3+2]:i*3+2; body += `3 ${a} ${b} ${c}\n`; }
-            const aLink = document.createElement('a'); aLink.href = URL.createObjectURL(new Blob([head+body], {type:'text/plain'}));
-            aLink.download = `p3dk-color-${Date.now()}.ply`; aLink.click(); showToast("Color PLY Exported!");
-        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
-    };
+/* ---------- bas-relief solid closure (bench-validated topology) ---------- */
+function solidify(pos,index,zs){
+  const N=pos.length/3;
+  const V=new Float64Array(N*3); let zmin=Infinity,zmax=-Infinity;
+  for(let i=0;i<N;i++){ V[3*i]=pos[3*i]; V[3*i+1]=pos[3*i+1]; const z=pos[3*i+2]*zs; V[3*i+2]=z;
+    if(z<zmin)zmin=z; if(z>zmax)zmax=z; }
+  const zback=zmin-0.05*Math.max(1e-6,(zmax-zmin));
+  const W=new Float64Array(N*6); W.set(V,0);
+  for(let i=0;i<N;i++){ W[3*(N+i)]=V[3*i]; W[3*(N+i)+1]=V[3*i+1]; W[3*(N+i)+2]=zback; }
+  const tris=[];
+  for(let t=0;t<index.length;t+=3){ const a=index[t],b=index[t+1],c=index[t+2];
+    tris.push(a,c,b); tris.push(a+N,b+N,c+N); }
+  const cnt=new Map(); const key=(a,b)=>a<b?a*4e9+b:b*4e9+a;
+  for(let t=0;t<index.length;t+=3){ const e=[[index[t],index[t+1]],[index[t+1],index[t+2]],[index[t+2],index[t]]];
+    for(const [a,b] of e){ const k=key(a,b); cnt.set(k,(cnt.get(k)||0)+1); } }
+  for(let t=0;t<index.length;t+=3){ const e=[[index[t],index[t+1]],[index[t+1],index[t+2]],[index[t+2],index[t]]];
+    for(const [a,b] of e){ if(cnt.get(key(a,b))===1){ tris.push(a,b,a+N); tris.push(b,b+N,a+N); } } }
+  return { verts:W, tris };
+}
+function writeSTL(W,tris){
+  const F=tris.length/3,buf=new ArrayBuffer(84+50*F),dv=new DataView(buf);
+  dv.setUint32(80,F,true); let o=84;
+  for(let t=0;t<tris.length;t+=3){
+    const a=tris[t]*3,b=tris[t+1]*3,c=tris[t+2]*3;
+    const ux=W[b]-W[a],uy=W[b+1]-W[a+1],uz=W[b+2]-W[a+2],vx=W[c]-W[a],vy=W[c+1]-W[a+1],vz=W[c+2]-W[a+2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const nl=Math.hypot(nx,ny,nz)||1; nx/=nl;ny/=nl;nz/=nl;
+    dv.setFloat32(o,nx,true); dv.setFloat32(o+4,ny,true); dv.setFloat32(o+8,nz,true); o+=12;
+    for(const k of [a,b,c]){ dv.setFloat32(o,W[k],true); dv.setFloat32(o+4,W[k+1],true); dv.setFloat32(o+8,W[k+2],true); o+=12; }
+    dv.setUint16(o,0,true); o+=2;
+  }
+  return buf;
 }
 
-if($('dl-stl')) {
-    $('dl-stl').onclick = async () => {
-        if(!state.wMesh) return; const btn=$('dl-stl'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING STL..."; await yieldLoop();
-        try {
-            const pos = state.wMesh.geometry.attributes.position, idx = state.wMesh.geometry.index ? state.wMesh.geometry.index.array : null;
-            const nT = idx ? idx.length/3 : pos.count/3, B = new ArrayBuffer(84 + nT * 50), V = new DataView(B); let O = 84;
-            new TextEncoder().encode('P3dK Watertight STL').forEach((b,i)=>V.setUint8(i,b)); V.setUint32(80, nT, true);
-            for(let t=0; t<nT; t++) {
-                if(t%2000===0) await yieldLoop();
-                const i0 = idx ? idx[t*3] : t*3, i1 = idx ? idx[t*3+1] : t*3+1, i2 = idx ? idx[t*3+2] : t*3+2;
-                const ax = pos.getX(i0), ay = pos.getY(i0), az = pos.getZ(i0), bx = pos.getX(i1), by = pos.getY(i1), bz = pos.getZ(i1), cx = pos.getX(i2), cy = pos.getY(i2), cz = pos.getZ(i2);
-                const ux = bx - ax, uy = by - ay, uz = bz - az, vx = cx - ax, vy = cy - ay, vz = cz - az;
-                let nx = uy*vz - uz*vy, ny = uz*vx - ux*vz, nz = ux*vy - uy*vx, len = Math.sqrt(nx*nx + ny*ny + nz*nz);
-                if(len > 0) { nx /= len; ny /= len; nz /= len; }
-                V.setFloat32(O, nx, true); V.setFloat32(O+4, ny, true); V.setFloat32(O+8, nz, true);
-                V.setFloat32(O+12, ax, true); V.setFloat32(O+16, ay, true); V.setFloat32(O+20, az, true);
-                V.setFloat32(O+24, bx, true); V.setFloat32(O+28, by, true); V.setFloat32(O+32, bz, true);
-                V.setFloat32(O+36, cx, true); V.setFloat32(O+40, cy, true); V.setFloat32(O+44, cz, true); V.setUint16(O+48, 0, true); O += 50;
-            }
-            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([B], {type:'application/octet-stream'})); a.download = `p3dk-geometry-${Date.now()}.stl`; a.click(); showToast("STL Exported Successfully!");
-        } catch(e) { showToast("Export failed: " + e.message); } btn.disabled = false; btn.innerText = orig;
-    };
+/* ================= MODE A: WebXR volumetric TSDF (raw decoupled loop) ================= */
+let vol=null, kf=0, stlData=null;
+function makeVol(res,size,ox,oy,oz){
+  return {res,size,vox:size/res,ox,oy,oz,tsdf:new Float32Array(res**3).fill(1),w:new Uint8Array(res**3)};
+}
+function integrate(vol,dep,W2V,P){
+  const {res,vox,ox,oy,oz,tsdf,w}=vol,{dw,dh,data}=dep,tau=3*vox,r2=res*res;
+  for(let z=0;z<res;z++){ const wz=oz+(z+0.5)*vox;
+    for(let y=0;y<res;y++){ const wy=oy+(y+0.5)*vox,base=y*res+z*r2;
+      for(let x=0;x<res;x++){ const wx=ox+(x+0.5)*vox;
+        const cz=W2V[2]*wx+W2V[6]*wy+W2V[10]*wz+W2V[14]; if(cz>-0.05) continue;
+        const cx=W2V[0]*wx+W2V[4]*wy+W2V[8]*wz+W2V[12];
+        const cy=W2V[1]*wx+W2V[5]*wy+W2V[9]*wz+W2V[13];
+        const pw=P[3]*cx+P[7]*cy+P[11]*cz+P[15]; if(pw<=0) continue;
+        const u=((P[0]*cx+P[4]*cy+P[8]*cz+P[12])/pw+1)/2;
+        const v=(1-(P[1]*cx+P[5]*cy+P[9]*cz+P[13])/pw)/2;
+        if(u<0||u>=1||v<0||v>=1) continue;
+        const d=data[(v*dh|0)*dw+(u*dw|0)]; if(!(d>0)) continue;
+        const sdf=d+cz; if(sdf<-tau) continue;
+        const t=Math.min(1,sdf/tau),i=base+x,wi=w[i];
+        tsdf[i]=(tsdf[i]*wi+t)/(wi+1); if(wi<250) w[i]=wi+1;
+      } } }
+}
+function toField(vol,blur=0){
+  const {res,tsdf,w}=vol,n=res**3,r2=res*res,f=new Float32Array(n);
+  const ext=new Uint8Array(n),stack=[];
+  const empty=i=>w[i]===0||tsdf[i]>0;
+  for(let z=0;z<res;z++)for(let y=0;y<res;y++)for(let x=0;x<res;x++)
+    if(x===0||y===0||z===0||x===res-1||y===res-1||z===res-1){const i=x+y*res+z*r2;if(empty(i)&&!ext[i]){ext[i]=1;stack.push(i);}}
+  while(stack.length){const i=stack.pop(),x=i%res,y=(i/res|0)%res,z=i/r2|0;
+    if(x>0&&!ext[i-1]&&empty(i-1)){ext[i-1]=1;stack.push(i-1);}
+    if(x<res-1&&!ext[i+1]&&empty(i+1)){ext[i+1]=1;stack.push(i+1);}
+    if(y>0&&!ext[i-res]&&empty(i-res)){ext[i-res]=1;stack.push(i-res);}
+    if(y<res-1&&!ext[i+res]&&empty(i+res)){ext[i+res]=1;stack.push(i+res);}
+    if(z>0&&!ext[i-r2]&&empty(i-r2)){ext[i-r2]=1;stack.push(i-r2);}
+    if(z<res-1&&!ext[i+r2]&&empty(i+r2)){ext[i+r2]=1;stack.push(i+r2);}}
+  for(let i=0;i<n;i++){ f[i]= w[i]>0 ? -tsdf[i] : (ext[i]?-1:1); }
+  for(let z=0;z<res;z++)for(let y=0;y<res;y++)for(let x=0;x<res;x++)
+    if(x===0||y===0||z===0||x===res-1||y===res-1||z===res-1) f[x+y*res+z*r2]=-1;
+  /* v13: field smoothing — bench-validated on noisy depth (117->6 bad edges, MAE halved) */
+  for(let p=0;p<blur;p++){
+    const g2=new Float32Array(f);
+    for(let z=1;z<res-1;z++)for(let y=1;y<res-1;y++)for(let x=1;x<res-1;x++){
+      const i=x+y*res+z*r2;
+      f[i]=0.5*g2[i]+(g2[i-1]+g2[i+1]+g2[i-res]+g2[i+res]+g2[i-r2]+g2[i+r2])/12;
+    }
+  }
+  return f;
+}
+function drawDepthInset(di){
+  const c=$('xrdepth'); if(!c) return;
+  const now=performance.now();
+  if(drawDepthInset.t && now-drawDepthInset.t<250) return;
+  drawDepthInset.t=now;
+  const ctx=c.getContext('2d'), im=ctx.createImageData(80,60);
+  for(let y=0;y<60;y++)for(let x=0;x<80;x++){
+    let d=0; try{ d=di.getDepthInMeters((x+0.5)/80,(y+0.5)/60); }catch(e){}
+    const i=(y*80+x)*4;
+    if(!d||d<=0.05){ im.data[i]=255; im.data[i+1]=43; im.data[i+2]=214; }      /* blind */
+    else{ const v=Math.max(0,Math.min(255,255-(d-0.2)/1.3*255));
+          im.data[i]=0; im.data[i+1]=v; im.data[i+2]=255-v*0.3|0; }
+    im.data[i+3]=235;
+  }
+  ctx.putImageData(im,0,0);
+}
+async function startXrScan(){
+  /* v17: ARCore and getUserMedia cannot share the camera — release it */
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; $('cam').style.display='none';
+    $('bCam').textContent='◉ CAMERA'; $('bDetect').disabled=true; stopDetect(); }
+  const S=+$('vs').value, RES=+$('vr').value;
+  let session;
+  try{
+    session=await navigator.xr.requestSession('immersive-ar',{
+      requiredFeatures:['depth-sensing','dom-overlay'],
+      depthSensing:{usagePreference:['cpu-optimized'],dataFormatPreference:['luminance-alpha','float32']},
+      domOverlay:{root:$('xrhud')}
+    });
+  }catch(e){ stat('XR session failed'); subStat(e.message+' — depth-sensing may be unsupported on this device'); return; }
+  xrActive=true;
+  $('xrbtn').textContent='■ FINISH'; $('xrbtn').style.boxShadow='';
+  $('xrhud').style.display='block'; $('xrtop').textContent='AIM AT TARGET · TAP TO PLACE VOLUME';
+  /* RAW loop, fully decoupled from three.js (v12 fix) — bare GL layer, no renderer.xr */
+  const glc=document.createElement('canvas');
+  const gl=glc.getContext('webgl',{xrCompatible:true});
+  await gl.makeXRCompatible?.();
+  session.updateRenderState({baseLayer:new XRWebGLLayer(session,gl)});
+  const ref=await session.requestReferenceSpace('local');
+  /* v13: live preview — raw GL point overlay (deliberately NOT three.js: that coupling froze v11 Pro) */
+  const sh=(t,src)=>{const o=gl.createShader(t);gl.shaderSource(o,src);gl.compileShader(o);return o;};
+  const prog=gl.createProgram();
+  gl.attachShader(prog,sh(gl.VERTEX_SHADER,'attribute vec3 p;uniform mat4 mvp;void main(){gl_Position=mvp*vec4(p,1.0);gl_PointSize=3.0;}'));
+  gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,'precision mediump float;uniform vec4 c;void main(){gl_FragColor=c;}'));
+  gl.linkProgram(prog);
+  const aP=gl.getAttribLocation(prog,'p'), uM=gl.getUniformLocation(prog,'mvp'), uC=gl.getUniformLocation(prog,'c');
+  const pBuf=gl.createBuffer(); let pN=0;
+  const lBuf=gl.createBuffer(); let lN=0, placeReq=false;
+  const covB=new Uint8Array(24); let covDeg=0; window._covDeg=0;
+  let lastTap=0;
+  $('xrtap').onclick=()=>{
+    if(!vol){ placeReq=true; return; }
+    const now=performance.now();
+    if(now-lastTap<450){ placeReq=true; lastTap=0; }
+    else { lastTap=now; $('xrtop').textContent='double-tap to re-seed (single taps ignored)'; }
+  };
+  const PRES=48, pmc=window._pmc||(window._pmc=new MarchingCubes(PRES,new THREE.MeshBasicMaterial(),false,false,120000));
+  const MVP=new THREE.Matrix4(), INV=new THREE.Matrix4();
+  const refreshPreview=()=>{ if(!vol) return;
+    const f=pmc.field, res=vol.res, r2=res*res, p2=PRES*PRES, st=res/PRES;
+    for(let z=0;z<PRES;z++)for(let y=0;y<PRES;y++)for(let x=0;x<PRES;x++){
+      const i=((x*st)|0)+((y*st)|0)*res+((z*st)|0)*r2;
+      f[x+y*PRES+z*p2]=(x===0||y===0||z===0||x===PRES-1||y===PRES-1||z===PRES-1)?-1:(vol.w[i]>0?-vol.tsdf[i]:-1);
+    }
+    pmc.isolation=0; pmc.update();
+    const ppa=pmc.geometry.getAttribute('position'), n=pmc.geometry.drawRange.count;
+    const a=new Float32Array(n*3);
+    for(let i=0;i<n;i++){ a[3*i]=vol.ox+(ppa.getX(i)+1)/2*S; a[3*i+1]=vol.oy+(ppa.getY(i)+1)/2*S; a[3*i+2]=vol.oz+(ppa.getZ(i)+1)/2*S; }
+    gl.bindBuffer(gl.ARRAY_BUFFER,pBuf); gl.bufferData(gl.ARRAY_BUFFER,a,gl.DYNAMIC_DRAW); pN=n;
+  };
+  vol=null; kf=0;
+  const DW=160,DH=120, dep={dw:DW,dh:DH,data:new Float32Array(DW*DH)};
+  let lastP=null,lastQ=null,lastT=0,depthMiss=0;
+  const M=new THREE.Matrix4(), Q=new THREE.Quaternion(), Pv=new THREE.Vector3();
+  const onFrame=(t,frame)=>{
+    session.requestAnimationFrame(onFrame);
+    const pose=frame.getViewerPose(ref); if(!pose) return;
+    const view=pose.views[0];
+    M.fromArray(view.transform.matrix);
+    Pv.setFromMatrixPosition(M); Q.setFromRotationMatrix(M);
+    /* draw live preview every frame into the XR layer */
+    const layer=session.renderState.baseLayer, vp=layer.getViewport(view);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,layer.framebuffer);
+    gl.viewport(vp.x,vp.y,vp.width,vp.height);
+    gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+    if(pN||lN){
+      INV.fromArray(view.transform.inverse.matrix);
+      MVP.fromArray(view.projectionMatrix).multiply(INV);
+      gl.useProgram(prog); gl.uniformMatrix4fv(uM,false,MVP.elements);
+      gl.enableVertexAttribArray(aP);
+      if(lN){ gl.uniform4f(uC,1.0,0.17,0.84,0.95);
+        gl.bindBuffer(gl.ARRAY_BUFFER,lBuf); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+        gl.drawArrays(gl.LINES,0,lN); }
+      if(pN){ gl.uniform4f(uC,0.0,0.94,1.0,0.85);
+        gl.bindBuffer(gl.ARRAY_BUFFER,pBuf); gl.vertexAttribPointer(aP,3,gl.FLOAT,false,0,0);
+        gl.drawArrays(gl.POINTS,0,pN); }
+    }
+    if(!vol||placeReq){
+      let aimD=0; try{ const di0=frame.getDepthInformation(view); if(di0){ aimD=di0.getDepthInMeters(0.5,0.5)||0; drawDepthInset(di0); } }catch(e){}
+      if(!placeReq){ $('xrtop').textContent=aimD>0.1?`① AIM · target ${aimD.toFixed(2)}m — SENSOR EYE green? TAP to place`:'① AIM AT TARGET · TAP TO PLACE'; return; }
+      placeReq=false;
+      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(Q);
+      const dist=aimD>0.1?Math.min(Math.max(aimD,0.15),1.5):(0.25+S/2);
+      const c=Pv.clone().add(fwd.multiplyScalar(dist));
+      vol=makeVol(RES,S,c.x-S/2,c.y-S/2,c.z-S/2); kf=0; pN=0; buzz(25);
+      /* magenta wireframe = exactly what will be scanned */
+      const o=[vol.ox,vol.oy,vol.oz], e2=[o[0]+S,o[1]+S,o[2]+S];
+      const Cn=[[o[0],o[1],o[2]],[e2[0],o[1],o[2]],[e2[0],e2[1],o[2]],[o[0],e2[1],o[2]],
+                [o[0],o[1],e2[2]],[e2[0],o[1],e2[2]],[e2[0],e2[1],e2[2]],[o[0],e2[1],e2[2]]];
+      const Ed=[0,1,1,2,2,3,3,0,4,5,5,6,6,7,7,4,0,4,1,5,2,6,3,7];
+      const L=new Float32Array(Ed.length*3);
+      Ed.forEach((vi,i)=>{ L[3*i]=Cn[vi][0]; L[3*i+1]=Cn[vi][1]; L[3*i+2]=Cn[vi][2]; });
+      gl.bindBuffer(gl.ARRAY_BUFFER,lBuf); gl.bufferData(gl.ARRAY_BUFFER,L,gl.STATIC_DRAW); lN=Ed.length;
+      $('xrtop').textContent=`② ORBIT · volume @ ${dist.toFixed(2)}m · double-tap re-seeds`;
+      lastP=Pv.clone(); lastQ=Q.clone(); lastT=t; return;
+    }
+    if(!vol) return;
+    const moved=Pv.distanceTo(lastP)>0.03 || lastQ.angleTo(Q)>0.05;
+    if(!moved || t-lastT<150) return;
+    let di=null; try{ di=frame.getDepthInformation(view); }catch(e){}
+    if(!di){ if(++depthMiss===30){ $('xrtop').textContent='no depth data — device may lack ARCore depth'; } return; }
+    depthMiss=0; drawDepthInset(di);
+    for(let py=0;py<DH;py++)for(let px=0;px<DW;px++)
+      dep.data[py*DW+px]=di.getDepthInMeters((px+0.5)/DW,(py+0.5)/DH);
+    const t0=performance.now();
+    integrate(vol,dep,M.clone().invert().elements,view.projectionMatrix);
+    kf++; if(kf%10===0)buzz(8);
+    { const az=Math.atan2(Pv.z-(vol.oz+S/2),Pv.x-(vol.ox+S/2)), cb=(((az+Math.PI)/(2*Math.PI))*24)|0;
+      if(!covB[Math.min(23,cb)]){ covB[Math.min(23,cb)]=1; covDeg+=15; window._covDeg=covDeg;
+        if(covDeg===180){ buzz([20,30,20]); $('xrbtn').textContent='■ FINISH ✓'; $('xrbtn').style.boxShadow='0 0 18px var(--gd)'; } } }
+    lastP.copy(Pv); lastQ.copy(Q); lastT=t;
+    if(kf%8===1) refreshPreview();
+    $('xrtop').textContent=`② ORBIT · KF ${kf} · ${(performance.now()-t0)|0}ms · ${covDeg}°/360° — FINISH ✓ at 180°`;
+  };
+  session.requestAnimationFrame(onFrame);
+  $('xrbtn').onclick=()=>session.end();
+  session.addEventListener('end',()=>{ xrActive=false; $('xrhud').style.display='none'; buildXrMesh(S,RES); });
+}
+function buildXrMesh(S,RES){
+  if(!vol||kf<3){ stat('Scan too short'); subStat(`${kf} keyframes — orbit the object`); return; }
+  stat('⟳ Extracting'); subStat('marching cubes…');
+  setTimeout(()=>{ try{
+    window._mcC=window._mcC||{};
+    const mc=window._mcC[RES]||(window._mcC[RES]=new MarchingCubes(RES,new THREE.MeshNormalMaterial({side:THREE.DoubleSide}),false,false,RES>=128?900000:500000));
+    const fld=toField(vol,2);
+    mc.isolation=0; mc.field.set(fld); mc.update();
+    let pa=mc.geometry.getAttribute('position'),nv=mc.geometry.drawRange.count,cutNote='';
+    if(nv&&$('tc').checked){
+      /* v18 TABLE CUT: dominant horizontal plane via up-face height histogram (half-voxel bins) */
+      let sv=0;
+      for(let t=0;t<nv;t+=3){
+        sv+=pa.getX(t)*(pa.getY(t+1)*pa.getZ(t+2)-pa.getY(t+2)*pa.getZ(t+1))
+           -pa.getY(t)*(pa.getX(t+1)*pa.getZ(t+2)-pa.getX(t+2)*pa.getZ(t+1))
+           +pa.getZ(t)*(pa.getX(t+1)*pa.getY(t+2)-pa.getX(t+2)*pa.getY(t+1));
+      }
+      const orient=sv>=0?1:-1;  /* v19b: signed ny = true UP — |ny| also matched table UNDERSIDES */
+      const hb=new Float32Array(2*RES); let up=0;
+      for(let t=0;t<nv;t+=3){
+        const ax=pa.getX(t),ay=pa.getY(t),az=pa.getZ(t),bx=pa.getX(t+1),by=pa.getY(t+1),bz=pa.getZ(t+1),
+              cx=pa.getX(t+2),cy=pa.getY(t+2),cz=pa.getZ(t+2);
+        const ux=bx-ax,uy=by-ay,uz=bz-az,vx=cx-ax,vy=cy-ay,vz=cz-az;
+        const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx, nl=Math.hypot(nx,ny,nz)||1;
+        if(orient*ny/nl>0.9){ up++; const ym=(ay+by+cy)/3,b=Math.max(0,Math.min(2*RES-1,((ym+1)*RES)|0)); hb[b]++; }
+      }
+      let bi=-1,bc=0;
+      for(let b=2;b<2*RES-2;b++){ const w=hb[b-2]+hb[b-1]+hb[b]+hb[b+1]+hb[b+2]; if(w>bc){ bc=w; bi=b; } }
+      if(bi>=0 && bc>=Math.max(100,0.20*up)){
+        const yCut=(bi+3)/RES-1+0.6/RES;        /* band top + 0.3 voxel margin, local units */
+        for(let y=0;y<RES;y++){ const yl=-1+2*(y+0.5)/RES; if(yl>=yCut) continue;
+          for(let z=0;z<RES;z++){ const base=y*RES+z*RES*RES;
+            for(let x=0;x<RES;x++) fld[base+x]=-1; } }
+        mc.field.set(fld); mc.update();
+        pa=mc.geometry.getAttribute('position'); nv=mc.geometry.drawRange.count;
+        cutNote=` · cut@${((vol.oy+(yCut+1)/2*S)*1000).toFixed(0)}mm`;
+      }
+    }
+    if(!nv){ stat('Empty volume'); subStat('Nothing fused inside the scan volume — re-place and rescan'); return; }
+    const q=1e-4,map=new Map(),tri=[],pts=[];
+    for(let i=0;i<nv;i++){ const x=pa.getX(i),y=pa.getY(i),z=pa.getZ(i),k=`${Math.round(x/q)},${Math.round(y/q)},${Math.round(z/q)}`;
+      if(!map.has(k)){map.set(k,map.size);pts.push([x,y,z]);} tri.push(map.get(k)); }
+    /* v13: island filter — drop disconnected noise specks (<3% of largest component) */
+    const par=new Int32Array(pts.length); for(let i=0;i<par.length;i++) par[i]=i;
+    const find=a=>{ while(par[a]!==a){ par[a]=par[par[a]]; a=par[a]; } return a; };
+    const uni=(a,b)=>{ a=find(a); b=find(b); if(a!==b) par[a]=b; };
+    for(let t=0;t<tri.length;t+=3){ uni(tri[t],tri[t+1]); uni(tri[t],tri[t+2]); }
+    const fcomp=new Map();
+    for(let t=0;t<tri.length;t+=3){ const r=find(tri[t]); fcomp.set(r,(fcomp.get(r)||0)+1); }
+    let maxF=0; for(const v of fcomp.values()) if(v>maxF) maxF=v;
+    const keepMin=Math.max(20,0.03*maxF);
+    /* v21: group qualifying islands; rank by aim-centrality (volume center = where the user aimed) */
+    const byRoot=new Map(), islands=[];
+    for(let t=0;t<tri.length;t+=3){ const r=find(tri[t]);
+      if((fcomp.get(r)||0)<keepMin) continue;
+      let o=byRoot.get(r); if(!o){ o={tris:[],sx:0,sz:0,n:0}; byRoot.set(r,o); islands.push(o); }
+      o.tris.push(tri[t],tri[t+1],tri[t+2]);
+      const p0=pts[tri[t]]; o.sx+=p0[0]; o.sz+=p0[2]; o.n++;
+    }
+    if(!islands.length){ stat('Empty after island filter'); subStat('All components below threshold — rescan'); return; }
+    for(const o of islands) o.d=Math.hypot(o.sx/o.n,o.sz/o.n);
+    islands.sort((a,b)=>a.d-b.d || b.tris.length-a.tris.length);
+    if(islands.length>8) islands.length=8;
+    window._isl={pts,islands,sel:new Set(islands.map((_,i)=>i)),S,
+      vol:{ox:vol.ox,oy:vol.oy,oz:vol.oz},isles:fcomp.size,cutNote,cov:window._covDeg||0};
+    renderIslandChips(); applyIslandSelection(true);
+  }catch(e){ stat('Extract error'); subStat(e.message); console.error(e); } },30);
+}
+const ISL_COL=[[0,0.94,1],[1,0.17,0.84],[0.22,1,0.55],[1,0.82,0.4],[0.61,0.36,0.9],[1,0.42,0.42],[0.5,1,1],[1,1,0.5]];
+function renderIslandChips(){
+  const I=window._isl, el=$('islPick'); if(!I) return;
+  el.innerHTML=''; el.style.display=I.islands.length>1?'flex':'none';
+  I.islands.forEach((o,i)=>{
+    const b=document.createElement('button');
+    const c=ISL_COL[i%ISL_COL.length].map(v=>(v*255)|0);
+    b.textContent=`${String.fromCharCode(65+i)} · ${(o.tris.length/3).toLocaleString()}f`;
+    b.style.cssText=`font:11px Orbitron,monospace;padding:4px 8px;background:rgba(0,0,0,.72);border:1px solid rgb(${c});color:rgb(${c});border-radius:6px;opacity:${I.sel.has(i)?1:.35};`;
+    b.onclick=()=>{ I.sel.has(i)?I.sel.delete(i):I.sel.add(i);
+      if(!I.sel.size) I.sel.add(i);                 /* never empty */
+      renderIslandChips(); applyIslandSelection(false); buzz(10); };
+    el.appendChild(b);
+  });
+}
+function applyIslandSelection(first){
+  const I=window._isl; if(!I) return;
+  const {pts,islands,sel,S,vol:vo,isles,cutNote,cov}=I;
+  const kept=[],colF=[];
+  islands.forEach((o,i)=>{ if(!sel.has(i)) return;
+    for(const v of o.tris) kept.push(v);
+    const c=ISL_COL[i%ISL_COL.length];
+    for(let k=0;k<o.tris.length;k++) colF.push(c[0],c[1],c[2]);
+  });
+  const cnt=new Map(),ek=(a,b)=>a<b?a*4e9+b:b*4e9+a;
+  for(let t=0;t<kept.length;t+=3){const a=kept[t],b=kept[t+1],c=kept[t+2];if(a===b||b===c||a===c)continue;
+    for(const [p2,q2] of [[a,b],[b,c],[c,a]]) cnt.set(ek(p2,q2),(cnt.get(ek(p2,q2))||0)+1);}
+  let bad=0; for(const v of cnt.values()) if(v!==2) bad++;
+  const toW=p=>[vo.ox+(p[0]+1)/2*S, vo.oy+(p[1]+1)/2*S, vo.oz+(p[2]+1)/2*S];
+  let mn=[1e9,1e9,1e9],mx=[-1e9,-1e9,-1e9];
+  const arr=new Float32Array(kept.length*3);
+  for(let t=0;t<kept.length;t++){ const p=pts[kept[t]];
+    arr[3*t]=p[0]; arr[3*t+1]=p[1]; arr[3*t+2]=p[2];
+    const w=toW(p); for(let k=0;k<3;k++){ if(w[k]<mn[k])mn[k]=w[k]; if(w[k]>mx[k])mx[k]=w[k]; } }
+  const dims=mx.map((v,k)=>((v-mn[k])*1000).toFixed(0)).join('×');
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(arr,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(colF,3));
+  g.computeVertexNormals();
+  cloud=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})); scene.add(cloud);
+  stlData={pa:arr,nv:kept.length,S,vol:vo};
+  $('bSolid').disabled=false;
+  const maxDim=Math.max(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])*1000;
+  const trip=maxDim>S*1000*1.01?' ⚠ BBOX EXCEEDS VOLUME — mapping bug, report this':'';
+  stat((islands.length>1?'③ REVIEW · ':'')+(bad===0?'WATERTIGHT · METRIC':'Mesh · METRIC'));
+  $('bSolid').style.boxShadow=bad===0?'0 0 14px var(--mg)':'';
+  subStat(`${(kept.length/3).toLocaleString()} faces · ${dims}mm · ${sel.size}/${islands.length} candidates (tap chips) · orbit ${cov}°${cov<120?' ⚠ one-sided':''} · non-manifold: ${bad}${cutNote}${trip}`);
+  if(first) buzz([15,40,15]);
+}
+function exportMetricStl(){
+  if(!stlData) return;
+  const {pa,nv,S,vol:vo}=stlData;
+  const toW=i=>[ (vo.ox+(pa[3*i]+1)/2*S)*1000, (vo.oy+(pa[3*i+1]+1)/2*S)*1000, (vo.oz+(pa[3*i+2]+1)/2*S)*1000 ];
+  let sv=0;
+  for(let t=0;t<nv;t+=3){ const A=toW(t),B=toW(t+1),C=toW(t+2);
+    sv+=(A[0]*(B[1]*C[2]-B[2]*C[1])-A[1]*(B[0]*C[2]-B[2]*C[0])+A[2]*(B[0]*C[1]-B[1]*C[0]))/6; }
+  const flip=sv<0;
+  const F=nv/3,buf=new ArrayBuffer(84+50*F),dv=new DataView(buf);
+  dv.setUint32(80,F,true); let o=84;
+  for(let t=0;t<nv;t+=3){
+    let A=toW(t),B=toW(t+1),C=toW(t+2); if(flip){const tmp=B;B=C;C=tmp;}
+    const ux=B[0]-A[0],uy=B[1]-A[1],uz=B[2]-A[2],vx=C[0]-A[0],vy=C[1]-A[1],vz=C[2]-A[2];
+    let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx; const nl=Math.hypot(nx,ny,nz)||1;
+    dv.setFloat32(o,nx/nl,true);dv.setFloat32(o+4,ny/nl,true);dv.setFloat32(o+8,nz/nl,true);o+=12;
+    for(const Pt of [A,B,C]){dv.setFloat32(o,Pt[0],true);dv.setFloat32(o+4,Pt[1],true);dv.setFloat32(o+8,Pt[2],true);o+=12;}
+    dv.setUint16(o,0,true);o+=2;
+  }
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([buf],{type:'model/stl'}));
+  a.download=`p3dk_metric_${Date.now()}.stl`; a.click();
+  stat('✔ STL EXPORTED · METRIC'); subStat(`${F.toLocaleString()} faces · millimetres · METRIC`);
 }
 
-if($('dl-glb')) {
-    $('dl-glb').onclick = async () => {
-        if(!state.wMesh) return; const btn=$('dl-glb'), orig=btn.innerText; btn.disabled=true; btn.innerText="ASSEMBLING GLB..."; await yieldLoop();
-        try {
-            new THREE.GLTFExporter().parse(state.wMesh, gltf => {
-                const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(gltf)], {type:'model/gltf+json'}));
-                a.download = `p3dk-color-${Date.now()}.gltf`; a.click(); showToast("GLB Exported!");
-            }, { binary: false });
-        } catch(e) { showToast("Export failed: "+e.message); } btn.disabled=false; btn.innerText=orig;
-    };
+/* ---------- object detection — IN A WEB WORKER (v15: zero tensor work on the UI thread) ----------
+   Main thread ships transferable ImageBitmaps; worker owns transformers.js + YOLOS-tiny and
+   returns only {label, score, box} arrays. Keeps the render loop and CV matcher glitch-free. */
+const DET_WORKER_SRC=`
+let detector=null, RawImageC=null, oc=null, cx=null; /* v24: persistent canvas (Gemini) */
+self.onmessage=async e=>{
+  const d=e.data;
+  if(d.type!=='frame') return;
+  try{
+    if(!detector){
+      const m=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.0.2');
+      RawImageC=m.RawImage;
+      let dev='wasm'; try{ if(self.navigator&&self.navigator.gpu) dev='webgpu'; }catch(x){}
+      try{ detector=await m.pipeline('object-detection','Xenova/yolos-tiny',{device:dev}); }
+      catch(x){ detector=await m.pipeline('object-detection','Xenova/yolos-tiny',{device:'wasm'}); }
+      self.postMessage({type:'ready'});
+    }
+    const bmp=d.bitmap;
+    if(!oc||oc.width!==bmp.width||oc.height!==bmp.height){
+      oc=new OffscreenCanvas(bmp.width,bmp.height);
+      cx=oc.getContext('2d',{willReadFrequently:true});
+    }
+    cx.drawImage(bmp,0,0); bmp.close();
+    const id=cx.getImageData(0,0,oc.width,oc.height);
+    const img=new RawImageC(new Uint8ClampedArray(id.data),oc.width,oc.height,4);
+    const out=await detector(img,{threshold:0.5});
+    self.postMessage({type:'boxes',tag:d.tag||'live',w:oc.width,h:oc.height,
+      boxes:out.slice(0,4).map(o=>({label:o.label,score:o.score,box:o.box}))});
+  }catch(err){ self.postMessage({type:'err',msg:String(err&&err.message||err)}); }
+};`;
+let detWorker=null, detOn=false, detTimer=null, detBusy=false;
+let lastBoxes=null, selLabel=null, targetResolve=null;
+function stopDetect(){ detOn=false; if(detTimer){clearTimeout(detTimer);detTimer=null;} $('det').style.display='none'; $('det').style.pointerEvents='none'; $('bDetect').classList.remove('armed'); }
+function ensureDetWorker(){
+  if(detWorker) return;
+  detWorker=new Worker(URL.createObjectURL(new Blob([DET_WORKER_SRC],{type:'text/javascript'})),{type:'module'});
+  detWorker.onmessage=e=>{
+    const d=e.data;
+    if(d.type==='ready'){ subStat('[AI DETECT · IN WORKER] online — labels are local; 3D-from-web-images needs cloud (V-next), and is an asset, not a measurement of YOUR object.'); }
+    else if(d.type==='boxes'){
+      if(d.tag==='target'){ if(targetResolve){ targetResolve(d); targetResolve=null; } return; }
+      const v=$('cam'), k=$('det');
+      if(detOn && v.videoWidth){
+        k.width=d.w; k.height=d.h;
+        lastBoxes=d;
+        const kc=k.getContext('2d');
+        kc.clearRect(0,0,k.width,k.height);            // v17: transparent overlay — live video stays live
+        kc.font='16px monospace';
+        for(const o of d.boxes){
+          const b=o.box, sel=(o.label===selLabel);
+          kc.lineWidth=sel?4:3;
+          kc.strokeStyle=sel?'#ff2bd6':'#39ff8b'; kc.strokeRect(b.xmin,b.ymin,b.xmax-b.xmin,b.ymax-b.ymin);
+          kc.fillStyle=sel?'#ff2bd6':'#39ff8b'; kc.fillText(`${sel?'◎ ':''}${o.label} ${(o.score*100)|0}%`,b.xmin+3,Math.max(14,b.ymin-4));
+        }
+      }
+      detBusy=false;
+    }
+    else if(d.type==='err'){ subStat('Detect worker: '+d.msg); detBusy=false; }
+  };
+}
+$('det').addEventListener('click',e=>{
+  if(!detOn||!lastBoxes) return;
+  const k=$('det'), r=k.getBoundingClientRect();
+  /* invert object-fit:cover mapping: screen -> canvas-internal coords */
+  const sc=Math.max(r.width/k.width, r.height/k.height);
+  const ix=(e.clientX-r.left-(r.width-k.width*sc)/2)/sc;
+  const iy=(e.clientY-r.top-(r.height-k.height*sc)/2)/sc;
+  let best=null,bestA=Infinity;
+  for(const o of lastBoxes.boxes){ const b=o.box;
+    if(ix>=b.xmin&&ix<=b.xmax&&iy>=b.ymin&&iy<=b.ymax){
+      const a=(b.xmax-b.xmin)*(b.ymax-b.ymin); if(a<bestA){bestA=a;best=o;} } }
+  if(best){
+    if(selLabel===best.label){ selLabel=null; subStat('Target unlocked — full-frame relief'); }
+    else { selLabel=best.label; subStat(`◎ Target locked: ${best.label.toUpperCase()} — hybrid mesh will crop to this object`); }
+  } else { selLabel=null; subStat('Target cleared — full-frame relief'); }
+});
+$('bDetect').onclick=()=>{
+  if(detOn){ stopDetect(); selLabel=null; lastBoxes=null; subStat('DETECT off'); return; }
+  if(!stream){ subStat('Open camera first'); return; }
+  detOn=true; $('bDetect').classList.add('armed'); $('det').style.display='block'; $('det').style.pointerEvents='auto';
+  subStat('[AI DETECT · IN WORKER] loading YOLOS-tiny off-thread…');
+  ensureDetWorker();
+  detLoop();
+};
+async function detLoop(){
+  if(!detOn) return;
+  const v=$('cam');
+  if(v.videoWidth && !detBusy){
+    detBusy=true;
+    try{
+      const bmp=await createImageBitmap(v,{resizeWidth:320,resizeHeight:Math.round(320*v.videoHeight/v.videoWidth)});
+      detWorker.postMessage({type:'frame',bitmap:bmp},[bmp]);
+    }catch(e){ console.error(e); detBusy=false; }
+  }
+  detTimer=setTimeout(stopDetect,2800);   /* v20: single-shot — no continuous loop */
 }
 
-if($('rs')) $('rs').onclick = () => location.reload();
+/* ---------- routers ---------- */
+$('bScan').onclick=()=>{
+  if(activeMode==='hybrid'){
+    if(!cvReady||!stream) return;
+    if(accumulating) finishAccum(); else startHybridScan();
+  } else startXrScan();
+};
+$('bReset').onclick=()=>{
+  stopScan();
+  if(cloud){ scene.remove(cloud); cloud.geometry.dispose(); cloud.material.dispose(); cloud=null; }
+  cachedScan=null; plyRows=null; stlData=null; vol=null;
+  $('bExport').disabled=true; $('bSolid').disabled=true;
+  if(activeMode==='hybrid'&&stream) setPreviewLayout(true);
+  $('islPick').style.display='none'; window._isl=null; stat('Cleared'); subStat(activeMode==='hybrid'?(stream?'Tap AUTO SCAN':'Open camera'):'Tap START XR SCAN');
+};
+$('bExport').onclick=()=>{
+  if(activeMode!=='hybrid'||!plyRows) return;
+  const { verts, faces }=plyRows();
+  const head=`ply\nformat ascii 1.0\ncomment P3dK DepthScan v12 - hybrid 2.5D relief mesh, RELATIVE scale\n`+
+    `element vertex ${verts.length}\nproperty float x\nproperty float y\nproperty float z\n`+
+    `property uchar red\nproperty uchar green\nproperty uchar blue\n`+
+    `element face ${faces.length}\nproperty list uchar int vertex_indices\nend_header\n`;
+  const body=verts.join('\n')+'\n'+faces.join('\n')+'\n';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([head+body],{type:'application/octet-stream'}));
+  a.download=`p3dk_mesh_${Date.now()}.ply`; a.click();
+  stat('Mesh Exported'); subStat(`${verts.length.toLocaleString()} verts · ${faces.length.toLocaleString()} faces → PLY`);
+};
+$('bSolid').onclick=()=>{
+  if(activeMode==='hybrid'){
+    if(!cloud) return;
+    stat('⟳ Sealing solid…'); subStat('closing relief into watertight STL');
+    setTimeout(()=>{ try{
+      const g=cloud.geometry;
+      const { verts, tris }=solidify(g.attributes.position.array,g.index.array,cloud.scale.z);
+      const buf=writeSTL(verts,tris);
+      const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buf],{type:'model/stl'}));
+      a.download=`p3dk_solid_${Date.now()}.stl`; a.click();
+      stat('Solid Exported'); subStat(`${(tris.length/3).toLocaleString()} faces · watertight bas-relief STL (Relative)`);
+    }catch(e){ stat('Solid error'); subStat(e.message); console.error(e); } },30);
+  } else exportMetricStl();
+};
+
+/* ---------- dials ---------- */
+$('zs').oninput=e=>{ $('vzs').textContent=Number(e.target.value).toFixed(2); if(cloud&&activeMode==='hybrid') applyTransforms(); };
+$('inv').onchange=()=>{ if(cloud&&activeMode==='hybrid') applyTransforms(); };
+$('fov').oninput=e=>$('vfov').textContent=e.target.value;
+$('fc').oninput=e=>$('vfc').textContent=(+e.target.value).toFixed(2);
+$('er').oninput=e=>$('ver').textContent=(+e.target.value).toFixed(2);
+$('vs').oninput=e=>{ window._uDial=true; $('vvs').textContent=(+e.target.value).toFixed(2); };
+$('vr').oninput=e=>{ window._uDial=true; $('vvr').textContent=e.target.value; };
+['fov','fc','er','iso'].forEach(id=>{ $(id).addEventListener('change',()=>{ if(cachedScan&&activeMode==='hybrid') projectHybridMesh(); }); });
+
+/* ---------- V24 PHANTOM UI ADAPTER · shell by Gemini, engine = v22b core ---------- */
+const closeDrawer=()=>{ const t=$('menu-toggle'); if(t) t.checked=false; };
+{ const bx=document.getElementById('bXr');
+  if(bx) bx.onclick=()=>{ closeDrawer(); $('meter-container').style.display='none';
+    selectMode('xr'); $('bScan').click(); }; }
+{ const s=$('bScan').onclick;
+  $('bScan').onclick=()=>{ closeDrawer();
+    if(activeMode!=='hybrid'){ selectMode('hybrid'); }
+    if(activeMode==='hybrid') $('meter-container').style.display='flex';
+    s&&s(); }; }
+{ const o=$('bOne').onclick; if(o) $('bOne').onclick=()=>{ closeDrawer(); o(); }; }
+{ const c=$('bCam').onclick; if(c) $('bCam').onclick=()=>{ closeDrawer(); c(); }; }
+const _finA=finishAccum;
+finishAccum=function(){ $('meter-container').style.display='none'; return _finA.apply(this,arguments); };
+selectMode('hybrid');
 </script>
 </body>
 </html>
+
