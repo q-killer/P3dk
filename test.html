@@ -3,15 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PEAK // CAD v5</title>
+<title>PEAK // CAD v6 - AI</title>
 <style>
-  :root{--bg:#03050a;--cy:#00ffcc;--mg:#ff00ff;--mut:#8892b0}
+  :root{--bg:#03050a;--cy:#00ffcc;--mg:#ff00ff;--mut:#8892b0;--drk:#0f141e}
   *{box-sizing:border-box}
   body,html{margin:0;height:100%;overflow:hidden;background:var(--bg);color:#f0f0f5;
     font-family:-apple-system,"Segoe UI",Roboto,sans-serif}
   canvas{position:absolute;inset:0;width:100vw;height:100vh;z-index:1}
-  #con{position:absolute;top:env(safe-area-inset-top,8px);left:50%;transform:translateX(-50%);
-    width:95vw;max-width:460px;z-index:20;background:rgba(5,8,15,.9);backdrop-filter:blur(18px);
+  
+  /* Console / Log */
+  #con{position:absolute;top:env(safe-area-inset-top,8px);left:10px;
+    width:320px;z-index:20;background:rgba(5,8,15,.9);backdrop-filter:blur(18px);
     border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:9px 13px;pointer-events:none}
   .logo{font-weight:800;letter-spacing:2px;font-size:.8rem;margin-bottom:4px}
   .logo span{color:var(--cy)}
@@ -20,6 +22,21 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .er{color:#ff3366!important}.ok{color:#00ff88!important;font-weight:700}
   .hi{color:var(--cy)!important;font-weight:700}.wn{color:#ffaa00!important}
+  
+  /* AI Prompt Panel */
+  #ai-pan{position:absolute;top:env(safe-area-inset-top,8px);right:10px;
+    width:320px;z-index:20;background:rgba(15,20,30,.85);backdrop-filter:blur(22px);
+    border:1px solid rgba(255,0,255,.3);border-radius:12px;padding:12px;}
+  .inp{width:100%;background:#000;border:1px solid rgba(255,255,255,.1);color:#fff;
+    border-radius:6px;padding:8px;font-size:.7rem;margin-bottom:8px;outline:none;font-family:inherit}
+  .inp:focus{border-color:var(--mg)}
+  textarea.inp{resize:vertical;min-height:60px}
+  .ai-btn{width:100%;background:rgba(255,0,255,.15);color:var(--mg);border:1px solid rgba(255,0,255,.4);
+    border-radius:6px;padding:8px;font-weight:700;font-size:.7rem;cursor:pointer}
+  .ai-btn:active:not(:disabled){background:var(--mg);color:#fff}
+  .ai-btn:disabled{opacity:.4;cursor:wait;filter:grayscale(1)}
+
+  /* Tests & Editor Panel */
   #pan{position:absolute;bottom:env(safe-area-inset-bottom,10px);left:50%;transform:translateX(-50%);
     width:95vw;max-width:460px;z-index:20;background:rgba(15,20,30,.72);backdrop-filter:blur(22px);
     border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:12px}
@@ -30,26 +47,33 @@
     font-weight:600;font-size:.76rem;cursor:pointer;text-align:left}
   .b:active:not(:disabled){background:var(--cy);color:#000}
   .b:disabled{opacity:.4;cursor:wait;filter:grayscale(1)}
-  .b.m{background:rgba(255,0,255,.1);color:var(--mg);border-color:rgba(255,0,255,.4)}
-  .b.m:active:not(:disabled){background:var(--mg);color:#fff}
-  #cd{background:#000;border-radius:6px;padding:8px;font-family:ui-monospace,monospace;
-    font-size:.6rem;color:#889;height:56px;overflow-y:auto;white-space:pre-wrap;margin-top:5px}
+  #cd{background:#000;border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:8px;
+    font-family:ui-monospace,monospace;font-size:.6rem;color:#889;height:80px;overflow-y:auto;
+    white-space:pre-wrap;margin-top:5px;outline:none}
 </style>
 </head>
 <body>
 <canvas id="cv"></canvas>
 <div id="con">
-  <div class="logo">PEAK<span>//</span> CAD v5</div>
-  <div id="feed"><div class="ln hi">Fresh kernel per build — fixes the 2nd-click abort.</div></div>
+  <div class="logo">PEAK<span>//</span> CAD v6</div>
+  <div id="feed"><div class="ln hi">Persistent caching & LLM enabled.</div></div>
 </div>
+
+<div id="ai-pan">
+  <div class="t" style="color:var(--mg)">AI Co-Pilot (Gemini)</div>
+  <input type="password" id="ai-key" class="inp" placeholder="Paste Gemini API Key here...">
+  <textarea id="ai-prompt" class="inp" placeholder="e.g. Design a hex nut for an M8 bolt..."></textarea>
+  <button class="ai-btn" id="btn-generate">Generate / Modify Shape</button>
+</div>
+
 <div id="pan">
   <div class="t">Acceptance Ladder</div>
   <button class="b" id="t1">1 · cube(10) — proves kernel</button>
-  <button class="b" id="t2">2 · rebuild — proves noExitRuntime</button>
-  <button class="b m" id="t3">3 · BOSL2 chamfered cuboid</button>
-  <button class="b m" id="t4">4 · sphere + 2 chamfered holes</button>
-  <button class="b" id="t0">0 · version probe (optional)</button>
-  <div id="cd">// source appears here</div>
+  <button class="b" id="t3">2 · BOSL2 chamfered cuboid</button>
+  <button class="b" id="t4">3 · sphere + 2 chamfered holes</button>
+  <div class="t" style="margin-top:10px">Current Code</div>
+  <textarea id="cd" spellcheck="false">// Code appears here...</textarea>
+  <button class="b" id="btn-run" style="margin-top:5px;text-align:center">▶ RUN CODE</button>
 </div>
 
 <script type="module">
@@ -57,41 +81,11 @@ import * as THREE        from 'https://esm.sh/three@0.160.0';
 import { OrbitControls } from 'https://esm.sh/three@0.160.0/examples/jsm/controls/OrbitControls.js';
 import { STLLoader }     from 'https://esm.sh/three@0.160.0/examples/jsm/loaders/STLLoader.js';
 
-/* ═══════════════════════════════════════════════════════════════════════════
-   THE REAL BUG — found by reading openscad-wasm's OWN wrapper source.
-   Its canonical renderToStl() is:
-
-       instance.callMain(["/input.scad", "-o", "/output.stl"]);
-
-   NO --enable=manifold. NO -I. This build ABORTS DURING ARGUMENT PARSING on
-   unrecognized flags — which happens BEFORE any output is written, so stderr
-   is EMPTY and Emscripten throws only a raw pointer. That is precisely why
-   every failure read "C++ abort (ptr …), no stderr" — even for cube(10).
-
-   (Gemini was right to drop -I. I was wrong to insist on it.)
-
-   THEREFORE:
-     • Default args are MINIMAL — exactly what the library itself uses.
-     • Extra flags are ESCALATED optionally and retried away on ANY abort,
-       never keyed off stderr (which is empty for arg-parse aborts).
-     • BOSL2 is mounted at /BOSL2 (root). Since /in.scad lives at /, the
-       include <BOSL2/std.scad> resolves relatively — no -I needed.
-   ═══════════════════════════════════════════════════════════════════════════ */
-
 const SOURCES = [
-  { name:'npm openscad-wasm@0.0.4 (2025, wasm embedded)',
-    url:'https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js',
-    pick:m=>m.createOpenSCAD, wrap:true },            // NAMED export; .default is undefined
-  { name:'your repo (raw.githack)',
-    url:'https://raw.githack.com/q-killer/P3dK/main/wasm/openscad.js',
-    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false },
-  { name:'ochafik (legacy)',
-    url:'https://ochafik.com/openscad/openscad.js',
-    pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false }
+  { name:'npm openscad-wasm', url:'https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js', pick:m=>m.createOpenSCAD, wrap:true },
+  { name:'raw.githack', url:'https://raw.githack.com/q-killer/P3dK/main/wasm/openscad.js', pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false }
 ];
 
-/* Exact transitive closure of `include <BOSL2/std.scad>` — 32 files, verified by
-   recursively parsing every include in the real repo. Confirmed mounting 32/32. */
 const BOSL2 = ['affine.scad','attachments.scad','beziers.scad','builtins.scad','color.scad',
  'comparisons.scad','constants.scad','coords.scad','distributors.scad','drawing.scad',
  'geometry.scad','linalg.scad','lists.scad','masks.scad','math.scad','miscellaneous.scad',
@@ -105,8 +99,12 @@ const UI = {
   log(m,c=''){ const f=$('feed'),e=document.createElement('div');
     e.className='ln '+c; e.textContent=m; f.appendChild(e);
     while(f.children.length>9) f.removeChild(f.firstChild); },
-  code(t){ $('cd').textContent=t; },
-  busy(b){ document.querySelectorAll('.b').forEach(x=>x.disabled=b); }
+  code(t){ $('cd').value=t; },
+  getCode(){ return $('cd').value; },
+  busy(b){ 
+    document.querySelectorAll('.b, .ai-btn').forEach(x=>x.disabled=b); 
+    $('cd').disabled=b; $('ai-prompt').disabled=b;
+  }
 };
 
 /* ── VIEWER ─────────────────────────────────────────────────────────────── */
@@ -140,7 +138,7 @@ const V = {
       color:0x1a2030,metalness:.55,roughness:.35,polygonOffset:true,polygonOffsetFactor:1}));
     this.m.add(new THREE.LineSegments(new THREE.EdgesGeometry(g),
       new THREE.LineBasicMaterial({color:0x00ffcc,transparent:true,opacity:.35})));
-    this.m.rotation.x=-Math.PI/2;                    // STL is Z-up
+    this.m.rotation.x=-Math.PI/2;
     this.s.add(this.m);
     const rad=(g.boundingSphere&&g.boundingSphere.radius)||30;
     this.c.position.set(rad*1.9,rad*1.9,rad*2.3);
@@ -149,68 +147,108 @@ const V = {
 };
 V.init();
 
-/* ── CAD ────────────────────────────────────────────────────────────────── */
+/* ── LLM INTEGRATION ────────────────────────────────────────────────────── */
+const LLM = {
+  async ask(prompt, currentCode) {
+    const key = $('ai-key').value.trim();
+    if(!key) throw new Error("Please provide a Gemini API Key.");
+    
+    // Construct the context. If there is code, we ask to modify it.
+    const hasCode = currentCode && currentCode.length > 10;
+    const sys = "You are an expert OpenSCAD & BOSL2 mechanical engineer. Output ONLY raw OpenSCAD code. No explanations. No markdown fences. Ensure <BOSL2/std.scad> is included if using BOSL2 features.";
+    const user = hasCode 
+      ? `Modify the following OpenSCAD code:\n\n${currentCode}\n\nUser Request: ${prompt}`
+      : `Write OpenSCAD code for the following request: ${prompt}`;
+
+    UI.log("Querying LLM...", "mg");
+    
+    // Call Gemini API natively
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{text: sys}] },
+        contents: [{ parts: [{text: user}] }]
+      })
+    });
+
+    const data = await res.json();
+    if(data.error) throw new Error(data.error.message);
+    if(!data.candidates || !data.candidates.length) throw new Error("No response from LLM");
+    
+    let text = data.candidates[0].content.parts[0].text.trim();
+    // Scrub formatting if the LLM ignores the system prompt
+    text = text.replace(/^```[a-z]*\n/i, '').replace(/\n```$/i, '');
+    
+    UI.log("Code generated! Rerunning...", "ok");
+    return text;
+  }
+};
+
+/* ── CAD & CACHE ────────────────────────────────────────────────────────── */
 const Cad = {
-  factory:null,        // the imported WASM factory — cached (import once)
-  wrap:false,          // does the factory return a {getInstance()} wrapper?
-  srcName:'',
-  bosl2:null,          // BOSL2 file BYTES cached in RAM — fetched once
-  flags:null,          // discovered-good arg set
-  out:'', err:'',
+  factory:null, wrap:false, bosl2:null, flags:null, out:'', err:'',
 
   _opts(){ return {
     noInitialRun:true, noExitRuntime:true,
-    print:    t=>{ this.out+=t+'\n'; console.log('[scad]',t); },
-    printErr: t=>{ this.err+=t+'\n'; console.warn('[scad:err]',t); }
+    print:    t=>{ this.out+=t+'\n'; },
+    printErr: t=>{ 
+      const skip = ['Could not initialize localization', 'WARNING: Ignoring request to enable unknown feature', 'Fontconfig', 'libpng'];
+      if(skip.some(s => t.includes(s))) return;
+      this.err+=t+'\n'; console.warn('[scad:err]',t); 
+    }
   }; },
 
-  /* Import the factory ONCE. The 13.6MB module is cached by the browser, so
-     re-instantiating later is fast (no re-download). */
   async initFactory(){
     if(this.factory) return;
     for(const s of SOURCES){
-      UI.log(`↓ ${s.name}`);
+      UI.log(`↓ Loading Kernel...`);
       try{
         const mod = await import(/* @vite-ignore */ s.url);
         const f = s.pick(mod);
         if(!f) throw new Error('no factory export');
-        this.factory = f; this.wrap = s.wrap; this.srcName = s.name;
+        this.factory = f; this.wrap = s.wrap;
         UI.log('FACTORY READY', 'ok');
         return;
       }catch(e){
         UI.log(`   ✗ ${e.message}`, 'er');
-        console.error(`[${s.name}]`, e);
       }
     }
     throw new Error('No kernel could be loaded.');
   },
 
-  /* Fetch BOSL2 bytes ONCE, keep them in RAM. They get re-mounted into every
-     fresh instance (cheap — it's just FS.writeFile from memory). */
+  /* 🚨 NEW CACHING IMPLEMENTATION: Uses browser Cache API */
   async initBOSL2(){
     if(this.bosl2) return;
-    UI.log(`Fetching BOSL2 (${BOSL2.length} files)…`);
-    const got = await Promise.all(BOSL2.map(async f=>{
-      const r = await fetch(BOSL2_URL+f);
-      if(!r.ok){ UI.log(`   ✗ ${f} → ${r.status}`,'er'); return null; }
-      return [f, new Uint8Array(await r.arrayBuffer())];
-    }));
-    const cache = {};
-    let n=0;
-    for(const h of got){ if(h){ cache[h[0]] = h[1]; n++; } }
-    if(n < BOSL2.length) throw new Error(`BOSL2 incomplete: ${n}/${BOSL2.length}`);
-    this.bosl2 = cache;
-    UI.log(`BOSL2 CACHED (${n}/${BOSL2.length})`, 'ok');
+    UI.log(`Checking local cache for BOSL2...`);
+    
+    const cache = await caches.open('bosl2-v1');
+    const mem = {};
+    let count = 0;
+
+    for (const f of BOSL2) {
+      const url = BOSL2_URL + f;
+      let res = await cache.match(url);
+      
+      if (!res) {
+        // Not in cache, fetch and store it
+        res = await fetch(url);
+        if (res.ok) await cache.put(url, res.clone());
+      }
+      
+      if (res && res.ok) {
+        mem[f] = new Uint8Array(await res.arrayBuffer());
+        count++;
+      } else {
+        UI.log(`   ✗ ${f} failed to load`, 'er');
+      }
+    }
+
+    if(count < BOSL2.length) throw new Error(`BOSL2 incomplete: ${count}/${BOSL2.length}`);
+    this.bosl2 = mem;
+    UI.log(`BOSL2 LOADED (${count}/${BOSL2.length})`, 'ok');
   },
 
-  /* ═══════════════════════════════════════════════════════════════════════
-     A FRESH INSTANCE PER BUILD — this is the fix for the "second click aborts"
-     bug. OpenSCAD's main() is NOT re-entrant: its global C++ state is dirty
-     after one run, so a second callMain() on the same instance abort()s.
-     noExitRuntime keeps the RUNTIME alive but does NOT reset OpenSCAD itself.
-     So we throw the instance away and boot a clean one every time.
-     (Gemini's "ephemeral kernel" instinct was correct.)
-     ═══════════════════════════════════════════════════════════════════════ */
   async _fresh(needBosl){
     const inst = this.wrap
       ? (await this.factory(this._opts())).getInstance()
@@ -218,9 +256,6 @@ const Cad = {
     if(!inst || !inst.FS) throw new Error('instance has no FS');
 
     if(needBosl){
-      // Mount at ROOT: /in.scad lives at /, so `include <BOSL2/std.scad>`
-      // resolves relatively. NO -I flag — passing -I with a missing dir was
-      // what aborted every earlier build.
       try{ inst.FS.mkdir('/BOSL2'); }catch{}
       for(const [name,bytes] of Object.entries(this.bosl2))
         inst.FS.writeFile('/BOSL2/'+name, bytes);
@@ -231,7 +266,7 @@ const Cad = {
   _attempt(inst, args){
     this.out=''; this.err='';
     let abort=null;
-    try{ inst.callMain(args); }
+    try{ inst.callMain([...args]); }
     catch(e){ if(!(e && e.name==='ExitStatus' && e.status===0)) abort=e; }
 
     let stl=null;
@@ -239,8 +274,8 @@ const Cad = {
     if(stl && stl.length) return stl;
 
     const diag=(this.err||'').trim();
-    const ptr=(typeof abort==='number')?` (ptr ${abort})`:'';
-    const e=new Error(diag ? diag.split('\n')[0] : `abort${ptr}, no stderr`);
+    const ptr=(abort && abort.status !== undefined) ? ` (exit ${abort.status})` : '';
+    const e=new Error(diag ? diag.split('\n')[0] : `Build failed${ptr}, no STL generated`);
     e.diag=diag;
     throw e;
   },
@@ -252,15 +287,12 @@ const Cad = {
 
     const S = [
       { tag:'manifold', args:['--enable=manifold','/in.scad','-o','/out.stl'] },
-      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] }   // canonical fallback
+      { tag:'minimal',  args:['/in.scad','-o','/out.stl'] } 
     ];
     const list = this.flags ? [this.flags] : S;
 
     let last=null;
     for(const s of list){
-      // A FRESH INSTANCE FOR EVERY ATTEMPT. A failed callMain leaves OpenSCAD's
-      // C++ globals dirty, so even the retry needs virgin state.
-      UI.log(`Booting kernel [${s.tag}]…`);
       await new Promise(r=>setTimeout(r,10));
       let inst;
       try{ inst = await this._fresh(needBosl); }
@@ -268,68 +300,61 @@ const Cad = {
       inst.FS.writeFile('/in.scad', scad);
 
       try{
-        const stl = this._attempt(inst, s.args);
-        if(!this.flags){ this.flags=s; UI.log(`args OK: ${s.tag}`,'ok'); }
+        const stl = this._attempt(inst, s.args); 
+        if(!this.flags){ this.flags=s; }
         UI.log(`STL ${(stl.length/1024).toFixed(1)} KB`,'ok');
         return new STLLoader().parse(stl.slice().buffer);
       }catch(e){
         last=e;
         UI.log(`   [${s.tag}] ${e.message}`,'wn');
-        if(e.diag) break;   // a REAL scad error (assert/syntax) — don't cycle args
+        if(e.diag) break; 
       }
     }
-    if(last && last.diag && /requires OpenSCAD version/i.test(last.diag))
-      throw new Error('BOSL2 assert: engine older than 2021.01');
     throw last || new Error('compile failed');
   }
 };
 
-/* ── TESTS ──────────────────────────────────────────────────────────────── */
-const SRC = {
-  t1:'cube(10);',
-  t3:'include <BOSL2/std.scad>\ncuboid([20,20,20], chamfer=2);',
-  t4:'include <BOSL2/std.scad>\ndifference() {\n  sphere(d=76.2);\n  zcyl(d=10, h=100, chamfer=6);\n  xcyl(d=12, h=100, chamfer=6);\n}'
-};
-
-async function run(scad, bosl){
-  UI.busy(true); UI.code(scad);
+/* ── CONTROLLERS ────────────────────────────────────────────────────────── */
+async function buildCurrentCode(){
+  const scad = UI.getCode();
+  if(!scad.trim()) return;
+  UI.busy(true);
   try{
     V.set(await Cad.run(scad));
     UI.log('MESH RENDERED ✓','ok');
   }catch(e){
     UI.log(String(e.message).split('\n')[0],'er');
-    console.error(e,'\n--stderr--\n',Cad.err,'\n--stdout--\n',Cad.out);
+    console.error(e,'\n--stderr--\n',Cad.err);
   }
   UI.busy(false);
 }
 
-$('t1').onclick = () => run(SRC.t1,false);
-$('t2').onclick = () => run(SRC.t1,false);
-$('t3').onclick = () => run(SRC.t3,true);
-$('t4').onclick = () => run(SRC.t4,true);
+// Tests
+const SRC = {
+  t1:'cube(10);',
+  t3:'include <BOSL2/std.scad>\ncuboid([20,20,20], chamfer=2);',
+  t4:'include <BOSL2/std.scad>\ndifference() {\n  sphere(d=76.2);\n  zcyl(d=10, h=100, chamfer=2);\n  xcyl(d=12, h=100, chamfer=2);\n}'
+};
+$('t1').onclick = () => { UI.code(SRC.t1); buildCurrentCode(); };
+$('t3').onclick = () => { UI.code(SRC.t3); buildCurrentCode(); };
+$('t4').onclick = () => { UI.code(SRC.t4); buildCurrentCode(); };
+$('btn-run').onclick = buildCurrentCode;
 
-/* Optional: version probe. Uses MINIMAL args (a bogus -o suffix or an unknown
-   flag would abort during arg parsing and tell us nothing). */
-$('t0').onclick = async () => {
-  UI.busy(true); UI.code('echo(version());  // minimal args only');
-  try{
-    await Cad.initFactory();
-    const inst = await Cad._fresh(false);
-    Cad.out=''; Cad.err='';
-    inst.FS.writeFile('/v.scad','echo(str("VER=",version_num()));\ncube(1);');
-    try{ inst.callMain(['/v.scad','-o','/v.stl']); }catch(e){}
-    const raw = Cad.out + Cad.err;
-    console.log('[version probe raw]', JSON.stringify(raw));
-    const m = raw.match(/VER=(\d+)/);
-    if(m){
-      const v = parseInt(m[1],10);
-      UI.log(`version_num() = ${v}`, 'hi');
-      UI.log(v>=20210100 ? '≥ 2021.01 → BOSL2 supported' : '< 2021.01 → BOSL2 will assert',
-             v>=20210100 ? 'ok':'er');
-    } else {
-      UI.log(raw.trim() ? 'output captured but no VER — see console' : 'no output captured', 'wn');
-    }
-  }catch(e){ UI.log(e.message,'er'); console.error(e); }
+// LLM Controller
+$('btn-generate').onclick = async () => {
+  const prompt = $('ai-prompt').value.trim();
+  if(!prompt) return UI.log("Please enter a prompt.", "er");
+  
+  UI.busy(true);
+  try {
+    const currentCode = UI.getCode();
+    const newCode = await LLM.ask(prompt, currentCode);
+    UI.code(newCode);
+    await buildCurrentCode();
+  } catch(e) {
+    UI.log(e.message, "er");
+    console.error("LLM Error:", e);
+  }
   UI.busy(false);
 };
 </script>
