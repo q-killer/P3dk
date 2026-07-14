@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PEAK // CAD v9 - Hardware Fix</title>
+<title>PEAK // CAD v10 - AI Auto-Recovery</title>
 <style>
   :root{--bg:#03050a;--cy:#00ffcc;--mg:#ff00ff;--mut:#8892b0;--drk:#0f141e}
   *{box-sizing:border-box}
@@ -59,14 +59,14 @@
 <body>
 <canvas id="cv"></canvas>
 <div id="con">
-  <div class="logo">PEAK<span>//</span> CAD v9</div>
-  <div id="feed"><div class="ln hi">Ephemeral Kernel restored. AI ready.</div></div>
+  <div class="logo">PEAK<span>//</span> CAD v10</div>
+  <div id="feed"><div class="ln hi">Hardware fail-safes active. AI ready.</div></div>
 </div>
 
 <div id="ai-pan">
   <div class="t" style="color:var(--mg)">AI Co-Pilot (Qwen 0.5B Coder)</div>
   <div id="ai-prog" class="t" style="color:var(--cy); font-size:0.55rem; text-transform:none; margin-top:-4px; margin-bottom:8px">
-    WebGPU with WASM fallback. ~500MB download on first run.
+    WebGPU w/ Auto-CPU Fallback. ~500MB initial dl.
   </div>
   <textarea id="ai-prompt" class="inp" placeholder="e.g. Design a hex nut for an M8 bolt..."></textarea>
   <button class="ai-btn" id="btn-generate">Generate / Modify Shape</button>
@@ -153,18 +153,19 @@ const V = {
 };
 V.init();
 
-/* ── TRANSFORMERS.JS LOCAL AI ENGINE ────────────────────────────────────── */
+/* ── TRANSFORMERS.JS LOCAL AI ENGINE (W/ AUTO RECOVERY) ─────────────────── */
 const LLM = {
   generator: null,
+  isWebGPU: false,
   
-  async load() {
-    if (this.generator) return;
-    UI.log("Loading AI Engine...", "mg");
+  async load(forceWasm = false) {
+    if (this.generator && !forceWasm) return;
+    
+    UI.log(forceWasm ? "Booting CPU AI Engine..." : "Loading AI Engine...", "mg");
     $('btn-generate').innerText = "Loading Model (Check Progress)...";
 
-    // Dynamic import of transformers v3
     const { pipeline, env } = await import('https://esm.sh/@huggingface/transformers@3.3.2');
-    env.useBrowserCache = true; // Ensure native caching
+    env.useBrowserCache = true;
 
     const modelId = 'onnx-community/Qwen2.5-Coder-0.5B-Instruct';
     const progress = (x) => {
@@ -172,26 +173,31 @@ const LLM = {
       else if (x.status === 'ready') $('ai-prog').innerText = "Model ready!";
     };
 
-    try {
-      // Hardware WebGPU. Reverted to standard `q4` (fp32 compute) to fix float16 allocation crashes on Android.
-      this.generator = await pipeline('text-generation', modelId, {
-        dtype: 'q4',
-        device: 'webgpu',
-        progress_callback: progress
-      });
-      UI.log("WebGPU AI Loaded!", "ok");
-    } catch (e) {
-      console.warn("WebGPU failed, attempting WASM fallback...", e);
-      UI.log("WebGPU unavailable. Using WASM...", "wn");
-      // Fallback: CPU WASM with standard q4
-      this.generator = await pipeline('text-generation', modelId, {
-        dtype: 'q4',
-        device: 'wasm',
-        progress_callback: progress
-      });
-      UI.log("WASM AI Loaded (Slower)", "ok");
+    if (!forceWasm && navigator.gpu) {
+      try {
+        this.generator = await pipeline('text-generation', modelId, {
+          dtype: 'q4',
+          device: 'webgpu',
+          progress_callback: progress
+        });
+        this.isWebGPU = true;
+        UI.log("WebGPU AI Loaded!", "ok");
+        $('btn-generate').innerText = "Generate / Modify Shape";
+        return;
+      } catch (e) {
+        console.warn("WebGPU failed on load:", e);
+        UI.log("WebGPU init failed. Falling back...", "wn");
+      }
     }
-    
+
+    // Force CPU WASM loading
+    this.generator = await pipeline('text-generation', modelId, {
+      dtype: 'q4',
+      device: 'wasm',
+      progress_callback: progress
+    });
+    this.isWebGPU = false;
+    UI.log("CPU (WASM) AI Loaded", "ok");
     $('btn-generate').innerText = "Generate / Modify Shape";
   },
 
@@ -221,13 +227,29 @@ const LLM = {
         do_sample: false
       });
     } catch (err) {
-      throw new Error("AI Inference crashed: Hardware/WebGPU error.");
+      console.warn("Inference Crash Detected:", err);
+      // AUTO RECOVERY: If WebGPU crashed during the actual thinking phase, reboot strictly in CPU mode.
+      if (this.isWebGPU) {
+        UI.log("GPU crashed mid-thought. Rebooting in CPU mode...", "wn");
+        this.generator = null;
+        await this.load(true); // Force WASM = true
+        UI.log("Thinking (CPU) - This may take a minute...", "mg");
+        
+        output = await this.generator(messages, {
+          max_new_tokens: 512,
+          temperature: 0.1,
+          do_sample: false
+        });
+      } else {
+        // If it crashes in CPU mode, the tab has likely run out of physical RAM.
+        throw new Error("AI Out of Memory (Phone RAM limit reached).");
+      }
     }
 
     const generated = output[0].generated_text;
     let text = generated[generated.length - 1].content.trim();
     
-    // Strict post-processing to strip markdown artifacts safely.
+    // Strict post-processing
     const t3 = String.fromCharCode(96, 96, 96);
     if (text.includes(t3)) {
       const parts = text.split(t3);
@@ -256,7 +278,6 @@ const Cad = {
     if (this.blobUrl) return;
     UI.log("↓ Loading JS Wrapper...");
     
-    // Fetch and cache the JS wrapper as a Blob URL to allow dynamic reloading
     for (const s of SOURCES) {
       try {
         const res = await fetch(s.url);
@@ -300,13 +321,12 @@ const Cad = {
   },
 
   async _fresh(needBosl){
-    // Dynamic import forces the JS engine to re-evaluate the module for pristine state
     const freshMod = await import(/* @vite-ignore */ this.blobUrl + '#t=' + Date.now());
     const factory = this.pick(freshMod);
 
     const opts = {
       noInitialRun: true,
-      thisProgram: 'openscad', // Fixes the "this.program" argv[0] issue
+      thisProgram: 'openscad',
       print: t => { this.out += t + '\n'; },
       printErr: t => { 
         const skip = ['localization', 'unknown feature', 'Fontconfig', 'libpng'];
@@ -337,7 +357,6 @@ const Cad = {
     inst.FS.writeFile('/input.scad', scad);
 
     try {
-      // Must spread the array [...args] so Emscripten doesn't permanently mutate our cache
       inst.callMain(['/input.scad', '-o', '/out.stl', '--enable=manifold']); 
     } catch(e) {
       if (e?.name !== 'ExitStatus') {
