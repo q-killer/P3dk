@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>PEAK // CAD v10 - AI Auto-Recovery</title>
+<title>PEAK // CAD v11 - AI Prompt Engineering</title>
 <style>
   :root{--bg:#03050a;--cy:#00ffcc;--mg:#ff00ff;--mut:#8892b0;--drk:#0f141e}
   *{box-sizing:border-box}
@@ -59,8 +59,8 @@
 <body>
 <canvas id="cv"></canvas>
 <div id="con">
-  <div class="logo">PEAK<span>//</span> CAD v10</div>
-  <div id="feed"><div class="ln hi">Hardware fail-safes active. AI ready.</div></div>
+  <div class="logo">PEAK<span>//</span> CAD v11</div>
+  <div id="feed"><div class="ln hi">Few-Shot AI Prompting initialized.</div></div>
 </div>
 
 <div id="ai-pan">
@@ -207,41 +207,44 @@ const LLM = {
     $('btn-generate').innerText = "Generating...";
 
     const hasCode = currentCode && currentCode.trim().length > 5;
-    const sys = "You are an OpenSCAD code generator. Output ONLY valid OpenSCAD source code using the BOSL2 library. Do not output code fences, explanations, or prose. Begin every file with include <BOSL2/std.scad>.";
+    
+    // STRICT FEW-SHOT PROMPTING: Forcing the 0.5B model to behave without XML hallucinations
+    const sys = "You are an OpenSCAD generator. Output ONLY raw OpenSCAD code. NO Markdown. NO XML tags. NO prose. Always start with: include <BOSL2/std.scad>";
     
     const user = hasCode 
-      ? "Modify the following OpenSCAD code:\n" + currentCode + "\n\nUser Request: " + prompt
-      : "Write OpenSCAD code for the following request: " + prompt;
+      ? "Modify this OpenSCAD code:\n" + currentCode + "\n\nRequest: " + prompt
+      : "Write OpenSCAD code for: " + prompt;
 
+    // We inject a perfect dummy interaction to heavily ground the small model's syntax.
     const messages = [
       { role: "system", content: sys },
+      { role: "user", content: "Write OpenSCAD code for a 10mm sphere." },
+      { role: "assistant", content: "include <BOSL2/std.scad>\nsphere(d=10);" },
       { role: "user", content: user }
     ];
 
     let output;
     try {
-      // Near-greedy decoding for deterministic code generation
+      // Greedy decoding to prevent creative hallucinations
       output = await this.generator(messages, {
         max_new_tokens: 512,
-        temperature: 0.1,
+        temperature: 0.05,
         do_sample: false
       });
     } catch (err) {
       console.warn("Inference Crash Detected:", err);
-      // AUTO RECOVERY: If WebGPU crashed during the actual thinking phase, reboot strictly in CPU mode.
       if (this.isWebGPU) {
         UI.log("GPU crashed mid-thought. Rebooting in CPU mode...", "wn");
         this.generator = null;
-        await this.load(true); // Force WASM = true
+        await this.load(true); // Force WASM
         UI.log("Thinking (CPU) - This may take a minute...", "mg");
         
         output = await this.generator(messages, {
           max_new_tokens: 512,
-          temperature: 0.1,
+          temperature: 0.05,
           do_sample: false
         });
       } else {
-        // If it crashes in CPU mode, the tab has likely run out of physical RAM.
         throw new Error("AI Out of Memory (Phone RAM limit reached).");
       }
     }
@@ -249,7 +252,7 @@ const LLM = {
     const generated = output[0].generated_text;
     let text = generated[generated.length - 1].content.trim();
     
-    // Strict post-processing
+    // Markdown stripper
     const t3 = String.fromCharCode(96, 96, 96);
     if (text.includes(t3)) {
       const parts = text.split(t3);
