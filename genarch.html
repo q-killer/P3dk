@@ -1,0 +1,545 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>PEAK — Generative Architecture</title>
+  
+  <!-- Three.js + Loaders -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+
+  <style>
+    :root {
+      --bg: #030712;
+      --cyan: #0ff;
+      --magenta: #f0f;
+      --dim: rgba(0, 255, 255, 0.3);
+    }
+    body, html {
+      margin: 0; padding: 0; height: 100%; width: 100%;
+      background-color: var(--bg);
+      color: var(--cyan);
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      touch-action: none;
+    }
+
+    #viewer {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      z-index: 1;
+    }
+
+    /* UI Panel */
+    #ui-panel {
+      position: absolute; bottom: 20px; left: 20px;
+      width: 320px; max-width: calc(100vw - 40px);
+      background: rgba(3, 7, 18, 0.85);
+      border: 1px solid var(--dim);
+      padding: 15px;
+      z-index: 100;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+      display: flex; flex-direction: column; gap: 10px;
+    }
+
+    .header { font-weight: bold; border-bottom: 1px solid var(--dim); padding-bottom: 5px; margin-bottom: 5px; text-shadow: 0 0 5px var(--cyan); }
+    .row { display: flex; justify-content: space-between; align-items: center; }
+    
+    select, input[type="range"], input[type="checkbox"] {
+      background: transparent; color: var(--cyan);
+      border: 1px solid var(--dim); padding: 2px 5px;
+      font-family: inherit; outline: none;
+    }
+    select:focus { border-color: var(--cyan); }
+    option { background: var(--bg); color: var(--cyan); }
+
+    input[type="range"] {
+      -webkit-appearance: none; width: 100%; margin: 10px 0;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      width: 100%; height: 2px; background: var(--dim);
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; height: 14px; width: 14px;
+      background: var(--cyan); cursor: pointer; margin-top: -6px;
+      box-shadow: 0 0 8px var(--cyan);
+    }
+
+    .readout {
+      font-size: 0.9em; line-height: 1.4;
+      background: rgba(0, 255, 255, 0.05);
+      padding: 10px; border-left: 2px solid var(--cyan);
+    }
+
+    .disclaimer {
+      font-size: 0.75em; color: var(--magenta); margin-top: 5px;
+      text-shadow: 0 0 5px rgba(255, 0, 255, 0.5);
+    }
+
+    #status-overlay {
+      position: absolute; top: 20px; right: 20px;
+      background: rgba(3,7,18,0.8); border: 1px solid var(--cyan);
+      padding: 5px 10px; z-index: 100; font-size: 0.9em;
+      box-shadow: 0 0 10px var(--cyan);
+    }
+    .blink { animation: blinker 1s linear infinite; }
+    @keyframes blinker { 50% { opacity: 0; } }
+
+  </style>
+</head>
+<body>
+
+  <div id="viewer"></div>
+
+  <div id="status-overlay" class="blink">KERNEL BOOTING...</div>
+
+  <div id="ui-panel">
+    <div class="header">GENERATIVE ARCHITECTURE</div>
+    
+    <div class="row">
+      <span>Order: <select id="sel-order"><option>Doric</option></select></span>
+      <span>Mat: 
+        <select id="sel-mat">
+          <option value="PLA">PLA</option>
+          <option value="PETG">PETG</option>
+          <option value="ABS">ABS</option>
+          <option value="Aluminum">Alum</option>
+        </select>
+      </span>
+    </div>
+
+    <div>SPAN: <span id="span-val">240</span>mm (fixed)</div>
+
+    <div>
+      <div class="row"><span>LOAD</span> <span id="load-val">32 kg</span></div>
+      <input type="range" id="load-slider" min="5" max="500" value="32">
+    </div>
+
+    <div class="readout" id="stats-readout">
+      <!-- Injected via JS -->
+    </div>
+
+    <div class="disclaimer">
+      ⚠ Estimated capacity — verify by testing.<br>Not a safety rating.
+    </div>
+
+    <div class="row" style="margin-top: 5px;">
+      <label><input type="checkbox" id="chk-flute" checked> Fluting</label>
+      <button style="background:var(--cyan);color:var(--bg);border:none;padding:4px 8px;font-family:inherit;font-weight:bold;cursor:pointer;">[ STL ]</button>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 1. PHYSICS MODEL (Module B)
+    // ==========================================
+    const Materials = {
+      PLA:      { E: 3500,  sigma_c: 35,  density: 1.24 },
+      PETG:     { E: 2100,  sigma_c: 30,  density: 1.27 },
+      ABS:      { E: 2300,  sigma_c: 25,  density: 1.04 },
+      Aluminum: { E: 69000, sigma_c: 240, density: 2.70 }
+    };
+
+    function getStyleName(gap, M) {
+      const ratio = gap / M;
+      if (ratio <= 3.5) return 'pycnostyle';
+      if (ratio <= 4.25) return 'systyle';
+      if (ratio <= 5.25) return 'eustyle';
+      if (ratio <= 7.0) return 'diastyle';
+      return 'araeostyle';
+    }
+
+    function solveStructure(target_kg, span_mm, materialKey) {
+      const mat = Materials[materialKey];
+      const target_N = target_kg * 9.81;
+      const SAFETY = 2.0;
+      const required_N = target_N * SAFETY;
+
+      let bestCandidate = null;
+      let leastMaterial = Infinity;
+
+      // Deterministic search for leanest structure
+      for (let n = 2; n <= 16; n++) {
+        for (let M = 3.0; M <= span_mm / 6; M += 0.5) {
+          if (n * 2 * M >= span_mm) break; 
+
+          const A = Math.PI * (M * M);
+          const P_crush = mat.sigma_c * A;
+
+          const I = (Math.PI / 4) * Math.pow(M, 4);
+          const L = 14 * M; 
+          const P_buckle = (Math.pow(Math.PI, 2) * mat.E * I) / Math.pow(L, 2);
+
+          const P_col = Math.min(P_crush, P_buckle);
+          const mode = P_crush < P_buckle ? 'CRUSHING' : 'BUCKLING';
+
+          if (n * P_col >= required_N) {
+            const gap = (span_mm - (n * 2 * M)) / (n - 1);
+            if (gap < 2 * M) continue; // Too cramped
+
+            const materialProxy = n * M * M; 
+            if (materialProxy < leastMaterial) {
+              leastMaterial = materialProxy;
+              bestCandidate = {
+                n_columns: n,
+                M: M,
+                gap: gap,
+                span: span_mm,
+                capacity_kg: (n * P_col) / 9.81,
+                mode: mode,
+                style: getStyleName(gap, M)
+              };
+            }
+            break; 
+          }
+        }
+      }
+      return bestCandidate;
+    }
+
+    // ==========================================
+    // 2. SCAD GENERATOR (Module A) - Pure OpenSCAD
+    // ==========================================
+    function generateColonnadeSCAD(n_columns, span, M, gap, flute) {
+      const ent_h = 3.5 * M; 
+      const fluteStr = flute ? "true" : "false";
+
+      return `
+        $fn = 48;
+        N = ${n_columns};
+        span = ${span};
+        M = ${M};
+        gap = ${gap};
+        ent_h = ${ent_h};
+        flute_flag = ${fluteStr};
+
+        module doric_column(M, h, flute) {
+            difference() {
+                cylinder(h=h, r1=M*1.02, r2=M*0.83, center=false);       
+                if (flute) {
+                    for (a = [0:360/20:359]) {
+                        rotate([0,0,a]) translate([M,0,-1]) cylinder(h=h+2, r=M*0.06, center=false);
+                    }
+                }
+            }
+            // Capital
+            translate([0,0,h]) cylinder(h=M, r1=(M*1.9)/2, r2=(M*2.6)/2, center=false);
+            translate([-(M*2.6)/2, -(M*2.6)/2, h+M]) cube([M*2.6, M*2.6, M*0.3]);
+            // Base
+            translate([0,0,-M*0.5]) cylinder(h=M*0.5, r1=(M*2.4)/2, r2=(M*2.1)/2, center=false);
+        }
+
+        module colonnade(span, M, gap, ent_h, flute) {
+            col_h = 14*M;
+            for (i = [0:N-1]) {
+                translate([i*(2*M+gap), 0, 0]) doric_column(M, col_h, flute);
+            }
+            // Entablature (Centered slightly over columns)
+            translate([-M, -M*1.5, col_h+M*1.3]) cube([span + 2*M, M*3, ent_h]);
+        }
+
+        colonnade(span, M, gap, ent_h, flute_flag);
+      `;
+    }
+
+    // ==========================================
+    // 3. THREE.JS VIEWER & UI LOGIC
+    // ==========================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x030712);
+    
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(120, 100, 300);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('viewer').appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.target.set(120, 50, 0);
+    controls.update();
+
+    // Demoscene Lighting
+    const ambient = new THREE.AmbientLight(0xffffff, 0.2);
+    scene.add(ambient);
+    const dirLight = new THREE.DirectionalLight(0x00ffff, 0.8);
+    dirLight.position.set(1, 1, 1);
+    scene.add(dirLight);
+    const magLight = new THREE.DirectionalLight(0xff00ff, 0.5);
+    magLight.position.set(-1, -0.5, -1);
+    scene.add(magLight);
+
+    // Floor Grid
+    const gridHelper = new THREE.GridHelper(500, 25, 0x00ffff, 0x002222);
+    gridHelper.position.y = -5;
+    scene.add(gridHelper);
+
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0x00ffff, 
+        metalness: 0.8, 
+        roughness: 0.2,
+        wireframe: false
+    });
+
+    let currentMesh = null;
+    
+    // --- NATIVE THREE.JS VISUAL FALLBACK ---
+    // Runs instantly on slider drag to keep the UI silky smooth
+    // while the WebWorker compiles the real STL in the background.
+    function buildVisualFallback(geom, flute) {
+        const group = new THREE.Group();
+        const col_h = 14 * geom.M;
+        const ent_h = 3.5 * geom.M;
+        
+        // Single column geometry components
+        const colGeom = new THREE.CylinderGeometry(geom.M * 0.83, geom.M * 1.02, col_h, flute ? 16 : 32);
+        colGeom.translate(0, col_h/2, 0);
+
+        const capGeom = new THREE.CylinderGeometry(geom.M * 1.3, geom.M * 0.95, geom.M, 32);
+        capGeom.translate(0, col_h + geom.M/2, 0);
+
+        const abacusGeom = new THREE.BoxGeometry(geom.M * 2.6, geom.M * 0.3, geom.M * 2.6);
+        abacusGeom.translate(0, col_h + geom.M + geom.M*0.15, 0);
+
+        const baseGeom = new THREE.CylinderGeometry(geom.M * 1.2, geom.M * 1.05, geom.M * 0.5, 32);
+        baseGeom.translate(0, -geom.M * 0.25, 0);
+
+        // Instance the columns
+        for (let i = 0; i < geom.n_columns; i++) {
+            const x = i * (2 * geom.M + geom.gap);
+            const col = new THREE.Mesh(colGeom, material);
+            const cap = new THREE.Mesh(capGeom, material);
+            const abacus = new THREE.Mesh(abacusGeom, material);
+            const base = new THREE.Mesh(baseGeom, material);
+            
+            col.position.x = x; cap.position.x = x; abacus.position.x = x; base.position.x = x;
+            group.add(col, cap, abacus, base);
+        }
+
+        // Entablature (Centered)
+        const entablature = new THREE.Mesh(new THREE.BoxGeometry(geom.span + 2*geom.M, ent_h, geom.M * 3), material);
+        entablature.position.set(geom.span / 2, col_h + geom.M*1.3 + ent_h/2, 0);
+        group.add(entablature);
+
+        // Center everything over the origin
+        const box = new THREE.Box3().setFromObject(group);
+        const centerOffset = -0.5 * (box.max.x + box.min.x);
+        group.position.x = centerOffset;
+        group.position.y = -5; // Align to floor grid
+
+        return group;
+    }
+
+    // Render Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ==========================================
+    // 4. WEBASSEMBLY WORKER (Inline Blob)
+    // ==========================================
+    const workerScript = `
+      self.onerror = function() {}; // Prevent UI crash on network errors
+
+      const cdnUrls = [
+        'https://unpkg.com/openscad-wasm',
+        'https://cdn.jsdelivr.net/npm/openscad-wasm',
+        'https://unpkg.com/@jwc/openscad-wasm',
+        'https://unpkg.com/openscad-wasm/dist/openscad.js',
+        'https://cdn.jsdelivr.net/npm/openscad-wasm/dist/openscad.js',
+        'https://cdn.jsdelivr.net/gh/DSChuang/openscad-wasm@master/dist/openscad.js'
+      ];
+
+      let oc = null;
+
+      onmessage = async (e) => {
+        if (e.data.cmd === 'init') {
+          let scriptLoaded = false;
+          let baseDir = '';
+          let initFunc = null;
+          let logs = [];
+
+          // Actively probe CDNs, follow redirects, and extract the true base directory
+          for (const url of cdnUrls) {
+            try {
+              const resp = await fetch(url);
+              if (!resp.ok) {
+                logs.push(url + ' (HTTP ' + resp.status + ')');
+                continue;
+              }
+              
+              const finalUrl = resp.url; // Capture the redirected package root
+              baseDir = finalUrl.substring(0, finalUrl.lastIndexOf('/') + 1);
+              
+              // Load the true JS file
+              importScripts(finalUrl);
+              
+              // Check Emscripten exported function
+              initFunc = self.OpenSCAD || self.Module || self.openscad;
+              if (initFunc) {
+                scriptLoaded = true;
+                break;
+              } else {
+                logs.push(finalUrl + ' (Loaded, no Init Func)');
+              }
+            } catch (err) {
+              logs.push(url + ' (' + err.message + ')');
+            }
+          }
+
+          if (!scriptLoaded) {
+            postMessage({ status: 'error', msg: 'WASM fetch failed. Logs: ' + logs.join(' | ') });
+            return;
+          }
+          
+          try {
+            oc = await initFunc({ 
+              noInitialRun: true,
+              locateFile: function(path, prefix) {
+                // Dynamically route .wasm fetch to the exact directory that succeeded
+                if (path.endsWith('.wasm')) return baseDir + path;
+                return prefix + path;
+              }
+            });
+            postMessage({ status: 'ready' });
+          } catch(err) {
+            postMessage({ status: 'error', msg: 'WASM Init failed: ' + err.toString() });
+          }
+        }
+        
+        if (e.data.cmd === 'build') {
+          try {
+            if (!oc) throw new Error("Kernel not initialized");
+            oc.FS.writeFile('/in.scad', e.data.scad);
+            // Compile with manifold for robust Boolean operations
+            oc.callMain(['/in.scad', '-o', '/out.stl', '--enable=manifold']);
+            const stlData = oc.FS.readFile('/out.stl');
+            postMessage({ status: 'success', stl: stlData }, [stlData.buffer]);
+          } catch(err) {
+            postMessage({ status: 'error', msg: 'Build failed: ' + err.toString() });
+          }
+        }
+      };
+    `;
+    const blob = new Blob([workerScript], { type: 'application/javascript' });
+    const worker = new Worker(URL.createObjectURL(blob));
+
+    const statusEl = document.getElementById('status-overlay');
+    let kernelReady = false;
+
+    worker.onerror = (e) => {
+      statusEl.innerText = 'WORKER WARNING: Check Console';
+      statusEl.style.color = '#ffaa00';
+      statusEl.classList.remove('blink');
+      console.warn("Worker Warning:", e);
+    };
+
+    worker.onmessage = (e) => {
+      if (e.data.status === 'ready') {
+        kernelReady = true;
+        statusEl.innerText = 'KERNEL READY';
+        statusEl.classList.remove('blink');
+        setTimeout(() => statusEl.style.display = 'none', 2000);
+      } 
+      else if (e.data.status === 'success') {
+        statusEl.style.display = 'none';
+        
+        // Swap out the Three.js visual fallback with the true high-fidelity CSG STL
+        const loader = new THREE.STLLoader();
+        const geometry = loader.parse(e.data.stl.buffer);
+        
+        if (currentMesh) scene.remove(currentMesh);
+        
+        geometry.computeBoundingBox();
+        const centerOffset = -0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+        geometry.translate(centerOffset, 0, 0);
+
+        currentMesh = new THREE.Mesh(geometry, material);
+        currentMesh.position.y = -5; // Align to floor grid
+        scene.add(currentMesh);
+      }
+      else if (e.data.status === 'error') {
+        statusEl.innerText = 'KERNEL OFFLINE (Using Visual Fallback)';
+        statusEl.style.color = '#ffaa00';
+        statusEl.classList.remove('blink');
+        // This will print exactly which URLs were tried and why they failed to help debug
+        console.warn("Kernel Offline Details:", e.data.msg);
+      }
+    };
+
+    worker.postMessage({ cmd: 'init' });
+
+    // ==========================================
+    // 5. UI WIRING & DEBOUNCING
+    // ==========================================
+    const slider = document.getElementById('load-slider');
+    const readout = document.getElementById('stats-readout');
+    const matSelect = document.getElementById('sel-mat');
+    const chkFlute = document.getElementById('chk-flute');
+    const loadValDisplay = document.getElementById('load-val');
+    const SPAN = 240;
+
+    let buildTimeout;
+
+    function triggerUpdate() {
+      const target_kg = parseFloat(slider.value);
+      const material = matSelect.value;
+      const flute = chkFlute.checked;
+
+      loadValDisplay.innerText = `${target_kg} kg`;
+
+      const geom = solveStructure(target_kg, SPAN, material);
+      
+      if (!geom) {
+        readout.innerHTML = `<span style="color:var(--magenta)">⚠ Span exceeds column capacity — arches recommended.</span>`;
+        return;
+      }
+
+      readout.innerHTML = `
+        → ${geom.n_columns} columns · Ø${(geom.M * 2).toFixed(1)}mm · ${geom.style}<br>
+        → EST. CAPACITY: ${geom.capacity_kg.toFixed(0)} kg (2.0x margin)<br>
+        → governed by: <strong>${geom.mode}</strong>
+      `;
+
+      // 1. INSTANT VISUALS: Render Three.js fallback instantly at 60fps
+      if (currentMesh) scene.remove(currentMesh);
+      currentMesh = buildVisualFallback(geom, flute);
+      scene.add(currentMesh);
+
+      // 2. BACKGROUND CSG: Compile real STL in WebWorker if available
+      if (!kernelReady) return;
+      
+      clearTimeout(buildTimeout);
+      statusEl.style.display = 'block';
+      statusEl.innerText = 'COMPILING STL...';
+      
+      buildTimeout = setTimeout(() => {
+        const scadString = generateColonnadeSCAD(geom.n_columns, SPAN, geom.M, geom.gap, flute);
+        worker.postMessage({ cmd: 'build', scad: scadString }); 
+      }, 300);
+    }
+
+    slider.addEventListener('input', triggerUpdate);
+    matSelect.addEventListener('change', triggerUpdate);
+    chkFlute.addEventListener('change', triggerUpdate);
+
+    // Initial render call
+    triggerUpdate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+  </script>
+</body>
+</html>
+
+
+```
