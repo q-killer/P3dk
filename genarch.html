@@ -144,11 +144,11 @@
     };
 
     function getStyleName(gap, M) {
-      const ratio = gap / M;
-      if (ratio <= 3.5) return 'pycnostyle';
-      if (ratio <= 4.25) return 'systyle';
-      if (ratio <= 5.25) return 'eustyle';
-      if (ratio <= 7.0) return 'diastyle';
+      const ratio = gap / (2 * M); // Canonical ratio uses column diameters
+      if (ratio <= 1.5) return 'pycnostyle';
+      if (ratio <= 2.0) return 'systyle';
+      if (ratio <= 2.25) return 'eustyle';
+      if (ratio <= 3.0) return 'diastyle';
       return 'araeostyle';
     }
 
@@ -160,10 +160,13 @@
 
       let bestCandidate = null;
       let leastMaterial = Infinity;
+      
+      // Prevent purely mathematical toothpicks; enforce minimum architectural proportion
+      const min_M = Math.max(3.0, span_mm / 40);
 
       // Deterministic search for leanest structure
       for (let n = 2; n <= 16; n++) {
-        for (let M = 3.0; M <= span_mm / 6; M += 0.5) {
+        for (let M = min_M; M <= span_mm / 6; M += 0.5) {
           if (n * 2 * M >= span_mm) break; 
 
           const A = Math.PI * (M * M);
@@ -287,27 +290,26 @@
     let currentMesh = null;
     
     // --- NATIVE THREE.JS VISUAL FALLBACK ---
-    // Runs instantly on slider drag to keep the UI silky smooth
-    // while the WebWorker compiles the real STL in the background.
     function buildVisualFallback(geom, flute) {
         const group = new THREE.Group();
         const col_h = 14 * geom.M;
         const ent_h = 3.5 * geom.M;
         
-        // Single column geometry components
+        // CylinderGeometry(radiusTop, radiusBottom, height)
         const colGeom = new THREE.CylinderGeometry(geom.M * 0.83, geom.M * 1.02, col_h, flute ? 16 : 32);
         colGeom.translate(0, col_h/2, 0);
 
-        const capGeom = new THREE.CylinderGeometry(geom.M * 1.3, geom.M * 0.95, geom.M, 32);
-        capGeom.translate(0, col_h + geom.M/2, 0);
+        // Cap SCAD: r1(bot) = 1.9/2, r2(top) = 2.6/2 
+        const capGeom = new THREE.CylinderGeometry((geom.M * 2.6)/2, (geom.M * 1.9)/2, geom.M, 32);
+        capGeom.translate(0, col_h + geom.M/2, 0); 
 
         const abacusGeom = new THREE.BoxGeometry(geom.M * 2.6, geom.M * 0.3, geom.M * 2.6);
         abacusGeom.translate(0, col_h + geom.M + geom.M*0.15, 0);
 
-        const baseGeom = new THREE.CylinderGeometry(geom.M * 1.2, geom.M * 1.05, geom.M * 0.5, 32);
-        baseGeom.translate(0, -geom.M * 0.25, 0);
+        // Base SCAD: r1(bot) = 2.4/2, r2(top) = 2.1/2 
+        const baseGeom = new THREE.CylinderGeometry((geom.M * 2.1)/2, (geom.M * 2.4)/2, geom.M * 0.5, 32);
+        baseGeom.translate(0, -geom.M * 0.25, 0); 
 
-        // Instance the columns
         for (let i = 0; i < geom.n_columns; i++) {
             const x = i * (2 * geom.M + geom.gap);
             const col = new THREE.Mesh(colGeom, material);
@@ -319,12 +321,11 @@
             group.add(col, cap, abacus, base);
         }
 
-        // Entablature (Centered)
         const entablature = new THREE.Mesh(new THREE.BoxGeometry(geom.span + 2*geom.M, ent_h, geom.M * 3), material);
         entablature.position.set(geom.span / 2, col_h + geom.M*1.3 + ent_h/2, 0);
         group.add(entablature);
 
-        // Center everything over the origin
+        // FIX: Proper centering (Midpoint calculation using sum, not difference)
         const box = new THREE.Box3().setFromObject(group);
         const centerOffset = -0.5 * (box.max.x + box.min.x);
         group.position.x = centerOffset;
@@ -344,68 +345,23 @@
     // 4. WEBASSEMBLY WORKER (Inline Blob)
     // ==========================================
     const workerScript = `
-      self.onerror = function() {}; // Prevent UI crash on network errors
+      self.onerror = function(e) {
+        postMessage({ status: 'error', msg: e.message || e.toString() });
+      };
 
-      const cdnUrls = [
-        'https://unpkg.com/openscad-wasm',
-        'https://cdn.jsdelivr.net/npm/openscad-wasm',
-        'https://unpkg.com/@jwc/openscad-wasm',
-        'https://unpkg.com/openscad-wasm/dist/openscad.js',
-        'https://cdn.jsdelivr.net/npm/openscad-wasm/dist/openscad.js',
-        'https://cdn.jsdelivr.net/gh/DSChuang/openscad-wasm@master/dist/openscad.js'
-      ];
-
-      let oc = null;
+      let OpenSCADFactory = null;
 
       onmessage = async (e) => {
         if (e.data.cmd === 'init') {
-          let scriptLoaded = false;
-          let baseDir = '';
-          let initFunc = null;
-          let logs = [];
-
-          // Actively probe CDNs, follow redirects, and extract the true base directory
-          for (const url of cdnUrls) {
-            try {
-              const resp = await fetch(url);
-              if (!resp.ok) {
-                logs.push(url + ' (HTTP ' + resp.status + ')');
-                continue;
-              }
-              
-              const finalUrl = resp.url; // Capture the redirected package root
-              baseDir = finalUrl.substring(0, finalUrl.lastIndexOf('/') + 1);
-              
-              // Load the true JS file
-              importScripts(finalUrl);
-              
-              // Check Emscripten exported function
-              initFunc = self.OpenSCAD || self.Module || self.openscad;
-              if (initFunc) {
-                scriptLoaded = true;
-                break;
-              } else {
-                logs.push(finalUrl + ' (Loaded, no Init Func)');
-              }
-            } catch (err) {
-              logs.push(url + ' (' + err.message + ')');
-            }
-          }
-
-          if (!scriptLoaded) {
-            postMessage({ status: 'error', msg: 'WASM fetch failed. Logs: ' + logs.join(' | ') });
-            return;
-          }
-          
           try {
-            oc = await initFunc({ 
-              noInitialRun: true,
-              locateFile: function(path, prefix) {
-                // Dynamically route .wasm fetch to the exact directory that succeeded
-                if (path.endsWith('.wasm')) return baseDir + path;
-                return prefix + path;
-              }
-            });
+            // Use the proven version with embedded WASM to skip network 404s
+            importScripts('https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js');
+            OpenSCADFactory = self.createOpenSCAD || self.OpenSCAD || self.Module;
+            
+            if (!OpenSCADFactory) throw new Error("Could not find OpenSCAD factory on loaded module.");
+            
+            // Dry run to prime it and ensure everything is loaded
+            await OpenSCADFactory({ noInitialRun: true });
             postMessage({ status: 'ready' });
           } catch(err) {
             postMessage({ status: 'error', msg: 'WASM Init failed: ' + err.toString() });
@@ -414,10 +370,23 @@
         
         if (e.data.cmd === 'build') {
           try {
-            if (!oc) throw new Error("Kernel not initialized");
+            if (!OpenSCADFactory) throw new Error("Kernel not initialized");
+            
+            // CRITICAL: Fresh instance per build so main() can exit without crashing subsequent runs
+            const oc = await OpenSCADFactory({ 
+                noInitialRun: true, 
+                noExitRuntime: true 
+            });
+            
             oc.FS.writeFile('/in.scad', e.data.scad);
-            // Compile with manifold for robust Boolean operations
-            oc.callMain(['/in.scad', '-o', '/out.stl', '--enable=manifold']);
+            
+            try {
+                oc.callMain(['/in.scad', '-o', '/out.stl', '--enable=manifold']);
+            } catch (callMainErr) {
+                // Emscripten often throws 'ExitStatus' when main() finishes normally.
+                if (callMainErr.name !== 'ExitStatus') throw callMainErr; 
+            }
+            
             const stlData = oc.FS.readFile('/out.stl');
             postMessage({ status: 'success', stl: stlData }, [stlData.buffer]);
           } catch(err) {
@@ -432,13 +401,6 @@
     const statusEl = document.getElementById('status-overlay');
     let kernelReady = false;
 
-    worker.onerror = (e) => {
-      statusEl.innerText = 'WORKER WARNING: Check Console';
-      statusEl.style.color = '#ffaa00';
-      statusEl.classList.remove('blink');
-      console.warn("Worker Warning:", e);
-    };
-
     worker.onmessage = (e) => {
       if (e.data.status === 'ready') {
         kernelReady = true;
@@ -449,14 +411,14 @@
       else if (e.data.status === 'success') {
         statusEl.style.display = 'none';
         
-        // Swap out the Three.js visual fallback with the true high-fidelity CSG STL
         const loader = new THREE.STLLoader();
         const geometry = loader.parse(e.data.stl.buffer);
         
         if (currentMesh) scene.remove(currentMesh);
         
         geometry.computeBoundingBox();
-        const centerOffset = -0.5 * (geometry.boundingBox.max.x - geometry.boundingBox.min.x);
+        // FIX: Proper centering for STL as well to match fallback exactly
+        const centerOffset = -0.5 * (geometry.boundingBox.max.x + geometry.boundingBox.min.x);
         geometry.translate(centerOffset, 0, 0);
 
         currentMesh = new THREE.Mesh(geometry, material);
@@ -464,11 +426,10 @@
         scene.add(currentMesh);
       }
       else if (e.data.status === 'error') {
-        statusEl.innerText = 'KERNEL OFFLINE (Using Visual Fallback)';
+        statusEl.innerText = 'KERNEL OFFLINE';
         statusEl.style.color = '#ffaa00';
         statusEl.classList.remove('blink');
-        // This will print exactly which URLs were tried and why they failed to help debug
-        console.warn("Kernel Offline Details:", e.data.msg);
+        console.warn("Kernel Details:", e.data.msg);
       }
     };
 
@@ -506,12 +467,12 @@
         → governed by: <strong>${geom.mode}</strong>
       `;
 
-      // 1. INSTANT VISUALS: Render Three.js fallback instantly at 60fps
+      // 1. INSTANT VISUALS
       if (currentMesh) scene.remove(currentMesh);
       currentMesh = buildVisualFallback(geom, flute);
       scene.add(currentMesh);
 
-      // 2. BACKGROUND CSG: Compile real STL in WebWorker if available
+      // 2. BACKGROUND CSG
       if (!kernelReady) return;
       
       clearTimeout(buildTimeout);
