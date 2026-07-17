@@ -345,23 +345,49 @@
     // 4. WEBASSEMBLY WORKER (Inline Blob)
     // ==========================================
     const workerScript = `
-      self.onerror = function(e) {
-        postMessage({ status: 'error', msg: e.message || e.toString() });
-      };
+      // The bulletproof fetch + blob + import logic from the Lexer Bridge
+      const SOURCES = [
+        { name:'npm openscad-wasm', url:'https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js', pick:m=>m.createOpenSCAD, wrap:true },
+        { name:'raw.githack', url:'https://raw.githack.com/q-killer/P3dK/main/wasm/openscad.js', pick:m=>m.default||m.OpenSCAD||Object.values(m).find(v=>typeof v==='function'), wrap:false }
+      ];
 
       let OpenSCADFactory = null;
+      let isWrapped = false;
 
-      onmessage = async (e) => {
+      self.onmessage = async (e) => {
         if (e.data.cmd === 'init') {
           try {
-            // Use the proven version with embedded WASM to skip network 404s
-            importScripts('https://cdn.jsdelivr.net/npm/openscad-wasm@0.0.4/openscad.js');
-            OpenSCADFactory = self.createOpenSCAD || self.OpenSCAD || self.Module;
-            
+            let blobUrl = null;
+            let pickFn = null;
+
+            // Sequentially try the proven CDNs
+            for (const s of SOURCES) {
+              try {
+                const res = await fetch(s.url);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const js = await res.text();
+                blobUrl = URL.createObjectURL(new Blob([js], { type: 'application/javascript' }));
+                pickFn = s.pick;
+                isWrapped = s.wrap;
+                break;
+              } catch(err) {
+                console.warn("Worker source failed:", s.url, err);
+              }
+            }
+
+            if (!blobUrl) throw new Error("Could not load OpenSCAD JS Wrapper from any source");
+
+            // Dynamically import the ES Module from the blob
+            const mod = await import(blobUrl);
+            OpenSCADFactory = pickFn(mod);
+
             if (!OpenSCADFactory) throw new Error("Could not find OpenSCAD factory on loaded module.");
             
-            // Dry run to prime it and ensure everything is loaded
-            await OpenSCADFactory({ noInitialRun: true });
+            // Prime the kernel to ensure it loads
+            const opts = { noInitialRun: true, noExitRuntime: true };
+            const rawInst = await OpenSCADFactory(opts);
+            const oc = isWrapped && typeof rawInst.getInstance === 'function' ? rawInst.getInstance() : rawInst;
+            
             postMessage({ status: 'ready' });
           } catch(err) {
             postMessage({ status: 'error', msg: 'WASM Init failed: ' + err.toString() });
@@ -373,10 +399,9 @@
             if (!OpenSCADFactory) throw new Error("Kernel not initialized");
             
             // CRITICAL: Fresh instance per build so main() can exit without crashing subsequent runs
-            const oc = await OpenSCADFactory({ 
-                noInitialRun: true, 
-                noExitRuntime: true 
-            });
+            const opts = { noInitialRun: true, noExitRuntime: true };
+            const rawInst = await OpenSCADFactory(opts);
+            const oc = isWrapped && typeof rawInst.getInstance === 'function' ? rawInst.getInstance() : rawInst;
             
             oc.FS.writeFile('/in.scad', e.data.scad);
             
@@ -395,8 +420,10 @@
         }
       };
     `;
+    
+    // Initializing as { type: 'module' } is what allows dynamic import() inside the worker
     const blob = new Blob([workerScript], { type: 'application/javascript' });
-    const worker = new Worker(URL.createObjectURL(blob));
+    const worker = new Worker(URL.createObjectURL(blob), { type: 'module' });
 
     const statusEl = document.getElementById('status-overlay');
     let kernelReady = false;
@@ -501,6 +528,7 @@
   </script>
 </body>
 </html>
+
 
 
 ```
